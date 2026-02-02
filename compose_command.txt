@@ -1,5 +1,16 @@
 docker compose -p papersnitch-prod -f compose.prod.yml up -d --build
 docker compose -p papersnitch-dev -f compose.dev.yml up -d --build
-docker compose -p papersnitch-dev -f compose.dev.yml exec django-web-dev uv run app/webApp/functions.py test_linter
+docker compose -p papersnitch-dev -f compose.dev.yml exec django-web-dev uv run 
 docker run --rm --init --ulimit core=0 -p 8070:8070 grobid/grobid:0.8.2-crf
 ssh -L 8000:localhost:8000 dsantoli@paper-snitch.ing.unimore.it
+
+
+{"endXPath": "/html/body/div/div/div[2]/div/div/div[2]/div/div/div[41]/text()[14]", "endOffset": 16, "startXPath": "/html/body/div/div/div[2]/div/div/div[2]/div/div/div[33]/text()[1]", "startOffset": 0}
+
+
+{"endXPath": "/html/body/div/div/div[2]/div/div/div[2]/div/div/div[36]/span[27]/text()[1]", "endOffset": 3, "startXPath": "/html/body/div/div/div[2]/div/div/div[2]/div/div/div[29]/text()[1]", "startOffset": 0}
+
+{"endXPath": "/html/body/div/div/div[2]/div/div/div[2]/div/div/div[34]/span[15]/text()[1]", "endOffset": 2, "startXPath": "/html/body/div/div/div[2]/div/div/div[2]/div/div/div[28]/text()[1]", "startOffset": 0}
+{"endXPath": "/html/body/div/div/div[2]/div/div/div[2]/div/div/div[34]/span[15]/text()[1]", "endOffset": 2, "startXPath": "/html/body/div/div/div[2]/div/div/div[2]/div/div/div[28]/text()[1]", "startOffset": 0}
+{"endXPath": "/html/body/div/div/div[2]/div/div/div[2]/div/div/div[34]/text()[8]", "endOffset": 2, "startXPath": "/html/body/div/div/div[2]/div/div/div[2]/div/div/div[28]/text()[1]", "startOffset": 0}
+{"endXPath": "/html/body/div/div/div[2]/div/div/div[2]/div/div/div[34]/text()[8]", "endOffset": 2, "startXPath": "/html/body/div/div/div[2]/div/div/div[2]/div/div/div[28]/text()[1]", "startOffset": 0}

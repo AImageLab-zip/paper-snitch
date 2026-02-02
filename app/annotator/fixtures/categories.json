@@ -1,0 +1,358 @@
+[
+  {
+    "model": "annotator.annotationcategory",
+    "pk": 1,
+    "fields": {
+      "name": "Models and Algorithms",
+      "color": "#3498db",
+      "description": "Main category for Models and Algorithms",
+      "parent": null,
+      "order": 1
+    }
+  },
+  {
+    "model": "annotator.annotationcategory",
+    "pk": 2,
+    "fields": {
+      "name": "Datasets",
+      "color": "#2ecc71",
+      "description": "Main category for Datasets",
+      "parent": null,
+      "order": 2
+    }
+  },
+  {
+    "model": "annotator.annotationcategory",
+    "pk": 3,
+    "fields": {
+      "name": "Code Related",
+      "color": "#9b59b6",
+      "description": "Main category for Code and Reproducibility",
+      "parent": null,
+      "order": 3
+    }
+  },
+  {
+    "model": "annotator.annotationcategory",
+    "pk": 4,
+    "fields": {
+      "name": "Experimental Results",
+      "color": "#e67e22",
+      "description": "Main category for Experimental Results",
+      "parent": null,
+      "order": 4
+    }
+  },
+
+  {
+    "model": "annotator.annotationcategory",
+    "pk": 5,
+    "fields": {
+      "name": "Model/Algorithm Description",
+      "color": "#3498db",
+      "description": "A description of the mathematical setting, algorithm, and/or model.",
+      "parent": 1,
+      "order": 1
+    }
+  },
+  {
+    "model": "annotator.annotationcategory",
+    "pk": 6,
+    "fields": {
+      "name": "Assumptions",
+      "color": "#3498db",
+      "description": "An explanation of any assumptions.",
+      "parent": 1,
+      "order": 2
+    }
+  },
+  {
+    "model": "annotator.annotationcategory",
+    "pk": 7,
+    "fields": {
+      "name": "Software Framework",
+      "color": "#3498db",
+      "description": "A declaration of what software framework and version you used.",
+      "parent": 1,
+      "order": 3
+    }
+  },
+
+  {
+    "model": "annotator.annotationcategory",
+    "pk": 8,
+    "fields": {
+      "name": "Statistics",
+      "color": "#2ecc71",
+      "description": "The relevant statistics, such as the number of examples.",
+      "parent": 2,
+      "order": 1
+    }
+  },
+  {
+    "model": "annotator.annotationcategory",
+    "pk": 9,
+    "fields": {
+      "name": "Study Cohort",
+      "color": "#2ecc71",
+      "description": "Description of the study cohort.",
+      "parent": 2,
+      "order": 2
+    }
+  },
+  {
+    "model": "annotator.annotationcategory",
+    "pk": 10,
+    "fields": {
+      "name": "Existing Datasets Info",
+      "color": "#2ecc71",
+      "description": "For existing datasets, citations as well as descriptions if they are not publicly available.",
+      "parent": 2,
+      "order": 3
+    }
+  },
+  {
+    "model": "annotator.annotationcategory",
+    "pk": 11,
+    "fields": {
+      "name": "Data Collection Process",
+      "color": "#2ecc71",
+      "description": "For new data collected, a complete description of the data collection process, such as descriptions of the experimental setup, device(s) used, image acquisition parameters, subjects/objects involved, instructions to annotators, and methods for quality control.",
+      "parent": 2,
+      "order": 4
+    }
+  },
+  {
+    "model": "annotator.annotationcategory",
+    "pk": 12,
+    "fields": {
+      "name": "Download Link",
+      "color": "#2ecc71",
+      "description": "A link to a downloadable version of the dataset (if public).",
+      "parent": 2,
+      "order": 5
+    }
+  },
+  {
+    "model": "annotator.annotationcategory",
+    "pk": 13,
+    "fields": {
+      "name": "Ethics Approval",
+      "color": "#2ecc71",
+      "description": "Whether ethics approval was necessary for the data.",
+      "parent": 2,
+      "order": 6
+    }
+  },
+
+  {
+    "model": "annotator.annotationcategory",
+    "pk": 14,
+    "fields": {
+      "name": "Dependencies",
+      "color": "#9b59b6",
+      "description": "Specification of dependencies.",
+      "parent": 3,
+      "order": 1
+    }
+  },
+  {
+    "model": "annotator.annotationcategory",
+    "pk": 15,
+    "fields": {
+      "name": "Training Code",
+      "color": "#9b59b6",
+      "description": "Training code.",
+      "parent": 3,
+      "order": 2
+    }
+  },
+  {
+    "model": "annotator.annotationcategory",
+    "pk": 16,
+    "fields": {
+      "name": "Evaluation Code",
+      "color": "#9b59b6",
+      "description": "Evaluation code.",
+      "parent": 3,
+      "order": 3
+    }
+  },
+  {
+    "model": "annotator.annotationcategory",
+    "pk": 17,
+    "fields": {
+      "name": "Pre-trained Models",
+      "color": "#9b59b6",
+      "description": "(Pre-)trained model(s).",
+      "parent": 3,
+      "order": 4
+    }
+  },
+  {
+    "model": "annotator.annotationcategory",
+    "pk": 18,
+    "fields": {
+      "name": "Dataset for Code",
+      "color": "#9b59b6",
+      "description": "Dataset or link to the dataset needed to run the code.",
+      "parent": 3,
+      "order": 5
+    }
+  },
+  {
+    "model": "annotator.annotationcategory",
+    "pk": 19,
+    "fields": {
+      "name": "README & Results",
+      "color": "#9b59b6",
+      "description": "README file including a table of results accompanied by precise commands to run to produce those results.",
+      "parent": 3,
+      "order": 6
+    }
+  },
+
+  {
+    "model": "annotator.annotationcategory",
+    "pk": 20,
+    "fields": {
+      "name": "Hyperparameters",
+      "color": "#e67e22",
+      "description": "The range of hyperparameters considered, the method to select the best hyperparameter configuration, and the specification of all hyperparameters used to generate results.",
+      "parent": 4,
+      "order": 1
+    }
+  },
+  {
+    "model": "annotator.annotationcategory",
+    "pk": 21,
+    "fields": {
+      "name": "Sensitivity Analysis",
+      "color": "#e67e22",
+      "description": "Information on sensitivity regarding parameter changes.",
+      "parent": 4,
+      "order": 2
+    }
+  },
+  {
+    "model": "annotator.annotationcategory",
+    "pk": 22,
+    "fields": {
+      "name": "Training/Eval Runs",
+      "color": "#e67e22",
+      "description": "The exact number of training and evaluation runs.",
+      "parent": 4,
+      "order": 3
+    }
+  },
+  {
+    "model": "annotator.annotationcategory",
+    "pk": 23,
+    "fields": {
+      "name": "Baseline Methods",
+      "color": "#e67e22",
+      "description": "Details on how baseline methods were implemented and tuned.",
+      "parent": 4,
+      "order": 4
+    }
+  },
+  {
+    "model": "annotator.annotationcategory",
+    "pk": 24,
+    "fields": {
+      "name": "Data Splits",
+      "color": "#e67e22",
+      "description": "The details of training / validation / testing splits.",
+      "parent": 4,
+      "order": 5
+    }
+  },
+  {
+    "model": "annotator.annotationcategory",
+    "pk": 25,
+    "fields": {
+      "name": "Evaluation Metrics",
+      "color": "#e67e22",
+      "description": "A clear definition of the specific evaluation metrics and/or statistics used to report results.",
+      "parent": 4,
+      "order": 6
+    }
+  },
+  {
+    "model": "annotator.annotationcategory",
+    "pk": 26,
+    "fields": {
+      "name": "Central Tendency & Variation",
+      "color": "#e67e22",
+      "description": "A description of results with central tendency (e.g., mean) & variation (e.g., error bars).",
+      "parent": 4,
+      "order": 7
+    }
+  },
+  {
+    "model": "annotator.annotationcategory",
+    "pk": 27,
+    "fields": {
+      "name": "Statistical Significance",
+      "color": "#e67e22",
+      "description": "An analysis of the statistical significance of reported differences in performance between methods.",
+      "parent": 4,
+      "order": 8
+    }
+  },
+  {
+    "model": "annotator.annotationcategory",
+    "pk": 28,
+    "fields": {
+      "name": "Runtime / Energy Cost",
+      "color": "#e67e22",
+      "description": "The average runtime for each result, or estimated energy cost.",
+      "parent": 4,
+      "order": 9
+    }
+  },
+  {
+    "model": "annotator.annotationcategory",
+    "pk": 29,
+    "fields": {
+      "name": "Memory Footprint",
+      "color": "#e67e22",
+      "description": "A description of the memory footprint.",
+      "parent": 4,
+      "order": 10
+    }
+  },
+  {
+    "model": "annotator.annotationcategory",
+    "pk": 30,
+    "fields": {
+      "name": "Failure Analysis",
+      "color": "#e67e22",
+      "description": "An analysis of situations in which the method failed.",
+      "parent": 4,
+      "order": 11
+    }
+  },
+  {
+    "model": "annotator.annotationcategory",
+    "pk": 31,
+    "fields": {
+      "name": "Computing Infrastructure",
+      "color": "#e67e22",
+      "description": "A description of the computing infrastructure used (hardware and software).",
+      "parent": 4,
+      "order": 12
+    }
+  },
+  {
+    "model": "annotator.annotationcategory",
+    "pk": 32,
+    "fields": {
+      "name": "Clinical Significance",
+      "color": "#e67e22",
+      "description": "Discussion of clinical significance.",
+      "parent": 4,
+      "order": 13
+    }
+  }
+]

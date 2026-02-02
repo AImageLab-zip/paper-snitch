@@ -11,6 +11,8 @@ services:
       - ./app:/app
       - ./static:/app/staticfiles
       - django-venv:/app/.venv
+      - ./media:/app/media
+      - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - "8000:8000"
     depends_on:
@@ -19,6 +21,7 @@ services:
     environment:
       - UV_CACHE_DIR=/tmp/uv-cache # Cache in /tmp for development
       - PYTHONUNBUFFERED=1
+      - HOST_PROJECT_PATH=${PWD}
     develop:
       watch:
         - action: sync
@@ -61,6 +64,7 @@ services:
     volumes:
       - ./app:/app
       - django-venv:/app/.venv
+      - ./media:/app/media
     depends_on:
       - mysql
       - redis
@@ -78,6 +82,7 @@ services:
     ulimits:
       core: 0
     restart: unless-stopped
+
 volumes:
   django-venv:
   redis-data-dev:

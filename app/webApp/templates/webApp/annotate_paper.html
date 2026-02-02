@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+
+{% block title %}Annotate Paper{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <h4 class="mb-3">{{ paper.title }}</h4>
+        </div>
+    </div>
+    
+    <div class="row">
+        <div class="col-12">
+            <!-- PDF HTML content will be rendered here -->
+            <div id="pdf-html-content" class="border rounded p-3 bg-white">
+                {{ html_content|safe }}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

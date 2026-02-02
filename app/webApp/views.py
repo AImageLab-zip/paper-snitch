@@ -9,11 +9,12 @@ from django.contrib import messages
 from django.http import JsonResponse
 from django.views import View
 from webApp.models import Operations, Analysis, BugReport, Paper
+
 from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
 import time
 from django.shortcuts import render, redirect
-from .functions import get_text, get_pdf_content
+from .functions import get_pdf_content
 
 from .tasks import run_analysis_celery_task
 
@@ -396,3 +397,24 @@ class BugReportView(View):
         }
         messages.success(request, type_messages.get(report_type, type_messages["bug"]))
         return redirect("bug_report")
+
+
+class AnnotatePaperView(LoginRequiredMixin, View):
+    """View for annotating a paper's PDF as HTML."""
+
+    login_url = "/accounts/login/"
+
+    def get(self, request, paper_id):
+        from django.shortcuts import get_object_or_404
+
+        paper = get_object_or_404(Paper, id=paper_id)
+
+        # Check if paper has an associated document
+        try:
+            document = paper.document
+        except Paper.document.RelatedObjectDoesNotExist:
+            messages.error(request, "No document associated with this paper yet.")
+            return redirect("profile")
+
+        # Redirect to the annotator view
+        return redirect("annotate_document", pk=document.pk)

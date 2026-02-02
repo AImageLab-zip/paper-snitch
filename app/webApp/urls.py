@@ -28,7 +28,9 @@ from .views import (
     AnalysisDetailView,
     BugReportView,
     CheckPastAnalysesView,
+    AnnotatePaperView,
 )
+
 from django.contrib.auth import views as auth_views
 
 urlpatterns = [
@@ -60,4 +62,7 @@ urlpatterns = [
         name="check_past_analyses",
     ),
     path("report-bug/", BugReportView.as_view(), name="bug_report"),
+    path(
+        "annotate/<int:paper_id>/", AnnotatePaperView.as_view(), name="annotate_paper"
+    ),
 ]

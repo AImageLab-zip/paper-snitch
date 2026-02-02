@@ -64,80 +64,6 @@ class TokenLimitExceededError(Exception):
     pass
 
 
-def check_token_limit(token_var: str) -> bool:
-    """Check if the token usage is within the allowed limit.
-    Args:
-        token_var: The token variable name to check.
-    Returns:
-        True if within limit, raises TokenLimitExceededError if exceeded.
-    Raises:
-        TokenLimitExceededError: If the token limit has been exceeded.
-    """
-
-    if token_var not in TOKEN_LIMITS:
-        return True  # No limit for this token variable
-
-    today = date.today()
-    limit = TOKEN_LIMITS[token_var]
-
-    try:
-        token_record = TokenUsage.objects.filter(
-            date=today, model_var=token_var
-        ).first()
-
-        current_usage = token_record.tokens_used if token_record else 0
-
-        if current_usage >= limit:
-            raise TokenLimitExceededError(
-                f"Maximum amount of free tokens exhausted for {token_var}. "
-                f"Used: {current_usage:,} / Limit: {limit:,}. "
-                "Contact the admin to get access to more tokens."
-            )
-    except TokenUsage.DoesNotExist:
-        pass  # No usage yet, within limit
-
-    return True
-
-
-def get_text(pdf_file):
-    """Extract text from a PDF file object.
-    Args:
-        pdf_file: File object of the PDF.
-    Returns:
-        Extracted text from all pages.
-    """
-    reader = PdfReader(pdf_file)
-    pages = reader.pages
-    text = ""
-    for page in pages:
-        text = text + page.extract_text()
-    return text
-
-
-def get_code(url: str):
-    """Ingest code from a given URL.
-    Args:
-        url: URL of the code repository.
-    Returns:
-        A dictionary with summary, tree, and content of the ingested code.
-    """
-    patterns = [
-        "*.md",
-        "docs/",
-        "*.ipynb",
-        "LICENSE*",
-        "main*",
-    ]
-    # TODO Testing python code linter (ruff)
-    patterns.append("eval/mrg_old2.py")
-
-    summary, tree, content = ingest(
-        url,
-        include_patterns=patterns,
-    )
-    return f"SUMMARY\n{summary}\nTREE\n{tree}\nCONTENT\n{content}"
-
-
 def analyze_code(url: str) -> dict:
     """Ingest code from a repository and run static analysis tools.
 
@@ -403,37 +329,21 @@ def from_doc_to_code(doc_text: str, url: str) -> list[str]:
     return unique_paths
 
 
-def test_linter():
-    code_result = analyze_code("https://github.com/Siyou-Li/u2Tokenizer/")
-    print(code_result)
-
-
-def read_pdf(pdf_path: Path) -> str:
-    """Extract text from a PDF file.
+def get_pdf_content(
+    pdf_path, params={"consolidateHeader": "0", "consolidateCitations": "0"}
+):
+    """
+    Extract clean title and text from a PDF using Grobid and parsed by BeautifulSoup.
+    Text field does NOT include metadata and references.
     Args:
         pdf_path: Path to the PDF file.
     Returns:
-        Extracted text from all pages.
+        title: The title of the paper with spaces replaced by underscores.
+        text: The concatenated text including abstract, sections, figures descriptions, and tables.
     """
-    reader = PdfReader(pdf_path)
-    pages = reader.pages
-    text = ""
-    for page in pages:
-        text = text + page.extract_text()
-    return text
-
-
-def get_pdf_content(pdf_path):
-    """
-    Extract clean title and text from a PDF using Grobid and BeautifulSoup.
-    Args:
-        pdf_path: Path to the PDF file.
-    Returns:
-        A tuple containing the title and cleaned text."""
     # Use host.docker.internal to reach GROBID running on host from Docker container
     base_url = os.environ.get("GROBID_URL", "http://grobid:8070")
     grobid_url = f"{base_url}/api/processFulltextDocument"
-    params = {"consolidateHeader": "0", "consolidateCitations": "0"}
 
     try:
         with open(pdf_path, "rb") as pdf_file:
@@ -455,7 +365,7 @@ def get_pdf_content(pdf_path):
 
     # Title extraction
     title_tag = soup.find("title", level="a") or soup.find("title", type="main")
-    # Title Fallback
+
     if not title_tag:
         title_tag = soup.find("title")
 
@@ -463,7 +373,7 @@ def get_pdf_content(pdf_path):
 
     # Abstract extraction
     abstract_tag = soup.find("abstract")
-    abstract_text = ""
+    abstract_text = None
     if abstract_tag:
         # Get all paragraph text from abstract
         abstract_paragraphs = abstract_tag.find_all("p")
@@ -531,8 +441,21 @@ def get_pdf_content(pdf_path):
     return title, text
 
 
-if __name__ == "__main__":
-    test_linter()
+def get_text(pdf_file):
+    """Extract text from a PDF file object.
+    Args:
+        pdf_file: File object of the PDF.
+    Returns:
+        Extracted text from all pages.
+    """
+    reader = PdfReader(pdf_file)
+    pages = reader.pages
+    text = ""
+    for page in pages:
+        text = text + page.extract_text()
+    return text
+
+
 # def upload_pdf(pdf_file):
 #     """Upload a PDF file in the DB
 #     pdf_file comes from request.FILES["pdf_file"]"""

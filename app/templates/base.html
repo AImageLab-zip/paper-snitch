@@ -1,6 +1,7 @@
 {% load static %}
 <!doctype html>
 <html lang="en">
+    {% block extra_css %}{% endblock %}
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
@@ -33,13 +34,22 @@
         <span class="navbar-toggler-icon"></span>
     </button>
     <div class="collapse navbar-collapse" id="main_nav">
+        
     <ul class="navbar-nav ml-auto align-items-center">
+
+        <li class="nav-item mr-2">
+                <a href="{% url 'home' %}"
+                class="btn btn-danger btn-sm my-auto"
+                title="Annotator">
+                    <i class="fas fa-pencil"></i> Annotator
+                </a>
+        </li>
         <li class="nav-item">
                 <a href="{% url 'bug_report' %}"
-   class="btn btn-outline-light btn-sm my-auto"
-   title="Feedback">
-    <i class="fas fa-comments"></i> Feedback
-</a>
+                    class="btn btn-outline-light btn-sm my-auto"
+                    title="Feedback">
+                    <i class="fas fa-comments"></i> Feedback
+                </a>
             </li>
             <li class="nav-item">
                 <a class="nav-link" href="{% url 'analyze' %}" style="color: white;" title="Analyze Papers">
@@ -99,6 +109,7 @@
         crossorigin="anonymous"></script>
 
 </body>
+{% block extra_js %}{% endblock %}
 <footer class="text-white text-center text-lg-start fixed-bottom">
     <div class="text-center p-1">
         <div class="footer" id="orario-data"></div>

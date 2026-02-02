@@ -60,13 +60,6 @@ def run_analysis_celery_task(self, task_id):
         # Get model configs from database
         model_configs = get_model_configs()
 
-        # Get system prompt
-        system_prompt = (
-            Prompt.objects.filter(name="system_prompt")
-            .values_list("template", flat=True)
-            .first()
-        )
-
         # all_criterions = Criterion.objects.all().order_by("id")
         # TEST TODO REMOVE IT
         all_criterions = Criterion.objects.filter(key__in=["evaluation"]).order_by("id")
@@ -90,10 +83,6 @@ def run_analysis_celery_task(self, task_id):
             visual_name = config.get("visual_name", model_key)
             _update_progress(f"Analyzing with {visual_name}...", increment=False)
 
-            client = OpenAI(
-                api_key=config["api_key"],
-                base_url=config["base_url"],
-            )
             # check if the code already exists in the paper
             _update_progress(f"Checking for pre-existing code...", increment=False)
             code_text = None
@@ -101,15 +90,24 @@ def run_analysis_celery_task(self, task_id):
             if paper.code_text == "" or paper.code_text is None:
                 if paper.code_url == "" or paper.code_url is None:
                     # GITHUB url regex
-                    url_pattern = re.compile(
+                    github_pattern = re.compile(
                         r"https?://(?:www\.)?github\.com/[A-Za-z0-9-]{1,39}/[A-Za-z0-9_.-]+(?:\.git)?"
                     )
                     if paper.text:
-                        match = url_pattern.search(paper.text)
+                        match = github_pattern.search(paper.text)
                         url = match.group(0) if match else None
                         if url:
                             url = url.rstrip(".,;:!?)\"]'")
                             paper.code_url = url
+                    # Others urls
+                    # TODO add url field in paper model to save them
+                    url_pattern = re.compile(r"https?://[^\s]+")
+
+                    if paper.text:
+                        raw_urls = url_pattern.findall(paper.text)
+                        paper.urls = [url.rstrip(".,;:!?)\"]'") for url in raw_urls]
+                    else:
+                        paper.urls = []
 
                 # GITHUB ingestion
                 if paper.code_url and "github" in paper.code_url:
@@ -155,6 +153,12 @@ def run_analysis_celery_task(self, task_id):
                 Captures outer scope variables (client, pdf_path or pdf_text, code_text, etc.)
                 """
                 # Format prompt
+                # Get system prompt
+                system_prompt = (
+                    Prompt.objects.filter(name="system_prompt")
+                    .values_list("template", flat=True)
+                    .first()
+                )
                 formatted_prompt = system_prompt.format(
                     criterion_name=crit.name, criterion_description=crit.description
                 )
@@ -188,6 +192,10 @@ def run_analysis_celery_task(self, task_id):
                 # )
 
                 # Call LLM
+                client = OpenAI(
+                    api_key=config["api_key"],
+                    base_url=config["base_url"],
+                )
                 # TODO switch between llm_analysis and pdf_analysis based on if we want to use text or pdf
                 # response = llm_analysis(
                 #     client, formatted_prompt, pdf_text, config, code_text=code_text

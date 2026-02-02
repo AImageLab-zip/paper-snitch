@@ -294,6 +294,10 @@ a:hover {
   background-color: var(--teal);
   color: var(--bg-white);
 }
+body ::selection {
+  background-color: var(--teal);
+  color: var(--bg-white);
+}
 
 /* Analysis Renderer Styles */
 .score-badge {

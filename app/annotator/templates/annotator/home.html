@@ -1,0 +1,67 @@
+{% extends 'base.html' %}
+
+{% block title %}Home - Label Paper{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        <div class="jumbotron bg-light p-5 rounded">
+            <h1 class="display-4">Welcome to Label Paper</h1>
+            <p class="lead">Upload scientific papers in PDF format and annotate them with custom categories.</p>
+            <hr class="my-4">
+            <p>This tool converts PDFs to HTML preserving their look and allows you to annotate text, images, and tables.</p>
+            <a class="btn btn-primary btn-lg" href="{% url 'upload_document' %}" role="button">Upload New Document</a>
+            <a class="btn btn-secondary btn-lg" href="{% url 'document_list' %}" role="button">View Documents</a>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-5">
+    <div class="col-md-12">
+        <h2>Recent Documents</h2>
+        {% if documents %}
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Title</th>
+                            <th>Uploaded</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for doc in documents|slice:":5" %}
+                        <tr>
+                            <td>{{ doc.title }}</td>
+                            <td>{{ doc.uploaded_at|date:"Y-m-d H:i" }}</td>
+                            <td>
+                                {% if doc.conversion_status == 'success' %}
+                                    <span class="badge bg-success">✓ Converted</span>
+                                {% elif doc.conversion_status == 'failed' %}
+                                    <span class="badge bg-danger">✗ Failed</span>
+                                {% elif doc.conversion_status == 'processing' %}
+                                    <span class="badge bg-info">⟳ Processing</span>
+                                {% else %}
+                                    <span class="badge bg-warning">⋯ Pending</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if doc.conversion_status == 'success' %}
+                                    <a href="{% url 'annotate_document' doc.pk %}" class="btn btn-sm btn-primary">Annotate</a>
+                                {% elif doc.conversion_status == 'failed' %}
+                                    <a href="{% url 'retry_conversion' doc.pk %}" class="btn btn-sm btn-warning">Retry</a>
+                                {% endif %}
+                                <a href="{{ doc.pdf_file.url }}" class="btn btn-sm btn-secondary" target="_blank">View PDF</a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <p class="text-muted">No documents uploaded yet. <a href="{% url 'upload_document' %}">Upload one now</a>.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

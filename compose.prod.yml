@@ -5,12 +5,20 @@ services:
     command: /app/entrypoint.prod.sh
     env_file:
       - .env.prod
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./static:/app/staticfiles
+      - ./media:/app/media
+      - /var/run/docker.sock:/var/run/docker.sock
+    group_add:
+      - "988"
     depends_on:
       - mysql
       - redis
       - grobid
+    environment:
+      - HOST_PROJECT_PATH=${PWD}
     restart: unless-stopped
 
   mysql:
@@ -68,8 +76,11 @@ services:
     command: celery -A web worker --loglevel=info
     env_file:
       - .env.prod
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./static:/app/staticfiles
+      - ./media:/app/media
     depends_on:
       - mysql
       - redis

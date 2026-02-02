@@ -20,8 +20,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS final
 
 RUN apt-get update && apt-get install -y && apt-get install -y \
-    git libpq5 \
-    && rm -rf /var/lib/apt/lists/*
+    git libpq5 docker.io\
+    && rm -rf /var/lib/apt/lists/* 
 
 COPY --from=builder /app /app
 RUN chmod +x /app/entrypoint.prod.sh

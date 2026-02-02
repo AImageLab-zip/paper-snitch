@@ -1,0 +1,73 @@
+{% extends 'base.html' %}
+
+{% block title %}Documents - Label Paper{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        <h1>All Documents</h1>
+        <p class="text-muted">Manage and annotate your uploaded documents.</p>
+        
+        {% if documents %}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Title</th>
+                            <th>Uploaded</th>
+                            <th>Converted</th>
+                            <th>Annotations</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for doc in documents %}
+                        <tr>
+                            <td>
+                                <strong>{{ doc.title }}</strong>
+                                {% if doc.conversion_status == 'failed' and doc.conversion_error %}
+                                    <br><small class="text-danger">Error: {{ doc.conversion_error|truncatewords:10 }}</small>
+                                {% endif %}
+                            </td>
+                            <td>{{ doc.uploaded_at|date:"Y-m-d H:i" }}</td>
+                            <td>
+                                {% if doc.conversion_status == 'success' %}
+                                    <span class="badge bg-success">✓ Success</span><br>
+                                    <small class="text-muted">{{ doc.converted_at|date:"Y-m-d H:i" }}</small>
+                                {% elif doc.conversion_status == 'failed' %}
+                                    <span class="badge bg-danger">✗ Failed</span>
+                                {% elif doc.conversion_status == 'processing' %}
+                                    <span class="badge bg-info">⟳ Processing</span>
+                                {% else %}
+                                    <span class="badge bg-warning">⋯ Pending</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span class="badge bg-info">{{ doc.annotation_count }} annotations</span>
+                            </td>
+                            <td>
+                                {% if doc.conversion_status == 'success' %}
+                                    <a href="{% url 'annotate_document' doc.pk %}" class="btn btn-sm btn-primary">Annotate</a>
+                                    <a href="{% url 'export_annotations' doc.pk %}" class="btn btn-sm btn-success">Export</a>
+                                {% elif doc.conversion_status == 'failed' %}
+                                    <a href="{% url 'retry_conversion' doc.pk %}" class="btn btn-sm btn-warning" title="{{ doc.conversion_error }}">Retry Conversion</a>
+                                {% endif %}
+                                <a href="{{ doc.pdf_file.url }}" class="btn btn-sm btn-secondary" target="_blank">PDF</a>
+                                {% if doc.html_file %}
+                                    <a href="{{ doc.html_file.url }}" class="btn btn-sm btn-info" target="_blank">HTML</a>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="alert alert-info">
+                <p>No documents uploaded yet.</p>
+                <a href="{% url 'upload_document' %}" class="btn btn-primary">Upload Your First Document</a>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

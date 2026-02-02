@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 sys.path.append(str(BASE_DIR))
 load_dotenv("/home/dsantoli/papersnitch/.env.local")
-PDF_DIR = BASE_DIR / "media" / "pdf"
+PDF_DIR = BASE_DIR / "media" / "pdfs"
 
 
 # ======= KIMI ========
@@ -508,63 +508,165 @@ def fill_evidence_locator():
     )
     file = "IM-Fuse_A_Mamba-based_Fusion_Block_for_Brain_Tumor_Segmentation_with_Incomplete_Modalities.pdf"
 
-    dict_fill = {
-        # Models and Algorithms
+    checklist = {
         "models_and_algorithms": {
-            "mathematical_setting": [],
-            "algorithm_description": [],
-            "model_assumptions": [],
-            "software_framework_and_version": [],
+            "mathematical_setting": {
+                "objective_function": bool,
+                "loss_formulation": bool,
+                "optimization_constraints": bool,
+                "variable_definitions": bool,
+                "model_assumptions": bool,
+            },
+            "algorithm_description": {
+                "pseudocode": bool,
+                "architecture_diagrams": bool,
+                "update_rules": bool,
+                "convergence_criteria": bool,
+            },
         },
-        # Datasets
         "datasets": {
-            "dataset_statistics": [],
-            "study_cohort_description": [],
-            "dataset_citations": [],
-            "data_collection_process": [],
-            "experimental_setup_and_devices": [],
-            "data_acquisition_parameters": [],
-            "subjects_objects_involved": [],
-            "annotation_instructions": [],
-            "quality_control_methods": [],
-            "dataset_availability_link": [],
-            "ethics_approval": [],
+            "dataset_statistics": {
+                "sample_counts": bool,
+                "class_balance_distribution": "Balanced | Slight Imbalance | Severe Imbalance | Not Reported",
+                "missing_data_rates": bool,
+                "feature_dimensionality": bool,
+                "data_leakage": "Checked & Mitigated | Potential Risk | Not Discussed",
+            },
+            "study_cohort_description": {
+                "sample_taxonomy": bool,
+                "inclusion_criteria": bool,
+                "exclusion_criteria": bool,
+                "population_size": bool,
+            },
+            "dataset_metadata": {
+                "citations_and_doi": bool,
+                "source_url": "Public | Request-only | Private | Broken Link",
+                "license_type": "MIT | Apache 2.0 | CC-BY | Proprietary",
+                "versioning": bool,
+            },
+            "data_collection_process": {
+                "data_source": bool,
+                "sampling_methodology": bool,
+                "temporal_period": bool,
+                "survey_design": bool,
+                "cleaning_preprocessing": bool,
+                "expert_review_process": bool,
+            },
+            "acquisition_setup": {
+                "device_specifications": "Multiple Vendors | Multiple Devices | Single Device | Unknown",
+                "environmental_conditions": bool,
+                "calibration_procedures": bool,
+                "acquisition_parameters": bool,
+            },
+            "annotation_instructions": {
+                "labeling_guidelines": bool,
+                "annotator_expertise": "Expert | Trained | Crowd | Algorithm",
+                "consensus_protocols": bool,
+                "inter_rater_reliability_score": "Strong | Weak | Not Reported",
+            },
+            "quality_control": {
+                "outlier_detection_methods": bool,
+                "manual_audits": bool,
+                "validation_checks": bool,
+                "automated_filtering": bool,
+                "bias_analysis": bool,
+            },
+            "availability_and_ethics": {
+                "repository_links": bool,
+                "access_permissions": bool,
+                "ethics_approval_id": "Provided | Generic statement | Missing | Not Applicable",
+                "anonymization_protocol": bool,
+            },
         },
-        # Code
         "code_artifacts": {
-            "dependencies_specification": [],
-            "docker_file": [],
-            "training_code": [],
-            "evaluation_code": [],
-            "pretrained_models": [],
-            "preprocessing_details": [],
-            "dataset_access_integration": [],
-            "run_commands_and_readme": [],
+            "environment_setup": {
+                "libraries_used": "Full | Partial | Missing",
+                "version_numbers": "Full | Partial | Missing",
+                "container_definitions": "Full | Partial | Missing | Not Applicable",
+                "os_requirements": "Full | Partial | Missing | Not Applicable",
+                "cuda_or_backend_info": bool,
+                "random_state_seeding": "Full | Partial | Missing | Not Applicable",
+            },
+            "implementation_scripts": {
+                "script_setup": bool,
+                "training_logic": bool,
+                "inference_logic": bool,
+                "preprocessing_details": "Full | Partial | Missing | Not Applicable",
+            },
+            "reproducibility_artifacts": {
+                "checkpoints": bool,
+                "configuration_files": "Full | Partial | Missing | Not Applicable",
+                "logging_outputs": "Full | Partial | Missing | Not Applicable",
+                "documentation": "Full | Partial | Missing",
+            },
+            "code_availability": {
+                "repository_link_status": [
+                    "Active/Public",
+                    "Broken",
+                    "Request Access",
+                    "None",
+                ],
+                "training_script": bool,
+                "evaluation_script": bool,
+                "checkpoints": bool,
+                "preprocessing_details": "Full | Partial | Missing | Not Applicable",
+                "logging_outputs": "Full | Partial | Missing | Not Applicable",
+                "readme_quality": "Full | Partial | None",
+                "license_type": "MIT | Apache 2.0 | CC-BY | Proprietary",
+            },
         },
-        # Experimental Results
         "experimental_results": {
-            "hyperparameter_search_and_config": [],
-            "parameter_sensitivity_analysis": [],
-            "training_and_evaluation_runs_count": [],
-            "baseline_implementation_details": [],
-            "data_splits_definition": [],
-            "evaluation_metrics_and_statistics": [],
-            "central_tendency_and_variation": [],
-            "statistical_significance_analysis": [],
-            "runtime_and_energy_cost": [],
-            "memory_footprint": [],
-            "failure_analysis": [],
-            "computing_infrastructure": [],
-            "clinical_significance_discussion": [],
+            "experimental_setup": {
+                "architectural_hyperparams": list[str],
+                "optimization_parameters": list[str],
+                "best_hyperparameters_selection_method": bool,
+                "hyperparameters_ranges": "Full | Partial | Missing",
+                "batch_sizes": bool,
+                "search_strategy": bool,
+                "baseline_implementation": bool,
+                "baseline_tuning": bool,
+            },
+            "quantitative_analysis": {
+                "training_and_evaluation_runs_count": bool,
+                "ablation_studies": "Full | Partial | Missing",
+                "evaluation_metrics": list[str],
+                "data_splits_definition": bool,
+                "sota_comparisons": bool,
+                "statistical_measures": list[str],
+                "central_tendency_measures": bool,
+                "dispersion_measures": bool,
+                "significance_tests": bool,
+                "confidence_intervals": bool,
+                "sensitivity_analysis": bool,
+            },
+            "qualitative_analysis": {
+                "failure_analysis": bool,
+                "perturbation_testing": bool,
+                "out_of_distribution_testing": bool,
+                "subgroup_fairness_analysis": bool,
+                "clinical_significance_discussion": bool,
+                "results_discussion": bool,
+            },
+            "compute_and_resources": {
+                "hardware_specification": bool,
+                "environment_description": bool,
+                "training_time": bool,
+                "energy_cost_or_average_runtime": bool,
+                "memory_usage": bool,
+            },
         },
-        "missing_candidates": [],
     }
     pdf_text = retrieve_file(client, file)
-    system_prompt = 'Fill the sequent dictonary with sentences extracted from the paper that can be used as evidence to fill the different fields. If no sentence is found for a specific field, leave it empty and write the field in "missing_candidates". Return only the dictonary in json format.\n\n'
+    system_prompt = """You are an expert reviewer of scientific paper specializing in Artificial Intelligence reproducibility. Your task  is to produce as output the following json with values compiled based on the content of the provided scientific paper synthetize in evidence locators list.
+For each field in the JSON you have the type of value excepted. There are three main types:
+- bool: the field should be marked as True if the information is present in the paper, False otherwise
+- "Value A | Value B | Value C": the field should be marked with ONE of the provided categorical options, choose the option that fits best the content of the paper
+- list[str]: the field should be marked with a LIST OF WORDS found in the paper that belong to the category indicated in the field
+"""
     input_list = [
         {
             "role": "system",
-            "content": system_prompt + json.dumps(dict_fill, indent=2),
+            "content": system_prompt + json.dumps(checklist, indent=2),
         },
         {
             "role": "user",
@@ -602,25 +704,68 @@ def check_balance():
     return response
 
 
+import pymupdf
+
+
+def underline_text(input_pdf, output_pdf, text_to_search: list, color: tuple) -> int:
+    """
+    Highlight all sentences of specific texts in a PDF document."""
+    # 1. Open the document
+    doc = pymupdf.open(input_pdf)
+    instances = []
+    for text in text_to_search:
+        for page in doc:
+            # 2. Find the coordinates (quads) of the text to search
+            instances = page.search_for(text)
+
+            # 3. Apply underline for each occurrence found
+            for inst in instances:
+                annot = page.add_highlight_annot(inst)
+                annot.set_colors(stroke=color)
+                annot.update()
+
+    # 4. Save the result
+    doc.save(output_pdf)
+    doc.close()
+    return len(instances)
+
+
 if __name__ == "__main__":
     # main()
     # fill_evidence_locator()
     # print(check_balance())
-    from gitingest import ingest
 
-    url = "/home/dsantoli/papersnitch/IM-Fuse"
-    _, _, content = ingest(
-        url,
-        include_patterns=["*.md"],
+    # from gitingest import ingest
+
+    # url = "/home/dsantoli/papersnitch/IM-Fuse"
+    # _, _, content = ingest(
+    #     url,
+    #     include_patterns=["*.md"],
+    # )
+    # code_filenames = from_doc_to_code(
+    #     content, "https://github.com/AImageLab-zip/IM-Fuse"
+    # )
+    # summary, _, content = ingest(
+    #     url,
+    #     include_patterns=code_filenames,
+    # )
+    # print(summary)
+    HIGHLIGHTING_COLOR = {
+        "pink": (1.0, 0.0, 1.0),
+        "green": (0.67, 1.0, 0.18),
+        "yellow": (1.0, 1.0, 0.0),
+        "cyan": (0.0, 1.0, 1.0),
+        "orange": (1.0, 0.65, 0.0),
+    }
+    print(
+        underline_text(
+            "/home/dsantoli/papersnitch/app/media/pdf/µ_2_Tokenizer_Differentiable_Multi-Scale_Multi-Modal_Tokenizer_for_Radiology_Report__zFZkv6h.pdf",
+            "/home/dsantoli/papersnitch/app/media/pdf/µ_2_Tokenizer_Differentiable_Multi-Scale_Multi-Modal_Tokenizer_for_Radiology_Report__zFZkv6h_underlined.pdf",
+            ["""asd"""],
+            HIGHLIGHTING_COLOR["orange"],
+        )
     )
-    code_filenames = from_doc_to_code(
-        content, "https://github.com/AImageLab-zip/IM-Fuse"
-    )
-    summary, _, content = ingest(
-        url,
-        include_patterns=code_filenames,
-    )
-    print(summary)
+
 
 # ChatCompletion(
 #     id="chatcmpl-6970e9201eda4bf7387410e3",

@@ -15,7 +15,7 @@ from openai import OpenAI
 from dotenv import load_dotenv, set_key, get_key
 
 load_dotenv("/home/dsantoli/papersnitch/.env.local")
-# PDF_DIR = BASE_DIR / "media" / "pdf"
+# PDF_DIR = BASE_DIR / "media" / "pdfs"
 
 
 api_key = os.getenv("BYTEPLUS_API_KEY")

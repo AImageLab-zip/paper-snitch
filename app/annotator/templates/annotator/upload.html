@@ -1,0 +1,50 @@
+{% extends 'base.html' %}
+
+{% block title %}Upload Document - Label Paper{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8 offset-md-2">
+        <h1>Upload PDF Document</h1>
+        <p class="text-muted">Upload a scientific paper in PDF format for annotation.</p>
+        
+        <div class="card">
+            <div class="card-body">
+                <form method="post" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    
+                    <div class="mb-3">
+                        <label for="{{ form.title.id_for_label }}" class="form-label">Document Title</label>
+                        {{ form.title }}
+                        {% if form.title.errors %}
+                            <div class="text-danger">{{ form.title.errors }}</div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="{{ form.pdf_file.id_for_label }}" class="form-label">PDF File</label>
+                        {{ form.pdf_file }}
+                        {% if form.pdf_file.errors %}
+                            <div class="text-danger">{{ form.pdf_file.errors }}</div>
+                        {% endif %}
+                        <div class="form-text">Please select a PDF file to upload.</div>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary">Upload and Convert</button>
+                    <a href="{% url 'home' %}" class="btn btn-secondary">Cancel</a>
+                </form>
+            </div>
+        </div>
+        
+        <div class="alert alert-info mt-4">
+            <h5>Note:</h5>
+            <ul>
+                <li>The PDF will be automatically converted to HTML</li>
+                <li>For best results with style preservation, install pdf2htmlEX on your system</li>
+                <li>Conversion may take a few moments depending on the document size</li>
+                <li>If conversion fails, you can retry it from the documents list</li>
+            </ul>
+        </div>
+    </div>
+</div>
+{% endblock %}

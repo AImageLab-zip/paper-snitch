@@ -182,8 +182,19 @@ Iniziata implementazione linter per l'analisi statica del codice
 27/01/2026
 Definito gli evidence locator
 
-28/\01/2026
+28/01/2026
 Definito in modo più dettagliato la valutazione degli evidence locator (da finire)
+
+29/01/2026
+Completata checklist da far compilare al modello
+Trovato libreria pymupdf per evidenziare testo nel pdf
+Iniziato a buildare il langgraph per le chiamate api llm
+
+30/01/2026
+Implementate le API nel grafo
+Rimosse funzioni inutilizzate da functions.py
+Aggiunto retrieve degli url dal testo del paper
+
 
 
 TODO:
@@ -319,322 +330,173 @@ CELERY:
 • Error Handling and Retry Mechanism
 • Monitoring and Management
 
+locator_prompt = """You are an expert information extractor specializing in Artificial Intelligence reproducibility. 
+Given the text of a scientific paper, the code documentation and a JSON about different aspects about the reproducibility, you have to produce a response in JSON format filling the JSON fields with a list of sentences extracted from the scientific paper. 
+The output MUST be a valid JSON.
+{
+     "models_and_algorithms": list[str],
+     "datasets": list[str],
+     "code_artifacts": list[str],
+     "experimental_results": list[str],
+}
+"""
 
 
 
-reproducibility_mapping = {
-    # -------------------------------------------------------------------------
-    # Models and Algorithms
-    # -------------------------------------------------------------------------
-    "mathematical_setting": {
-        "objective_function": True/False, 
-        "loss_formulation": True/False, 
-        "optimization_constraints": True/False, 
-        "variable_definitions": True/False,
-    },
-    "algorithm_description": {
-        "pseudocode": True/False, 
-        "architecture_diagrams": ???, #come poter far capire all'llm se c'è o meno? 
-        "update_rules": True/False, 
-        "convergence_criteria": True/False
-    },
-    "model_assumptions": {
-        "linearity_constraints": [], 
-        "distributional_priors": [], 
-        "stationarity_assumptions": [], 
-        "independence_assumptions": []
-    },
-    "software_frameworks": {
-        "libraries_used": True/False, 
-        "version_numbers": True/False, 
-        "cuda_or_backend_versions": True/False, 
-        "random_state_seeding": True/False
-    },
-
-    # -------------------------------------------------------------------------
-    # Datasets
-    # -------------------------------------------------------------------------
-    "dataset_statistics": {
-        "sample_counts": True/False, 
-        "class_balance_distribution": True/False, 
-        "missing_data_rates": True/False, 
-        "feature_dimensionality": True/False,
-        "feature_correlation_analysis": True/False,
-        "data_leakage": True/False
-    },
-    "study_cohort_description": {
-        "demographics": True/False, 
-        "inclusion_criteria": True/False, 
-        "exclusion_criteria": True/False, 
-        "population_size": True/False
-    },
-    "dataset_metadata": { 
-        "doi": True/False,
-        "source_url": True/False, 
-        "license_type": True/False, 
-        "versioning": True/False
-    },
-    "data_collection_process": {
-        "data_source": True/False,
-        "sampling_methodology": True/False, 
-        "temporal_period": True/False,
-        "survey_design": True/False, 
-        "cleaning_preprocessing": True/False, 
-        "expert_review_process": True/False
-    },
-    "acquisition_setup": {
-        "device_specifications": True/False, 
-        "environmental_conditions": True/False, 
-        "calibration_procedures": True/False, 
-        "acquisition_parameters": True/False # generalization of sampling_rate, exposure, etc.
-    },
-    "annotation_process": {
-        "labeling_guidelines": True/False, 
-        "annotator_qualifications": True/False, 
-        "consensus_protocols": True/False, 
-        "inter_rater_reliability": True/False
-    },
-    "quality_control": {
-        "outlier_detection_methods": True/False, 
-        "manual_audits": True/False, 
-        "validation_checks": True/False, 
-        "automated_filtering": True/False
-    },
-    "availability_and_ethics": {
-        "repository_links": True/False, 
-        "access_permissions": True/False, 
-        "ethics_approval_id": True/False, 
-        "anonymization_protocol": True/False
-    },
-
-    # -------------------------------------------------------------------------
-    # Code
-    # -------------------------------------------------------------------------
-    "environment_setup": {
-        "dependency_files": [], # e.g., requirements.txt, conda.yaml
-        "container_definitions": [], # e.g., Dockerfile
-        "setup_scripts": [], 
-        "os_requirements": []
-    },
-    "implementation_scripts": {
-        "training_logic": [], 
-        "inference_logic": [], 
-        "model_definitions": [], 
-        "utility_functions": []
-    },
-    "reproducibility_artifacts": {
-        "pretrained_weights": [], 
-        "checkpoints": [], 
-        "configuration_files": [], 
-        "logging_outputs": []
-    },
-    "documentation": {
-        "usage_instructions": [], 
-        "execution_commands": [], 
-        "readme_content": [], 
-        "argument_definitions": []
-    },
-
-    # -------------------------------------------------------------------------
-    # Experimental Results
-    # -------------------------------------------------------------------------
-    "hyperparameters": {
-        "optimization_parameters": [], # e.g., learning rate, momentum
-        "batch_sizes": [], 
-        "search_strategy": [], # e.g., grid search, optuna
-        "architectural_hyperparams": []
-    },
-    "sensitivity_analysis": {
-        "ablation_studies": [], 
-        "perturbation_tests": [], 
-        "robustness_metrics": [], 
-        "variance_analysis": []
-    },
-    "training_dynamics": {
-        "epoch_counts": [], 
-        "stopping_criteria": [], 
-        "random_seeds_used": [], 
-        "iterations": []
-    },
-    "comparative_analysis": {
-        "baseline_comparisons": [], 
-        "sota_benchmarks": [], 
-        "implementation_variants": [], 
-        "default_settings_comparison": []
-    },
-    "evaluation_setup": {
-        "data_split_ratios": [], 
-        "stratification_method": [], 
-        "cross_validation_k": [], 
-        "metric_definitions": [] # Replaces specific metrics like f1_score
-    },
-    "statistical_results": {
-        "central_tendency_measures": [], # mean, median
-        "dispersion_measures": [], # std dev, error bars
-        "significance_tests": [], # t-test, ANOVA
-        "confidence_intervals": []
-    },
-    "resource_consumption": {
-        "execution_time": [], 
-        "latency_metrics": [], 
-        "energy_footprint": [], 
-        "memory_requirements": []
-    },
-    "infrastructure_used": {
-        "hardware_specifications": [], # GPU/CPU models
-        "compute_environment": [], # Cloud vs Local
-        "parallelization_setup": [], 
-        "storage_requirements": []
-    },
-    "qualitative_analysis": {
-        "failure_modes": [], 
-        "limitation_discussion": [], 
-        "clinical_relevance": [], 
-        "real_world_impact": []
+checklist_prompt = """You are an expert reviewer of scientific paper specializing in Artificial Intelligence reproducibility. Your task  is to produce as output the following json with values compiled based on the content of the provided scientific paper synthetize in evidence locators list.
+For each field in the JSON you have the type of value excepted. There are three main types:
+- bool: the field should be marked as True if the information is present in the paper, False otherwise
+- "Value A | Value B | Value C": the field should be marked with ONE of the provided categorical options, choose the option that fits best the content of the paper
+- list[str]: the field should be marked with a LIST OF WORDS found in the paper that belong to the category indicated in the field
+The output MUST be a valid JSON.
+checklist = {
+        "models_and_algorithms": {
+            "mathematical_setting": {
+                "objective_function": bool,
+                "loss_formulation": bool,
+                "optimization_constraints": bool,
+                "variable_definitions": bool,
+                "model_assumptions": bool,
+            },
+            "algorithm_description": {
+                "pseudocode": bool,
+                "architecture_diagrams": bool,
+                "update_rules": bool,
+                "convergence_criteria": bool,
+            },
+        },
+        "datasets": {
+            "dataset_statistics": {
+                "sample_counts": bool,
+                "class_balance_distribution": "Balanced | Slight Imbalance | Severe Imbalance | Not Reported",
+                "missing_data_rates": bool,
+                "feature_dimensionality": bool,
+                "data_leakage": "Checked & Mitigated | Potential Risk | Not Discussed",
+            },
+            "study_cohort_description": {
+                "sample_taxonomy": bool,
+                "inclusion_criteria": bool,
+                "exclusion_criteria": bool,
+                "population_size": bool,
+            },
+            "dataset_metadata": {
+                "citations_and_doi": bool,
+                "source_url": "Public | Request-only | Private | Broken Link",
+                "license_type": "MIT | Apache 2.0 | CC-BY | Proprietary",
+                "versioning": bool,
+            },
+            "data_collection_process": {
+                "data_source": bool,
+                "sampling_methodology": bool,
+                "temporal_period": bool,
+                "survey_design": bool,
+                "cleaning_preprocessing": bool,
+                "expert_review_process": bool,
+            },
+            "acquisition_setup": {
+                "device_specifications": "Multiple Vendors | Multiple Devices | Single Device | Unknown",
+                "environmental_conditions": bool,
+                "calibration_procedures": bool,
+                "acquisition_parameters": bool,
+            },
+            "annotation_instructions": {
+                "labeling_guidelines": bool,
+                "annotator_expertise": "Expert | Trained | Crowd | Algorithm",
+                "consensus_protocols": bool,
+                "inter_rater_reliability_score": "Strong | Weak | Not Reported",
+            },
+            "quality_control": {
+                "outlier_detection_methods": bool,
+                "manual_audits": bool,
+                "validation_checks": bool,
+                "automated_filtering": bool,
+                "bias_analysis": bool,
+            },
+            "availability_and_ethics": {
+                "repository_links": bool,
+                "access_permissions": bool,
+                "ethics_approval_id": "Provided | Generic statement | Missing | Not Applicable",
+                "anonymization_protocol": bool,
+            },
+        },
+        "code_artifacts": {
+            "environment_setup": {
+                "libraries_used": "Full | Partial | Missing",
+                "version_numbers": "Full | Partial | Missing",
+                "container_definitions": "Full | Partial | Missing | Not Applicable",
+                "os_requirements": "Full | Partial | Missing | Not Applicable",
+                "cuda_or_backend_info": bool,
+                "random_state_seeding": "Full | Partial | Missing | Not Applicable",
+            },
+            "implementation_scripts": {
+                "script_setup": bool,
+                "training_logic": bool,
+                "inference_logic": bool,
+                "preprocessing_details": "Full | Partial | Missing | Not Applicable",
+            },
+            "reproducibility_artifacts": {
+                "checkpoints": bool,
+                "configuration_files": "Full | Partial | Missing | Not Applicable",
+                "logging_outputs": "Full | Partial | Missing | Not Applicable",
+                "documentation": "Full | Partial | Missing",
+            },
+            "code_availability": {
+                "repository_link_status": [
+                    "Active/Public",
+                    "Broken",
+                    "Request Access",
+                    "None",
+                ],
+                "training_script": bool,
+                "evaluation_script": bool,
+                "checkpoints": bool,
+                "preprocessing_details": "Full | Partial | Missing | Not Applicable",
+                "logging_outputs": "Full | Partial | Missing | Not Applicable",
+                "readme_quality": "Full | Partial | None",
+                "license_type": "MIT | Apache 2.0 | CC-BY | Proprietary",
+            },
+        },
+        "experimental_results": {
+            "experimental_setup": {
+                "architectural_hyperparams": list[str],
+                "optimization_parameters": list[str],
+                "best_hyperparameters_selection_method": bool,
+                "hyperparameters_ranges": "Full | Partial | Missing",
+                "batch_sizes": bool,
+                "search_strategy": bool,
+                "baseline_implementation": bool,
+                "baseline_tuning": bool,
+            },
+            "quantitative_analysis": {
+                "training_and_evaluation_runs_count": bool,
+                "ablation_studies": "Full | Partial | Missing",
+                "evaluation_metrics": list[str],
+                "data_splits_definition": bool,
+                "sota_comparisons": bool,
+                "statistical_measures": list[str],
+                "central_tendency_measures": bool,
+                "dispersion_measures": bool,
+                "significance_tests": bool,
+                "confidence_intervals": bool,
+                "sensitivity_analysis": bool,
+            },
+            "qualitative_analysis": {
+                "failure_analysis": bool,
+                "perturbation_testing": bool,
+                "out_of_distribution_testing": bool,
+                "subgroup_fairness_analysis": bool,
+                "clinical_significance_discussion": bool,
+                "results_discussion": bool,
+            },
+            "compute_and_resources": {
+                "hardware_specification": bool,
+                "environment_description": bool,
+                "training_time": bool,
+                "energy_cost_or_average_runtime": bool,
+                "memory_usage": bool,
+            },
+        },
     }
-}
+"""
 
-evaluation_metrics -> lista di metriche
-statistical_significance_analysis -> lista di statistiche utilizzate
-failure_analysis -> dove fallisce il modello/soluzione
-pretrained_models -> weights/checkpoints
-run_commands_and_readme -> documentaiozione
-
-reproducibility_framework = {
-    # Models and Algorithms
-    "models_and_algorithms": {
-        "mathematical_setting": {
-            "objective_function": True/False, 
-            "loss_formulation": True/False, 
-            "optimization_constraints": True/False, 
-            "variable_definitions": True/False,
-            "model_assumptions": ["Explicit", "Implicit", "Missing"], # è possibile valutarle in modo più dettagliato? Spesso non sono implicite nell'architettura che viene presentata?
-        },
-        "algorithm_description": {
-            "pseudocode": True/False, *
-            "architecture_diagrams": ???, #come poter far capire all'llm se c'è o meno? 
-            "update_rules": True/False, 
-            "convergence_criteria": True/False
-        },
-    },
-    
-    # Datasets
-    "datasets": {
-        "dataset_statistics": {
-            "sample_counts": True/False, 
-            "class_balance_distribution": ["Balanced", "Slight Imbalance", "Severe Imbalance", "Not Reported"], 
-            "missing_data_rates": True/False, 
-            "feature_dimensionality": True/False,
-            "data_leakage": ["Checked & Mitigated", "Potential Risk", "Not Discussed"]
-        },
-        "study_cohort_description": {
-            "demographics": ["Full", "Partial", "Missing"], 
-            "inclusion_criteria": True/False, 
-            "exclusion_criteria": True/False, 
-            "population_size": True/False
-        },
-        "dataset_metadata": {
-            "citations_and_doi": True/False, 
-            "source_url": ["Public", "Request-only", "Private", "Broken Link"], 
-            "license_type": ["Open", "Academic-Only", "Proprietary", "Unknown"], # Può bastare un True/False?
-            "versioning": True/False
-        },
-        "data_collection_process": {
-            "data_source": True/False,
-            "sampling_methodology": True/False, 
-            "temporal_period": True/False,
-            "survey_design": True/False, 
-            "cleaning_preprocessing": True/False, 
-            "expert_review_process": True/False
-        },
-        "acquisition_setup": {
-            "device_specifications": ["Multiple Vendors", "Multiple Devices", "Single Device", "Unknown"], 
-            "environmental_conditions": True/False, 
-            "calibration_procedures": True/False, 
-            "acquisition_parameters": True/False # generalization of sampling_rate, exposure, etc.
-        },
-        "subjects_objects_involved": [],
-        "annotation_instructions": {
-            "labeling_guidelines": True/False, 
-            "annotator_expertise": ["Expert", "Trained", "Crowd", "Algorithm"],
-            "consensus_protocols": True/False, 
-            "inter_rater_reliability_score": ["Strong", "Weak", "Not Reported"]
-        },
-        "quality_control": {
-            "outlier_detection_methods": True/False, 
-            "manual_audits": True/False, ??
-            "validation_checks": True/False, ??
-            "automated_filtering": True/False, ??
-            "bias_analysis": True/False
-        },
-        "availability_and_ethics": {
-            "repository_links": True/False, 
-            "access_permissions": True/False, 
-            "ethics_approval_id": ["Provided", "Generic statement", "Missing", "Not Applicable"], 
-            "anonymization_protocol": True/False
-        },
-    },
-    
-    # Code
-    "code_artifacts": {
-        "environment_setup": {
-            "libraries_used": ["Full", "Partial", "Missing"],
-            "version_numbers": ["Full", "Partial", "Missing"],
-            "container_definitions": ["Full", "Partial", "Missing", "Not Applicable"],
-            "os_requirements": ["Full", "Partial", "Missing", "Not Applicable"],
-            "cuda_or_backend_info": True/False,
-            "random_state_seeding": ["Full", "Partial", "Missing", "Not Applicable"]
-        },
-        "implementation_scripts": {
-            "script_setup": True/False,
-            "training_logic": True/False, 
-            "inference_logic": True/False, 
-            "preprocessing_details": ["Full", "Partial", "Missing", "Not Applicable"]
-        },
-         "reproducibility_artifacts": {
-            "checkpoints": True/False, 
-            "configuration_files": ["Full", "Partial", "Missing", "Not Applicable"], 
-            "logging_outputs": ["Full", "Partial", "Missing", "Not Applicable"],
-            "documentation": ["Full", "Partial", "Missing"]
-        },
-        "code_availability": {
-            "repository_link_status": ["Active/Public", "Broken", "Request Access", "None"],
-            "training_script": True/False,
-            "evaluation_script": True/False,
-            "checkpoints": True/False,
-            "preprocessing_details": ["Full", "Partial", "Missing", "Not Applicable"],
-            "logging_outputs": ["Full", "Partial", "Missing", "Not Applicable"],
-            "readme_quality": ["Full", "Partial", "None"] 
-        }
-    },
-    
-    # Experimental Results
-    "experimental_results": {
-        "hyperparameters": {
-            "optimization_parameters": ,
-            "batch_sizes": True/False, 
-            "search_strategy": True/False,
-            "architectural_hyperparams": [*hyperparameters list*]
-        },
-        "sensitivity_analysis": {
-            "ablation_studies": True/False, 
-            "perturbation_tests": True/False, 
-            "evaluation_metrics": [*metrics list*],
-            "statistical_analysis": [*statistics list*],
-    },
-        "training_and_evaluation_runs_count": [],
-        "baseline_implementation_details": ["Full", "Partial", "Missing", "Not Applicable"],
-        "data_splits_definition": True/False,
-        
-        
-        "central_tendency_and_variation": True/False,
-        "runtime_and_energy_cost": True/False,
-        "memory_footprint": True/False,
-        "failure_analysis": True/False,
-        "computing_infrastructure": True/False,
-        "clinical_significance_discussion": True/false
-    },
-
-    "missing_candidates": []
-
-}
+{"endXPath": "/html/body/div/div[2]/div/div/div[2]/div/div/div[41]/span[2]/span[5]/span/text()[1]", "endOffset": 0, "startXPath": "/html/body/div/div[2]/div/div/div[2]/div/div/div[41]/span[2]/text()[1]", "startOffset": 0}

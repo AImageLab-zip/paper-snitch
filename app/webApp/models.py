@@ -75,10 +75,11 @@ class Paper(models.Model):
         null=True,
     )
     file = models.FileField(
-        upload_to="pdf",
+        upload_to="pdfs/",
         blank=True,
         null=True,
     )
+
     text = models.TextField(verbose_name="Full paper text", blank=True, null=True)
     code_text = models.TextField(
         verbose_name="Code text retrieved from the repository", blank=True, null=True
