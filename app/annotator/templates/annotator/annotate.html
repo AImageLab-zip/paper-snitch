@@ -4,87 +4,10 @@
 
 <style> 
     body ::selection {
-        background-color: var(--teal);
-        color: #000;
-    }
-    
-    /* Zoom Control Styles */
-    .zoom-controls {
-        position: absolute;
-        bottom: 20px;
-        right: 20px;
-        display: flex;
-        align-items: center;
-        gap: 2px;
-        background: var(--bg-white, #fff);
-        border: 1px solid rgba(10, 61, 98, 0.2);
-        border-radius: 6px;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-        padding: 4px;
-        z-index: 100;
-    }
-    
-    .zoom-btn {
-        height: 32px;
-        min-width: 32px;
-        padding: 0 8px;
-        border: none;
-        background: transparent;
-        cursor: pointer;
-        font-size: 16px;
-        font-weight: bold;
-        color: var(--primary, #0a3d62);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border-radius: 4px;
-        transition: background-color 0.2s ease;
-    }
-    
-    .zoom-btn:hover {
-        background: rgba(10, 61, 98, 0.1);
-    }
-    
-    .zoom-btn:active {
-        background: rgba(10, 61, 98, 0.2);
-    }
-    
-    .zoom-btn:disabled {
-        color: var(--gray, #999);
-        cursor: not-allowed;
-    }
-    
-    .zoom-btn:disabled:hover {
-        background: transparent;
-    }
-    
-    .zoom-btn.zoom-reset {
-        font-size: 12px;
-        font-weight: 500;
-        margin-left: 4px;
-        padding: 0 10px;
-        border-left: 1px solid rgba(10, 61, 98, 0.15);
-        border-radius: 0 4px 4px 0;
-    }
-    
-    .zoom-level {
-        min-width: 50px;
-        text-align: center;
-        font-size: 14px;
-        font-weight: 500;
-        color: var(--gray-dark, #333);
-        padding: 0 8px;
-        border-left: 1px solid rgba(10, 61, 98, 0.1);
-        border-right: 1px solid rgba(10, 61, 98, 0.1);
-    }
 
-    #htmlContent{
-        transform: scale(1); 
-        transform-origin: 
-        left top 0px; 
-        transition: transform 0.2s; 
-        width: 100%; height: 100%;
+        color: #000 !important;
     }
+    
     
 </style>
 {% endblock %}
@@ -101,17 +24,17 @@
         {% endif %}
 
         
-<div class="document-title">
-    <h2>{{ document.title }}</h2>
-    <p class="text-muted">
-        Uploaded: {{ document.uploaded_at|date:"Y-m-d H:i" }} | 
-        <a href="{% url 'document_list' %}">← Back to Documents</a> |
-        <a href="{% url 'export_annotations' document.pk %}">Export Annotations</a>
-    </p>
-</div>
-
 <div class="annotation-container">
     <div class="document-viewer" id="documentViewer">
+        <div class="document-title">
+            <h2>{{ document.title }}</h2>
+            <p class="text-muted">
+                Uploaded: {{ document.uploaded_at|date:"Y-m-d H:i" }} | 
+                <a href="{% url 'document_list' %}">← Back to Documents</a> |
+                <a href="{% url 'export_annotations' document.pk %}">Export Annotations</a>
+            </p>
+        </div>
+        
         <div id="htmlContent">
             {% autoescape off %}
             {{ html_content }}
@@ -127,45 +50,99 @@
     </div>
     
     <div class="annotation-panel">
-        <div class="selection-info">
-            <strong>How to Annotate:</strong>
-            <ol style="margin: 10px 0 0 0; padding-left: 20px; font-size: 0.9em;">
-                <li>Select text in the document</li>
-                <li>Choose a category from the popup</li>
-                <li>Annotation is saved automatically</li>
-                <li>You can click on annotations to delete them</li>
-            </ol>
-        </div>
-        
-        <h5>Categories</h5>
-        <div id="categoryList" class="mb-3">
-            {% for category in categories %}
-            <div class="category-option mb-2 {% if not category.parent %}parent-category{% else %}subcategory{% endif %}" style="{% if category.parent %}background-color: {{ category.color }}22; {% endif %}border-left: 4px solid {{ category.color }};" data-category-name="{{ category.name }}">
-                <strong>{{ category.name }}</strong>
-                <span class="category-count-badge" data-count-for="{{ category.name }}">0</span>
-                {% if category.description %}
-                <div style="font-size: 0.85em; color: #666; clear: both;">{{ category.description }}</div>
-                {% endif %}
+        <!-- How to Annotate - Fixed Header -->
+        <div class="panel-header">
+            <div class="selection-info">
+                <strong class="annotation-rules-title">📝 How to Annotate:</strong>
+                <ol>
+                    <li>Select text in the document</li>
+                    <li>Choose a category from the popup</li>
+                    <li>Annotation is saved automatically</li>
+                    <li>Click on annotations to delete them</li>
+                </ol>
             </div>
-            {% endfor %}
-            
-            {% if not categories %}
-            <p class="text-muted">No categories defined. Please add categories in the admin panel.</p>
-            {% endif %}
         </div>
         
-        <h5>Annotations</h5>
-        <div id="annotationList">
-            {% for annotation in annotations %}
-            <div class="annotation-item" data-annotation-id="{{ annotation.id }}">
-                <div class="category-badge" style="background-color: {{ annotation.category.color|default:'#007bff' }}; color: white;">
-                    {{ annotation.category.name }}
+        <!-- Scrollable Content -->
+        <div class="panel-scrollable">
+            <!-- Categories Section -->
+            <div class="panel-section">
+                <div class="panel-section-title">🏷️ Categories</div>
+                <div id="categoryList">
+                    {% for category in categories %}
+                        {% if not category.parent %}
+                        <div class="category-group" data-category-name="{{ category.name }}">
+                            <div class="category-parent-header">
+                                <div class="category-parent-info" style="border-left-color: {{ category.color }};">
+                                    <span class="category-parent-name">{{ category.name }}</span>
+                                    <span class="category-count-badge" data-count-for="{{ category.name }}">0</span>
+                                </div>
+                                <div class="category-collapse-icon">▼</div>
+                            </div>
+                            <div class="category-children">
+                                {% for subcategory in categories %}
+                                    {% if subcategory.parent and subcategory.parent.id == category.id %}
+                                    <div class="category-child-item category-option subcategory" style="background-color: {{ subcategory.color }}15; border-left: 3px solid {{ subcategory.color }};" data-category-name="{{ subcategory.name }}">
+                                        <strong>{{ subcategory.name }}</strong>
+                                        <span class="category-count-badge" data-count-for="{{ subcategory.name }}">0</span>
+                                        {% if subcategory.description %}
+                                        <div class="subcategory-description">{{ subcategory.description }}</div>
+                                        {% endif %}
+                                    </div>
+                                    {% endif %}
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endif %}
+                    {% endfor %}
+                    
+                    {% if not categories %}
+                    <p class="text-muted">No categories defined. Please add categories in the admin panel.</p>
+                    {% endif %}
                 </div>
-                <div class="text-preview">"{{ annotation.selected_text|truncatewords:15 }}"</div>
-                <small class="text-muted">{{ annotation.created_at|date:"Y-m-d H:i" }}</small>
-                <button class="btn btn-sm btn-danger float-end delete-annotation" data-id="{{ annotation.id }}">Delete</button>
             </div>
-            {% endfor %}
+            
+            <!-- Annotations Section -->
+            <div class="panel-section">
+                <div class="panel-section-title">📋 Annotations</div>
+                <div id="annotationList">
+                    {% for annotation in annotations %}
+                    <div class="annotation-item" data-annotation-id="{{ annotation.id }}">
+                        <div class="category-badge" style="background-color: {{ annotation.category.color|default:'#007bff' }};">
+                            {{ annotation.category.name }}
+                        </div>
+                        <div class="text-preview">"{{ annotation.selected_text|truncatewords:15 }}"</div>
+                        <small class="text-muted">{{ annotation.created_at|date:"Y-m-d H:i" }}</small>
+                        <button class="btn btn-sm btn-danger float-end delete-annotation" data-id="{{ annotation.id }}">Delete</button>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div id="deleteModal" class="delete-modal">
+    <div class="delete-modal-content">
+        <div class="delete-modal-header">
+            <span class="delete-modal-icon">⚠️</span>
+            <h3>Delete Annotation</h3>
+        </div>
+        <div class="delete-modal-body">
+            <p class="delete-modal-message">Are you sure you want to delete this annotation? This action cannot be undone.</p>
+            <div class="delete-modal-info">
+                <div class="delete-modal-info-label">Category:</div>
+                <div class="delete-modal-info-value" id="deleteModalCategory"></div>
+            </div>
+            <div class="delete-modal-info">
+                <div class="delete-modal-info-label">Selected Text:</div>
+                <div class="delete-modal-info-value" id="deleteModalText"></div>
+            </div>
+        </div>
+        <div class="delete-modal-footer">
+            <button class="delete-modal-btn delete-modal-btn-cancel" id="deleteModalCancel">Cancel</button>
+            <button class="delete-modal-btn delete-modal-btn-delete" id="deleteModalConfirm">Delete Annotation</button>
         </div>
     </div>
 </div>
@@ -173,7 +150,7 @@
 <!-- Category Selector Popup -->
 <div id="categorySelector" class="category-selector">
     <div class="category-selector-header">
-        <div style="font-weight: bold; color: #333;">Select Category:</div>
+        <div class="category-selector-title">Select Category:</div>
         <button class="category-selector-close" id="categorySelectorClose" title="Close (Esc)">×</button>
     </div>
     <div id="categorySelectorOptions">
@@ -238,7 +215,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Adjust wrapper to accommodate scaled content
         htmlContent.style.width = `${100 / currentZoom}%`;
-        htmlContent.style.height = `${100 / currentZoom}%`;
+        htmlContent.style.minHeight = `${100 / currentZoom}%`;
         
         zoomLevelDisplay.textContent = Math.round(currentZoom * 100) + '%';
         
@@ -385,6 +362,56 @@ document.addEventListener('DOMContentLoaded', function() {
         window.getSelection().removeAllRanges();
         currentSelection = null;
         currentRange = null;
+    }
+    
+    // Custom delete confirmation modal
+    const deleteModal = document.getElementById('deleteModal');
+    const deleteModalCategory = document.getElementById('deleteModalCategory');
+    const deleteModalText = document.getElementById('deleteModalText');
+    const deleteModalConfirm = document.getElementById('deleteModalConfirm');
+    const deleteModalCancel = document.getElementById('deleteModalCancel');
+    
+    function showDeleteModal(category, text) {
+        return new Promise((resolve) => {
+            deleteModalCategory.textContent = category;
+            deleteModalText.textContent = text;
+            deleteModal.classList.add('active');
+            
+            const handleConfirm = () => {
+                cleanup();
+                resolve(true);
+            };
+            
+            const handleCancel = () => {
+                cleanup();
+                resolve(false);
+            };
+            
+            const cleanup = () => {
+                deleteModal.classList.remove('active');
+                deleteModalConfirm.removeEventListener('click', handleConfirm);
+                deleteModalCancel.removeEventListener('click', handleCancel);
+                deleteModal.removeEventListener('click', handleBackdropClick);
+                document.removeEventListener('keydown', handleEscape);
+            };
+            
+            const handleBackdropClick = (e) => {
+                if (e.target === deleteModal) {
+                    handleCancel();
+                }
+            };
+            
+            const handleEscape = (e) => {
+                if (e.key === 'Escape') {
+                    handleCancel();
+                }
+            };
+            
+            deleteModalConfirm.addEventListener('click', handleConfirm);
+            deleteModalCancel.addEventListener('click', handleCancel);
+            deleteModal.addEventListener('click', handleBackdropClick);
+            document.addEventListener('keydown', handleEscape);
+        });
     }
     
     // Category selection handler
@@ -594,7 +621,7 @@ document.addEventListener('DOMContentLoaded', function() {
         annotationItem.className = 'annotation-item';
         annotationItem.dataset.annotationId = id;
         annotationItem.innerHTML = `
-            <div class="category-badge" style="background-color: ${color}; color: white;">
+            <div class="category-badge" style="background-color: ${color};">
                 ${category}
             </div>
             <div class="text-preview">"${text.substring(0, 100)}${text.length > 100 ? '...' : ''}"</div>
@@ -612,7 +639,26 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Delete annotation
     async function deleteAnnotation(annotationId) {
-        if (!confirm('Are you sure you want to delete this annotation?')) return;
+        // Get annotation details for modal
+        const annotationElement = document.querySelector(`.annotation-item[data-annotation-id="${annotationId}"]`);
+        let category = 'Unknown';
+        let text = 'No text available';
+        
+        if (annotationElement) {
+            const categoryBadge = annotationElement.querySelector('.category-badge');
+            const textPreview = annotationElement.querySelector('.text-preview');
+            
+            if (categoryBadge) {
+                category = categoryBadge.textContent.trim();
+            }
+            if (textPreview) {
+                text = textPreview.textContent.trim().replace(/^"|"$/g, ''); // Remove quotes
+            }
+        }
+        
+        // Show custom modal and wait for user response
+        const confirmed = await showDeleteModal(category, text);
+        if (!confirmed) return;
         
         try {
             const deleteUrl = '{% url "delete_annotation" document.pk 0 %}'.replace('/0/', `/${annotationId}/`);
@@ -1046,6 +1092,14 @@ document.addEventListener('DOMContentLoaded', function() {
     loadExistingAnnotations();
     // Update stats after a short delay to ensure DOM is ready
     setTimeout(updateStats, 100);
+    
+    // Collapsible category groups
+    document.querySelectorAll('.category-parent-header').forEach(header => {
+        header.addEventListener('click', function() {
+            const group = this.closest('.category-group');
+            group.classList.toggle('collapsed');
+        });
+    });
 });
 </script>
 {% endblock %}
