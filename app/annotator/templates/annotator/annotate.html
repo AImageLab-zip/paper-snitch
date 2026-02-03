@@ -1,285 +1,16 @@
 {% extends "base.html" %}
+{% load static %}
 
-{% block title %}Annotate: {{ document.title }}{% endblock %}
-
+{% block head_title %}Annotation{% endblock %}
+{% block extra_head %} 
+<link rel="stylesheet" href="{% static 'css/labeling.css' %}">
+{% endblock %}
 {% block extra_css %}
-<style>
+
+<style> 
     body ::selection {
         background-color: var(--teal);
         color: #000;
-    }
-    body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-        }
-        .navbar {
-            margin-bottom: 2rem;
-        }
-        .content {
-            min-height: 80vh;
-        }
-    .annotation-container {
-        display: flex;
-        height: calc(100vh - 200px);
-    }
-    
-    .document-viewer {
-        flex: 1;
-        overflow-y: auto;
-        border: 1px solid #ddd;
-        padding: 20px;
-        background: white;
-        position: relative;
-    }
-    
-    .annotation-panel {
-        width: 350px;
-        border-left: 2px solid #ddd;
-        padding: 20px;
-        overflow-y: auto;
-        background: #f8f9fa;
-    }
-    
-    .annotation-item {
-        background: white;
-        border-left: 4px solid #007bff;
-        padding: 10px;
-        margin-bottom: 10px;
-        border-radius: 4px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-    }
-    
-    .annotation-item .category-badge {
-        display: inline-block;
-        padding: 3px 8px;
-        border-radius: 3px;
-        font-size: 0.85em;
-        font-weight: bold;
-        margin-bottom: 5px;
-    }
-    
-    .annotation-item .text-preview {
-        font-size: 0.9em;
-        color: #666;
-        margin: 5px 0;
-        font-style: italic;
-    }
-    
-    .highlight {
-        cursor: pointer;
-        transition: all 0.2s;
-        padding: 2px 0;
-        border-radius: 2px;
-    }
-    
-    .highlight:hover {
-        opacity: 0.8;
-        box-shadow: 0 0 3px rgba(0,0,0,0.3);
-    }
-    
-    .category-selector {
-        position: fixed;
-        background: white;
-        border: 2px solid #007bff;
-        border-radius: 8px;
-        padding: 15px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-        z-index: 10000;
-        display: none;
-        min-width: 200px;
-        max-width: 400px;
-        max-height: 80vh;
-        overflow-y: auto;
-    }
-    
-    .category-selector-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 10px;
-    }
-    
-    .category-selector-close {
-        cursor: pointer;
-        font-size: 24px;
-        line-height: 1;
-        color: #666;
-        background: none;
-        border: none;
-        padding: 0;
-        width: 24px;
-        height: 24px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-    
-    .category-selector-close:hover {
-        color: #000;
-    }
-    
-    .add-category-section {
-        border-top: 2px solid #eee;
-        margin-top: 10px;
-        padding-top: 10px;
-    }
-    
-    .add-category-btn {
-        background: #28a745;
-        color: white;
-        border: none;
-        padding: 6px 12px;
-        border-radius: 4px;
-        cursor: pointer;
-        font-size: 0.9em;
-        width: 100%;
-        margin-bottom: 10px;
-    }
-    
-    .add-category-btn:hover {
-        background: #218838;
-    }
-    
-    .add-category-form {
-        display: none;
-        margin-top: 10px;
-    }
-    
-    .add-category-form.active {
-        display: block;
-    }
-    
-    .add-category-form input,
-    .add-category-form select {
-        width: 100%;
-        padding: 6px;
-        margin: 5px 0;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        font-size: 0.9em;
-    }
-    
-    .add-category-form-buttons {
-        display: flex;
-        gap: 5px;
-        margin-top: 8px;
-    }
-    
-    .add-category-form-buttons button {
-        flex: 1;
-        padding: 6px;
-        border: none;
-        border-radius: 4px;
-        cursor: pointer;
-        font-size: 0.85em;
-    }
-    
-    .btn-save-category {
-        background: #007bff;
-        color: white;
-    }
-    
-    .btn-save-category:hover {
-        background: #0056b3;
-    }
-    
-    .btn-cancel-category {
-        background: #6c757d;
-        color: white;
-    }
-    
-    .btn-cancel-category:hover {
-        background: #545b62;
-    }
-    
-    .category-option {
-        padding: 8px 12px;
-        cursor: pointer;
-        border-radius: 4px;
-        margin: 3px 0;
-        transition: background-color 0.2s;
-    }
-    
-    .category-option:hover {
-        background-color: #e3f2fd;
-    }
-    
-    .category-option.subcategory {
-        margin-left: 20px;
-        font-size: 0.9em;
-        padding: 6px 10px;
-    }
-    
-    .category-option.parent-category {
-        font-weight: bold;
-        background-color: #f5f5f5;
-        margin-top: 8px;
-        cursor: pointer;
-        border-left: 4px solid #333;
-    }
-    
-    .category-option.parent-category:hover {
-        background-color: #e0e0e0;
-    }
-    
-    .category-count-badge {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        background: #666;
-        color: white;
-        border-radius: 50%;
-        width: 24px;
-        height: 24px;
-        font-size: 0.75em;
-        font-weight: bold;
-        margin-left: 8px;
-        float: right;
-        position: relative;
-        z-index: 10;
-        flex-shrink: 0;
-    }
-    
-    .category-count-badge.hidden {
-        display: none;
-    }
-    
-    .category-option.parent-category .category-count-badge {
-        background: #333;
-    }
-    
-    .category-option strong {
-        display: inline-block;
-        max-width: calc(100% - 40px);
-    }
-    
-    .category-option .parent-name {
-        font-size: 0.75em;
-        color: #999;
-        display: block;
-    }
-    
-    .stats {
-        background: white;
-        padding: 15px;
-        border-radius: 4px;
-        margin-bottom: 15px;
-        display: none;
-    }
-    
-    .stats.visible {
-        display: block;
-    }
-    
-    .selection-info {
-        background: #e3f2fd;
-        padding: 10px;
-        border-radius: 4px;
-        margin-bottom: 10px;
-        font-size: 0.9em;
-    }
-    
-    .btn-export {
-        margin-top: 10px;
     }
 </style>
 {% endblock %}
@@ -408,8 +139,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // CSRF token for POST requests
     const csrfToken = '{{ csrf_token }}';
     
-    console.log('CSRF Token loaded:', csrfToken ? 'Yes' : 'No');
-    console.log('CSRF Token length:', csrfToken.length);
+    // console.log('CSRF Token loaded:', csrfToken ? 'Yes' : 'No');
+    // console.log('CSRF Token length:', csrfToken.length);
     
     // Category colors mapping
     const categoryColors = {
@@ -807,7 +538,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             
             parentTotals[parentName] = total;
-            console.log(`Parent ${parentName} total: ${total}`);
+            //console.log(`Parent ${parentName} total: ${total}`);
         });
         
         // Update counts in the category list (inline badges)
@@ -818,7 +549,7 @@ document.addEventListener('DOMContentLoaded', function() {
             // If it's a parent category, use the total from subcategories
             const count = parentEl ? (parentTotals[category] || 0) : (categoryCounts[category] || 0);
             
-            console.log(`Inline badge - ${category}: ${count} (parent: ${!!parentEl})`);
+            //console.log(`Inline badge - ${category}: ${count} (parent: ${!!parentEl})`);
             badge.textContent = count;
             // Toggle hidden class instead of display style
             if (count > 0) {

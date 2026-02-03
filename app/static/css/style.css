@@ -41,37 +41,59 @@
 }
 
 /* Global Styles */
+/* 1. Impostiamo html e body per occupare tutto lo schermo */
+html,
+body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden; /* Evita la doppia scrollbar sulla pagina intera */
+}
+
 body {
   background-color: var(--bg-light) !important;
   color: var(--gray-dark);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  /* Attiva la colonna Flex */
+  display: flex;
+  flex-direction: column;
 }
 
-/* Navbar */
+/* 2. Navbar e Footer NON devono restringersi */
+.navbar,
+footer {
+  flex-shrink: 0;
+  z-index: 1000; /* Assicura che stiano sopra se serve */
+}
+
+.content-wrapper {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden; /* IMPORTANTE: Blocca lo scroll a questo livello */
+}
+
+/* 2. Il container-fluid intermedio */
+.content-wrapper > .container-fluid {
+  height: 100%; /* Occupa tutta l'altezza del wrapper */
+  display: flex; /* Diventa un flex container */
+  flex-direction: column; /* Dispone il titolo (mb-3) sopra e l'annotator sotto */
+  padding-bottom: 0; /* Evita padding extra in fondo */
+}
+
+/* Stili Navbar (pulizia) */
 .navbar {
   background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 100%) !important;
   box-shadow: 0 2px 10px rgba(10, 61, 98, 0.3);
 }
 
-.navbar-brand {
-  color: var(--bg-white) !important;
-  font-weight: 600;
-  letter-spacing: 0.5px;
+/* Stili Footer (pulizia) */
+footer {
+  background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 100%) !important;
 }
-
-.navbar-brand i {
-  color: var(--teal) !important;
+footer .text-center {
+  background-color: rgba(10, 61, 98, 0.9) !important;
 }
-
-.nav-link {
-  color: rgba(255, 255, 255, 0.9) !important;
-  transition: color 0.2s ease;
-}
-
-.nav-link:hover {
-  color: var(--teal-light) !important;
-}
-
 /* Buttons */
 .btn-primary {
   background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%) !important;
@@ -245,15 +267,6 @@ body {
   box-shadow: 0 0 0 0.2rem rgba(26, 188, 156, 0.25);
 }
 
-/* Footer */
-footer {
-  background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 100%) !important;
-}
-
-footer .text-center {
-  background-color: rgba(10, 61, 98, 0.9) !important;
-}
-
 /* Links */
 a {
   color: var(--teal-dark);
@@ -297,6 +310,103 @@ a:hover {
 body ::selection {
   background-color: var(--teal);
   color: var(--bg-white);
+}
+
+/* Profile styles */
+.paper-card {
+  border-left: 4px solid #1abc9c;
+  transition: all 0.2s ease;
+}
+
+.paper-card:hover {
+  box-shadow: 0 4px 15px rgba(10, 61, 98, 0.15);
+}
+
+/* Paper toggle icon - more specific to avoid conflict with style.css */
+.paper-toggle .toggle-icon {
+  transition: transform 0.3s ease;
+  color: #1abc9c;
+}
+
+.paper-toggle[aria-expanded="true"] .toggle-icon {
+  transform: rotate(90deg);
+}
+
+/* Terminal Analysis Styles */
+
+/* Terminal-style output */
+.terminal-output {
+  background-color: #1e1e1e;
+  color: #d4d4d4;
+  font-family: "Consolas", "Monaco", "Courier New", monospace;
+  font-size: 0.9rem;
+  padding: 15px;
+  border-radius: 8px;
+  max-height: 300px;
+  overflow-y: auto;
+  box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.3);
+}
+
+.terminal-line {
+  margin-bottom: 6px;
+  line-height: 1.5;
+}
+
+.terminal-prompt {
+  color: #1abc9c;
+  font-weight: bold;
+  margin-right: 8px;
+}
+
+.terminal-success {
+  color: #4ec9b0;
+}
+
+.terminal-info {
+  color: #9cdcfe;
+}
+
+.terminal-warning {
+  color: #dcdcaa;
+}
+
+.terminal-error {
+  color: #f14c4c;
+}
+
+.terminal-time {
+  color: #6a9955;
+  font-size: 0.8rem;
+}
+
+.model-checkboxes {
+  padding: 12px;
+  background-color: #f7f7f7;
+  border-radius: 6px;
+  border: 1px solid #e8e8e8;
+}
+
+.model-checkboxes .custom-control {
+  margin: 5px 15px 5px 0;
+}
+
+.model-checkboxes .custom-control-label {
+  color: #2e2e2e;
+  font-weight: 500;
+}
+
+#login-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.95);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.25rem;
 }
 
 /* Analysis Renderer Styles */
