@@ -199,6 +199,8 @@ Aggiunto retrieve degli url dal testo del paper
 
 TODO:
 Short term:
+- Ok che nel labeling si possa selezionare la categoria generica? o solo le sottocategorie?
+
 - Ripensare evidence locator (Unico che comprende tutti i tipi di paper, oppure farne N+1 - Un generico e uno per ogni tipo di paper)
 - Pensare al prompt per l'evidence locator
 - Ragionare su come gestire l'estrazione di parti salienti del testo e la valutazione tramite evidence locator
