@@ -1,10 +1,5 @@
-{% extends "base.html" %}
-{% load static %}
+{% extends "annotator/base.html" %}
 
-{% block head_title %}Annotation{% endblock %}
-{% block extra_head %} 
-<link rel="stylesheet" href="{% static 'css/labeling.css' %}">
-{% endblock %}
 {% block extra_css %}
 
 <style> 
@@ -12,6 +7,77 @@
         background-color: var(--teal);
         color: #000;
     }
+    
+    /* Zoom Control Styles */
+    .zoom-controls {
+        position: absolute;
+        bottom: 20px;
+        right: 20px;
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        background: var(--bg-white, #fff);
+        border: 1px solid rgba(10, 61, 98, 0.2);
+        border-radius: 6px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+        padding: 4px;
+        z-index: 100;
+    }
+    
+    .zoom-btn {
+        height: 32px;
+        min-width: 32px;
+        padding: 0 8px;
+        border: none;
+        background: transparent;
+        cursor: pointer;
+        font-size: 16px;
+        font-weight: bold;
+        color: var(--primary, #0a3d62);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 4px;
+        transition: background-color 0.2s ease;
+    }
+    
+    .zoom-btn:hover {
+        background: rgba(10, 61, 98, 0.1);
+    }
+    
+    .zoom-btn:active {
+        background: rgba(10, 61, 98, 0.2);
+    }
+    
+    .zoom-btn:disabled {
+        color: var(--gray, #999);
+        cursor: not-allowed;
+    }
+    
+    .zoom-btn:disabled:hover {
+        background: transparent;
+    }
+    
+    .zoom-btn.zoom-reset {
+        font-size: 12px;
+        font-weight: 500;
+        margin-left: 4px;
+        padding: 0 10px;
+        border-left: 1px solid rgba(10, 61, 98, 0.15);
+        border-radius: 0 4px 4px 0;
+    }
+    
+    .zoom-level {
+        min-width: 50px;
+        text-align: center;
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--gray-dark, #333);
+        padding: 0 8px;
+        border-left: 1px solid rgba(10, 61, 98, 0.1);
+        border-right: 1px solid rgba(10, 61, 98, 0.1);
+    }
+    
 </style>
 {% endblock %}
 
@@ -42,6 +108,13 @@
             {% autoescape off %}
             {{ html_content }}
             {% endautoescape %}
+        </div>
+        
+        <div class="zoom-controls">
+            <button id="zoomOut" title="Zoom Out" class="zoom-btn">−</button>
+            <span class="zoom-level" id="zoomLevel">100%</span>
+            <button id="zoomIn" title="Zoom In" class="zoom-btn">+</button>
+            <button id="zoomReset" title="Reset Zoom" class="zoom-btn zoom-reset">Reset</button>
         </div>
     </div>
     
@@ -135,6 +208,80 @@ document.addEventListener('DOMContentLoaded', function() {
     const annotationList = document.getElementById('annotationList');
     let currentSelection = null;
     let currentRange = null;
+    
+    let currentZoom = 1.0;
+    const zoomStep = 0.2;
+    const minZoom = 0.5;
+    const maxZoom = 3.0;
+    
+    const htmlContent = document.getElementById('htmlContent');
+    const zoomWrapper = document.getElementById('zoomWrapper');
+    const zoomInBtn = document.getElementById('zoomIn');
+    const zoomOutBtn = document.getElementById('zoomOut');
+    const zoomResetBtn = document.getElementById('zoomReset');
+    const zoomLevelDisplay = document.getElementById('zoomLevel');
+    
+    function updateZoom(newZoom) {
+        currentZoom = Math.max(minZoom, Math.min(maxZoom, newZoom));
+        
+        htmlContent.style.transform = `scale(${currentZoom})`;
+        htmlContent.style.transformOrigin = 'top left';
+        htmlContent.style.transition = 'transform 0.2s ease';
+        
+        // Adjust wrapper to accommodate scaled content
+        htmlContent.style.width = `${100 / currentZoom}%`;
+        htmlContent.style.height = `${100 / currentZoom}%`;
+        
+        zoomLevelDisplay.textContent = Math.round(currentZoom * 100) + '%';
+        
+        // Update button states
+        zoomInBtn.disabled = currentZoom >= maxZoom;
+        zoomOutBtn.disabled = currentZoom <= minZoom;
+    }
+    
+    zoomInBtn.addEventListener('click', () => {
+        updateZoom(currentZoom + zoomStep);
+    });
+    
+    zoomOutBtn.addEventListener('click', () => {
+        updateZoom(currentZoom - zoomStep);
+    });
+    
+    zoomResetBtn.addEventListener('click', () => {
+        updateZoom(1.0);
+    });
+    
+    // Keyboard shortcuts for zoom
+    document.addEventListener('keydown', (e) => {
+        // Ctrl/Cmd + Plus/Equals for zoom in
+        if ((e.ctrlKey || e.metaKey) && (e.key === '+' || e.key === '=')) {
+            e.preventDefault();
+            updateZoom(currentZoom + zoomStep);
+        }
+        // Ctrl/Cmd + Minus for zoom out
+        else if ((e.ctrlKey || e.metaKey) && e.key === '-') {
+            e.preventDefault();
+            updateZoom(currentZoom - zoomStep);
+        }
+        // Ctrl/Cmd + 0 for reset zoom
+        else if ((e.ctrlKey || e.metaKey) && e.key === '0') {
+            e.preventDefault();
+            updateZoom(1.0);
+        }
+    });
+    
+    // Mouse wheel zoom (Ctrl + wheel)
+    documentViewer.addEventListener('wheel', (e) => {
+        if (e.ctrlKey || e.metaKey) {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? -zoomStep : zoomStep;
+            updateZoom(currentZoom + delta);
+        }
+    }, { passive: false });
+    
+    // Initialize button states without applying transform
+    zoomInBtn.disabled = currentZoom >= maxZoom;
+    zoomOutBtn.disabled = currentZoom <= minZoom;
     
     // CSRF token for POST requests
     const csrfToken = '{{ csrf_token }}';

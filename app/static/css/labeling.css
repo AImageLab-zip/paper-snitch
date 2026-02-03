@@ -18,10 +18,9 @@
 
 .document-viewer {
   background: var(--bg-white);
-
   flex: 1;
   border: 1px solid rgba(10, 61, 98, 0.1);
-  padding: 20px;
+  padding: 5px;
   position: relative;
 }
 
