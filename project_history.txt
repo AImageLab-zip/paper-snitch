@@ -199,7 +199,12 @@ Aggiunto retrieve degli url dal testo del paper
 
 TODO:
 Short term:
+
+- Aggiungere possibilità di cambiare la categoria dell'annotazione anzichè solo di eliminarla
+- Utilizzare embedding per suggerire la categoria di annotazione
 - Ok che nel labeling si possa selezionare la categoria generica? o solo le sottocategorie?
+- Finire implementazione conferma paper trovato nel db rispetto a quello caricato dall'utente (prima di eseguire l'analisi) + Scorrimento della pagina quando compaiono le analisi passate
+
 
 - Ripensare evidence locator (Unico che comprende tutti i tipi di paper, oppure farne N+1 - Un generico e uno per ogni tipo di paper)
 - Pensare al prompt per l'evidence locator

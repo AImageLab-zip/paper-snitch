@@ -1,47 +1,313 @@
 {% extends "annotator/base.html" %}
 
+{% block extra_css %}
+<style>
+    .upload-container {
+        padding: 20px;
+        max-width: 900px;
+        margin: 0 auto;
+        height: 100%;
+        overflow-y: auto;
+    }
+    
+    .page-header {
+        margin-bottom: 24px;
+        padding-bottom: 16px;
+        border-bottom: 2px solid rgba(10, 61, 98, 0.1);
+    }
+    
+    .page-header h1 {
+        color: var(--primary, #0a3d62);
+        margin-bottom: 8px;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+    
+    .page-header p {
+        color: var(--gray, #666);
+        margin: 0;
+    }
+    
+    .upload-panel {
+        background: var(--bg-white, #fff);
+        border-radius: 12px;
+        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+        border: 1px solid rgba(10, 61, 98, 0.1);
+        overflow: hidden;
+        margin-bottom: 24px;
+    }
+    
+    .panel-card-header {
+        background: linear-gradient(135deg, var(--primary, #0a3d62) 0%, var(--primary-dark, #062840) 100%);
+        color: white;
+        padding: 16px 20px;
+        font-weight: 600;
+        font-size: 1rem;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    
+    .panel-card-body {
+        padding: 32px;
+    }
+    
+    .form-group {
+        margin-bottom: 24px;
+    }
+    
+    .form-label {
+        display: block;
+        font-weight: 600;
+        color: var(--primary, #0a3d62);
+        margin-bottom: 8px;
+        font-size: 0.95rem;
+    }
+    
+    .form-control {
+        width: 100%;
+        padding: 12px 16px;
+        border: 2px solid rgba(10, 61, 98, 0.15);
+        border-radius: 8px;
+        font-size: 1rem;
+        transition: all 0.2s;
+        background: var(--bg-white, #fff);
+    }
+    
+    .form-control:focus {
+        outline: none;
+        border-color: var(--teal, #1abc9c);
+        box-shadow: 0 0 0 3px rgba(26, 188, 156, 0.15);
+    }
+    
+    .form-control[type="file"] {
+        padding: 10px 12px;
+        cursor: pointer;
+    }
+    
+    .form-control[type="file"]::file-selector-button {
+        padding: 8px 16px;
+        border-radius: 6px;
+        border: none;
+        background: var(--primary, #0a3d62);
+        color: white;
+        font-weight: 500;
+        cursor: pointer;
+        margin-right: 12px;
+        transition: background 0.2s;
+    }
+    
+    .form-control[type="file"]::file-selector-button:hover {
+        background: var(--primary-dark, #062840);
+    }
+    
+    .form-help {
+        font-size: 0.85rem;
+        color: var(--gray, #666);
+        margin-top: 6px;
+    }
+    
+    .form-error {
+        color: #dc3545;
+        font-size: 0.85rem;
+        margin-top: 6px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    
+    .form-buttons {
+        display: flex;
+        gap: 12px;
+        margin-top: 32px;
+        padding-top: 24px;
+        border-top: 1px solid rgba(10, 61, 98, 0.1);
+    }
+    
+    .btn-submit {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 14px 28px;
+        background: var(--teal, #1abc9c);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 1rem;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    
+    .btn-submit:hover {
+        background: var(--teal-dark, #16a085);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(26, 188, 156, 0.3);
+    }
+    
+    .btn-cancel {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 14px 28px;
+        background: var(--bg-light, #f8f9fa);
+        color: var(--gray-dark, #333);
+        border: 2px solid rgba(10, 61, 98, 0.15);
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 1rem;
+        cursor: pointer;
+        text-decoration: none;
+        transition: all 0.2s;
+    }
+    
+    .btn-cancel:hover {
+        background: rgba(10, 61, 98, 0.05);
+        color: var(--gray-dark, #333);
+    }
+    
+    /* Info Panel */
+    .info-panel {
+        background: rgba(26, 188, 156, 0.08);
+        border-radius: 12px;
+        border: 1px solid rgba(26, 188, 156, 0.2);
+        border-left: 4px solid var(--teal, #1abc9c);
+        overflow: hidden;
+    }
+    
+    .info-panel-header {
+        background: rgba(26, 188, 156, 0.1);
+        padding: 14px 20px;
+        font-weight: 600;
+        color: var(--primary, #0a3d62);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    
+    .info-panel-body {
+        padding: 20px;
+    }
+    
+    .info-panel ul {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+    }
+    
+    .info-panel li {
+        padding: 10px 0;
+        border-bottom: 1px solid rgba(26, 188, 156, 0.15);
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        color: var(--gray-dark, #333);
+    }
+    
+    .info-panel li:last-child {
+        border-bottom: none;
+        padding-bottom: 0;
+    }
+    
+    .info-panel li:first-child {
+        padding-top: 0;
+    }
+    
+    .info-icon {
+        flex-shrink: 0;
+        width: 24px;
+        height: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--teal, #1abc9c);
+        color: white;
+        border-radius: 50%;
+        font-size: 0.75rem;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="row">
-    <div class="col-md-8 offset-md-2">
-        <h1>Upload PDF Document</h1>
-        <p class="text-muted">Upload a scientific paper in PDF format for annotation.</p>
+<div class="container-fluid content">
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    <div class="upload-container">
+        <div class="page-header">
+            <h1><span>📤</span> Upload PDF Document</h1>
+            <p>Upload a scientific paper in PDF format for annotation</p>
+        </div>
         
-        <div class="card">
-            <div class="card-body">
+        <div class="upload-panel">
+            <div class="panel-card-header">
+                <span>📄</span> Document Upload
+            </div>
+            <div class="panel-card-body">
                 <form method="post" enctype="multipart/form-data">
                     {% csrf_token %}
                     
-                    <div class="mb-3">
-                        <label for="{{ form.title.id_for_label }}" class="form-label">Document Title</label>
+                    <div class="form-group">
+                        <label for="{{ form.title.id_for_label }}" class="form-label">📝 Document Title</label>
                         {{ form.title }}
                         {% if form.title.errors %}
-                            <div class="text-danger">{{ form.title.errors }}</div>
+                            <div class="form-error">⚠️ {{ form.title.errors }}</div>
                         {% endif %}
                     </div>
                     
-                    <div class="mb-3">
-                        <label for="{{ form.pdf_file.id_for_label }}" class="form-label">PDF File</label>
+                    <div class="form-group">
+                        <label for="{{ form.pdf_file.id_for_label }}" class="form-label">📎 PDF File</label>
                         {{ form.pdf_file }}
                         {% if form.pdf_file.errors %}
-                            <div class="text-danger">{{ form.pdf_file.errors }}</div>
+                            <div class="form-error">⚠️ {{ form.pdf_file.errors }}</div>
                         {% endif %}
-                        <div class="form-text">Please select a PDF file to upload.</div>
+                        <div class="form-help">Please select a PDF file to upload. Maximum file size depends on server configuration.</div>
                     </div>
                     
-                    <button type="submit" class="btn btn-primary">Upload and Convert</button>
-                    <a href="{% url 'home' %}" class="btn btn-secondary">Cancel</a>
+                    <div class="form-buttons">
+                        <button type="submit" class="btn-submit">
+                            <span>🚀</span> Upload and Convert
+                        </button>
+                        <a href="{% url 'home' %}" class="btn-cancel">
+                            <span>←</span> Cancel
+                        </a>
+                    </div>
                 </form>
             </div>
         </div>
         
-        <div class="alert alert-info mt-4">
-            <h5>Note:</h5>
-            <ul>
-                <li>The PDF will be automatically converted to HTML</li>
-                <li>For best results with style preservation, install pdf2htmlEX on your system</li>
-                <li>Conversion may take a few moments depending on the document size</li>
-                <li>If conversion fails, you can retry it from the documents list</li>
-            </ul>
+        <div class="info-panel">
+            <div class="info-panel-header">
+                <span>💡</span> Important Information
+            </div>
+            <div class="info-panel-body">
+                <ul>
+                    <li>
+                        <span class="info-icon">1</span>
+                        <span>The PDF will be automatically converted to HTML format</span>
+                    </li>
+                    <li>
+                        <span class="info-icon">2</span>
+                        <span>For best results with style preservation, ensure pdf2htmlEX is installed on the system</span>
+                    </li>
+                    <li>
+                        <span class="info-icon">3</span>
+                        <span>Conversion may take a few moments depending on the document size</span>
+                    </li>
+                    <li>
+                        <span class="info-icon">4</span>
+                        <span>If conversion fails, you can retry it from the documents list</span>
+                    </li>
+                </ul>
+            </div>
         </div>
     </div>
 </div>

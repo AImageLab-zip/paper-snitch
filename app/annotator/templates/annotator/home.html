@@ -1,65 +1,383 @@
 {% extends "annotator/base.html" %}
 
-{% block content %}
-<div class="row">
-    <div class="col-md-12">
-        <div class="jumbotron bg-light p-5 rounded">
-            <h1 class="display-4">Welcome to Label Paper</h1>
-            <p class="lead">Upload scientific papers in PDF format and annotate them with custom categories.</p>
-            <hr class="my-4">
-            <p>This tool converts PDFs to HTML preserving their look and allows you to annotate text, images, and tables.</p>
-            <a class="btn btn-primary btn-lg" href="{% url 'upload_document' %}" role="button">Upload New Document</a>
-            <a class="btn btn-secondary btn-lg" href="{% url 'document_list' %}" role="button">View Documents</a>
-        </div>
-    </div>
-</div>
+{% block extra_css %}
+<style>
+    .home-container {
+        padding: 20px;
+        max-width: 1400px;
+        margin: 0 auto;
+        height: 100%;
+        overflow-y: auto;
+    }
+    
+    /* Hero Section */
+    .hero-panel {
+        background: linear-gradient(135deg, var(--primary, #0a3d62) 0%, var(--primary-dark, #062840) 100%);
+        border-radius: 16px;
+        padding: 48px 40px;
+        color: white;
+        margin-bottom: 32px;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .hero-panel::before {
+        content: '';
+        position: absolute;
+        top: -50%;
+        right: -20%;
+        width: 60%;
+        height: 200%;
+        background: radial-gradient(ellipse, rgba(26, 188, 156, 0.15) 0%, transparent 70%);
+        pointer-events: none;
+    }
+    
+    .hero-content {
+        position: relative;
+        z-index: 1;
+    }
+    
+    .hero-title {
+        font-size: 2.5rem;
+        font-weight: 700;
+        margin-bottom: 16px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+    }
+    
+    .hero-title-icon {
+        font-size: 3rem;
+    }
+    
+    .hero-subtitle {
+        font-size: 1.2rem;
+        opacity: 0.9;
+        margin-bottom: 24px;
+        max-width: 700px;
+    }
+    
+    .hero-description {
+        font-size: 1rem;
+        opacity: 0.8;
+        margin-bottom: 32px;
+        max-width: 600px;
+        line-height: 1.6;
+    }
+    
+    .hero-buttons {
+        display: flex;
+        gap: 16px;
+        flex-wrap: wrap;
+    }
+    
+    .hero-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 14px 28px;
+        border-radius: 10px;
+        font-weight: 600;
+        font-size: 1rem;
+        text-decoration: none;
+        transition: all 0.3s;
+        border: none;
+        cursor: pointer;
+    }
+    
+    .hero-btn-primary {
+        background: var(--teal, #1abc9c);
+        color: white;
+        box-shadow: 0 4px 15px rgba(26, 188, 156, 0.3);
+    }
+    
+    .hero-btn-primary:hover {
+        background: var(--teal-dark, #16a085);
+        color: white;
+        transform: translateY(-3px);
+        box-shadow: 0 8px 25px rgba(26, 188, 156, 0.4);
+    }
+    
+    .hero-btn-secondary {
+        background: rgba(255, 255, 255, 0.15);
+        color: white;
+        border: 2px solid rgba(255, 255, 255, 0.3);
+    }
+    
+    .hero-btn-secondary:hover {
+        background: rgba(255, 255, 255, 0.25);
+        color: white;
+        transform: translateY(-3px);
+    }
+    
+    /* Recent Documents Section */
+    .section-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 20px;
+    }
+    
+    .section-header h2 {
+        color: var(--primary, #0a3d62);
+        font-weight: 600;
+        margin: 0;
+        font-size: 1.5rem;
+    }
+    
+    .documents-panel {
+        background: var(--bg-white, #fff);
+        border-radius: 12px;
+        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+        border: 1px solid rgba(10, 61, 98, 0.1);
+        overflow: hidden;
+    }
+    
+    .panel-card-header {
+        background: linear-gradient(135deg, var(--primary, #0a3d62) 0%, var(--primary-dark, #062840) 100%);
+        color: white;
+        padding: 16px 20px;
+        font-weight: 600;
+        font-size: 1rem;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    
+    .documents-table {
+        width: 100%;
+        margin: 0;
+    }
+    
+    .documents-table thead {
+        background: var(--bg-light, #f8f9fa);
+    }
+    
+    .documents-table th {
+        padding: 14px 16px;
+        font-weight: 600;
+        color: var(--primary, #0a3d62);
+        border-bottom: 2px solid rgba(10, 61, 98, 0.1);
+        font-size: 0.9rem;
+    }
+    
+    .documents-table td {
+        padding: 16px;
+        vertical-align: middle;
+        border-bottom: 1px solid rgba(10, 61, 98, 0.06);
+    }
+    
+    .documents-table tbody tr:hover {
+        background: rgba(26, 188, 156, 0.05);
+    }
+    
+    .documents-table tbody tr:last-child td {
+        border-bottom: none;
+    }
+    
+    .doc-title {
+        font-weight: 600;
+        color: var(--gray-dark, #333);
+    }
+    
+    .status-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 6px 12px;
+        border-radius: 20px;
+        font-size: 0.85em;
+        font-weight: 500;
+    }
+    
+    .status-success {
+        background: rgba(40, 167, 69, 0.15);
+        color: #28a745;
+    }
+    
+    .status-failed {
+        background: rgba(220, 53, 69, 0.15);
+        color: #dc3545;
+    }
+    
+    .status-processing {
+        background: rgba(23, 162, 184, 0.15);
+        color: #17a2b8;
+    }
+    
+    .status-pending {
+        background: rgba(255, 193, 7, 0.15);
+        color: #856404;
+    }
+    
+    .action-buttons {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+    }
+    
+    .action-btn {
+        padding: 6px 12px;
+        border-radius: 6px;
+        font-size: 0.85em;
+        font-weight: 500;
+        text-decoration: none;
+        transition: all 0.2s;
+        border: none;
+        cursor: pointer;
+    }
+    
+    .action-btn-primary {
+        background: var(--primary, #0a3d62);
+        color: white;
+    }
+    
+    .action-btn-primary:hover {
+        background: var(--primary-dark, #062840);
+        color: white;
+    }
+    
+    .action-btn-warning {
+        background: #ffc107;
+        color: #212529;
+    }
+    
+    .action-btn-warning:hover {
+        background: #e0a800;
+        color: #212529;
+    }
+    
+    .action-btn-secondary {
+        background: var(--gray, #6c757d);
+        color: white;
+    }
+    
+    .action-btn-secondary:hover {
+        background: var(--gray-dark, #5a6268);
+        color: white;
+    }
+    
+    .empty-state {
+        padding: 40px 20px;
+        text-align: center;
+    }
+    
+    .empty-state-icon {
+        font-size: 3rem;
+        margin-bottom: 12px;
+    }
+    
+    .empty-state p {
+        color: var(--gray, #666);
+        margin: 0;
+    }
+    
+    .empty-state a {
+        color: var(--teal, #1abc9c);
+        font-weight: 500;
+    }
+    
+    .empty-state a:hover {
+        color: var(--teal-dark, #16a085);
+    }
+</style>
+{% endblock %}
 
-<div class="row mt-5">
-    <div class="col-md-12">
-        <h2>Recent Documents</h2>
-        {% if documents %}
-            <div class="table-responsive">
-                <table class="table table-striped">
-                    <thead>
-                        <tr>
-                            <th>Title</th>
-                            <th>Uploaded</th>
-                            <th>Status</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for doc in documents|slice:":5" %}
-                        <tr>
-                            <td>{{ doc.title }}</td>
-                            <td>{{ doc.uploaded_at|date:"Y-m-d H:i" }}</td>
-                            <td>
-                                {% if doc.conversion_status == 'success' %}
-                                    <span class="badge bg-success">✓ Converted</span>
-                                {% elif doc.conversion_status == 'failed' %}
-                                    <span class="badge bg-danger">✗ Failed</span>
-                                {% elif doc.conversion_status == 'processing' %}
-                                    <span class="badge bg-info">⟳ Processing</span>
-                                {% else %}
-                                    <span class="badge bg-warning">⋯ Pending</span>
-                                {% endif %}
-                            </td>
-                            <td>
-                                {% if doc.conversion_status == 'success' %}
-                                    <a href="{% url 'annotate_document' doc.pk %}" class="btn btn-sm btn-primary">Annotate</a>
-                                {% elif doc.conversion_status == 'failed' %}
-                                    <a href="{% url 'retry_conversion' doc.pk %}" class="btn btn-sm btn-warning">Retry</a>
-                                {% endif %}
-                                <a href="{{ doc.pdf_file.url }}" class="btn btn-sm btn-secondary" target="_blank">View PDF</a>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+{% block content %}
+<div class="container-fluid content">
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
             </div>
-        {% else %}
-            <p class="text-muted">No documents uploaded yet. <a href="{% url 'upload_document' %}">Upload one now</a>.</p>
-        {% endif %}
+        {% endfor %}
+    {% endif %}
+
+    <div class="home-container">
+        <!-- Hero Section -->
+        <div class="hero-panel">
+            <div class="hero-content">
+                <h1 class="hero-title">
+                    <span class="hero-title-icon">🏷️</span>
+                    Welcome to Label Paper
+                </h1>
+                <p class="hero-subtitle">Upload scientific papers in PDF format and annotate them with custom categories.</p>
+                <p class="hero-description">
+                    This tool converts PDFs to HTML preserving their look and allows you to annotate text, images, and tables with precision.
+                </p>
+                <div class="hero-buttons">
+                    <a class="hero-btn hero-btn-primary" href="{% url 'upload_document' %}">
+                        <span>📤</span> Upload New Document
+                    </a>
+                    <a class="hero-btn hero-btn-secondary" href="{% url 'document_list' %}">
+                        <span>📚</span> View All Documents
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Documents Section -->
+        <div class="section-header">
+            <h2>📋 Recent Documents</h2>
+        </div>
+        
+        <div class="documents-panel">
+            <div class="panel-card-header">
+                <span>🕐</span> Recently Uploaded
+            </div>
+            
+            {% if documents %}
+                <div class="table-responsive">
+                    <table class="documents-table">
+                        <thead>
+                            <tr>
+                                <th>Title</th>
+                                <th>Uploaded</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for doc in documents|slice:":5" %}
+                            <tr>
+                                <td>
+                                    <div class="doc-title">{{ doc.title }}</div>
+                                </td>
+                                <td>{{ doc.uploaded_at|date:"Y-m-d H:i" }}</td>
+                                <td>
+                                    {% if doc.conversion_status == 'success' %}
+                                        <span class="status-badge status-success">✓ Converted</span>
+                                    {% elif doc.conversion_status == 'failed' %}
+                                        <span class="status-badge status-failed">✗ Failed</span>
+                                    {% elif doc.conversion_status == 'processing' %}
+                                        <span class="status-badge status-processing">⟳ Processing</span>
+                                    {% else %}
+                                        <span class="status-badge status-pending">⋯ Pending</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div class="action-buttons">
+                                        {% if doc.conversion_status == 'success' %}
+                                            <a href="{% url 'annotate_document' doc.pk %}" class="action-btn action-btn-primary">📝 Annotate</a>
+                                        {% elif doc.conversion_status == 'failed' %}
+                                            <a href="{% url 'retry_conversion' doc.pk %}" class="action-btn action-btn-warning">🔄 Retry</a>
+                                        {% endif %}
+                                        <a href="{{ doc.pdf_file.url }}" class="action-btn action-btn-secondary" target="_blank">📄 View PDF</a>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div class="empty-state">
+                    <div class="empty-state-icon">📭</div>
+                    <p>No documents uploaded yet. <a href="{% url 'upload_document' %}">Upload one now</a>.</p>
+                </div>
+            {% endif %}
+        </div>
     </div>
 </div>
 {% endblock %}

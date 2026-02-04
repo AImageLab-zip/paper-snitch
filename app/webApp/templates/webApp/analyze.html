@@ -55,9 +55,33 @@
                             <div class="alert alert-info">
                                 <strong>Paper Title:</strong> <span id="paper-title"></span>
                             </div>
+                            <div id="confirmation-section" style="display: none;">
+                                <hr>
+                                <div class="alert alert-warning shadow-sm">
+                                    <p class="mb-3">
+                                        Is this the same paper you uploaded? 
+                                        <a href="{{ pdf_url }}" target="_blank" id="confirm-pdf-link" class="btn btn-sm btn-outline-dark ml-2">
+                                            <i class="fas fa-file-pdf mr-1"></i>View Stored PDF
+                                        </a>
+                                    </p>
+                                
+                                    <div class="d-flex">
+                                        <button type="button" class="btn btn-success mr-2" id="btn-confirm-yes">
+                                            <i class="fas fa-check mr-1"></i>Yes, show analyses
+                                        </button>
+                                        <button type="button" class="btn btn-secondary" id="btn-confirm-no">
+                                            <i class="fas fa-times mr-1"></i>No, it's different
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
                             <div id="past-analyses-list" class="mb-4">
                                 <!-- Past analyses will be listed here -->
                             </div>
+                            
+                            
+                            
+
                         </div>
 
                          <!-- Past Analyses Section Failure (Hidden initially) -->
@@ -104,7 +128,7 @@
 
                         
                     </div>
-
+                    
                     <!-- Progress Section (Hidden initially) -->
                     <div id="progress-section" style="display: none;">
                         <h5 class="mb-3"><i class="fas fa-terminal mr-2"></i>Analysis in Progress</h5>

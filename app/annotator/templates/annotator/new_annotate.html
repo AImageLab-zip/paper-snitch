@@ -1,148 +1,335 @@
-{% extends "annotator/base.html" %}
+{% extends 'annotator/base.html' %}
+
+{% block title %}Annotate: {{ document.title }}{% endblock %}
 
 {% block extra_css %}
-
-<style> 
-    body ::selection {
-
-        color: #000 !important;
+<style>
+    .annotation-container {
+        display: flex;
+        height: calc(100vh - 200px);
     }
     
+    .document-viewer {
+        flex: 1;
+        overflow-y: auto;
+        border: 1px solid #ddd;
+        padding: 20px;
+        background: white;
+        position: relative;
+    }
     
+    .annotation-panel {
+        width: 350px;
+        border-left: 2px solid #ddd;
+        padding: 20px;
+        overflow-y: auto;
+        background: #f8f9fa;
+    }
+    
+    .annotation-item {
+        background: white;
+        border-left: 4px solid #007bff;
+        padding: 10px;
+        margin-bottom: 10px;
+        border-radius: 4px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    
+    .annotation-item .category-badge {
+        display: inline-block;
+        padding: 3px 8px;
+        border-radius: 3px;
+        font-size: 0.85em;
+        font-weight: bold;
+        margin-bottom: 5px;
+    }
+    
+    .annotation-item .text-preview {
+        font-size: 0.9em;
+        color: #666;
+        margin: 5px 0;
+        font-style: italic;
+    }
+    
+    .highlight {
+        cursor: pointer;
+        transition: all 0.2s;
+        padding: 2px 0;
+        border-radius: 2px;
+    }
+    
+    .highlight:hover {
+        opacity: 0.8;
+        box-shadow: 0 0 3px rgba(0,0,0,0.3);
+    }
+    
+    .category-selector {
+        position: fixed;
+        background: white;
+        border: 2px solid #007bff;
+        border-radius: 8px;
+        padding: 15px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        z-index: 10000;
+        display: none;
+        min-width: 200px;
+        max-width: 400px;
+        max-height: 80vh;
+        overflow-y: auto;
+    }
+    
+    .category-selector-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+    }
+    
+    .category-selector-close {
+        cursor: pointer;
+        font-size: 24px;
+        line-height: 1;
+        color: #666;
+        background: none;
+        border: none;
+        padding: 0;
+        width: 24px;
+        height: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .category-selector-close:hover {
+        color: #000;
+    }
+    
+    .add-category-section {
+        border-top: 2px solid #eee;
+        margin-top: 10px;
+        padding-top: 10px;
+    }
+    
+    .add-category-btn {
+        background: #28a745;
+        color: white;
+        border: none;
+        padding: 6px 12px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 0.9em;
+        width: 100%;
+        margin-bottom: 10px;
+    }
+    
+    .add-category-btn:hover {
+        background: #218838;
+    }
+    
+    .add-category-form {
+        display: none;
+        margin-top: 10px;
+    }
+    
+    .add-category-form.active {
+        display: block;
+    }
+    
+    .add-category-form input,
+    .add-category-form select {
+        width: 100%;
+        padding: 6px;
+        margin: 5px 0;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 0.9em;
+    }
+    
+    .add-category-form-buttons {
+        display: flex;
+        gap: 5px;
+        margin-top: 8px;
+    }
+    
+    .add-category-form-buttons button {
+        flex: 1;
+        padding: 6px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 0.85em;
+    }
+    
+    .btn-save-category {
+        background: #007bff;
+        color: white;
+    }
+    
+    .btn-save-category:hover {
+        background: #0056b3;
+    }
+    
+    .btn-cancel-category {
+        background: #6c757d;
+        color: white;
+    }
+    
+    .btn-cancel-category:hover {
+        background: #545b62;
+    }
+    
+    .category-option {
+        padding: 8px 12px;
+        cursor: pointer;
+        border-radius: 4px;
+        margin: 3px 0;
+        transition: background-color 0.2s;
+    }
+    
+    .category-option:hover {
+        background-color: #e3f2fd;
+    }
+    
+    .category-option.subcategory {
+        margin-left: 20px;
+        font-size: 0.9em;
+        padding: 6px 10px;
+    }
+    
+    .category-option.parent-category {
+        font-weight: bold;
+        background-color: #f5f5f5;
+        margin-top: 8px;
+        cursor: pointer;
+        border-left: 4px solid #333;
+    }
+    
+    .category-option.parent-category:hover {
+        background-color: #e0e0e0;
+    }
+    
+    .category-count-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: #666;
+        color: white;
+        border-radius: 50%;
+        width: 24px;
+        height: 24px;
+        font-size: 0.75em;
+        font-weight: bold;
+        margin-left: 8px;
+        float: right;
+        position: relative;
+        z-index: 10;
+        flex-shrink: 0;
+    }
+    
+    .category-count-badge.hidden {
+        display: none;
+    }
+    
+    .category-option.parent-category .category-count-badge {
+        background: #333;
+    }
+    
+    .category-option strong {
+        display: inline-block;
+        max-width: calc(100% - 40px);
+    }
+    
+    .category-option .parent-name {
+        font-size: 0.75em;
+        color: #999;
+        display: block;
+    }
+    
+    .stats {
+        background: white;
+        padding: 15px;
+        border-radius: 4px;
+        margin-bottom: 15px;
+        display: none;
+    }
+    
+    .stats.visible {
+        display: block;
+    }
+    
+    .selection-info {
+        background: #e3f2fd;
+        padding: 10px;
+        border-radius: 4px;
+        margin-bottom: 10px;
+        font-size: 0.9em;
+    }
+    
+    .btn-export {
+        margin-top: 10px;
+    }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="container-fluid content">
-        {% if messages %}
-            {% for message in messages %}
-                <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
-                    {{ message }}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                </div>
-            {% endfor %}
-        {% endif %}
+<div class="mb-3">
+    <h2>{{ document.title }}</h2>
+    <p class="text-muted">
+        Uploaded: {{ document.uploaded_at|date:"Y-m-d H:i" }} | 
+        <a href="{% url 'document_list' %}">← Back to Documents</a> |
+        <a href="{% url 'export_annotations' document.pk %}">Export Annotations</a>
+    </p>
+</div>
 
-        
 <div class="annotation-container">
     <div class="document-viewer" id="documentViewer">
-        <div class="document-title">
-            <h2>{{ document.title }}</h2>
-            <p class="text-muted">
-                Uploaded: {{ document.uploaded_at|date:"Y-m-d H:i" }} | 
-                <a href="{% url 'document_list' %}">← Back to Documents</a> |
-                <a href="{% url 'export_annotations' document.pk %}">Export Annotations</a>
-            </p>
-        </div>
-        
         <div id="htmlContent">
             {% autoescape off %}
             {{ html_content }}
             {% endautoescape %}
         </div>
-        
-        <div class="zoom-controls">
-            <button id="zoomOut" title="Zoom Out" class="zoom-btn">−</button>
-            <span class="zoom-level" id="zoomLevel">100%</span>
-            <button id="zoomIn" title="Zoom In" class="zoom-btn">+</button>
-            <button id="zoomReset" title="Reset Zoom" class="zoom-btn zoom-reset">Reset</button>
-        </div>
     </div>
     
     <div class="annotation-panel">
-        <!-- How to Annotate - Fixed Header -->
-        <div class="panel-header">
-            <div class="selection-info">
-                <strong class="annotation-rules-title">📝 How to Annotate:</strong>
-                <ol>
-                    <li>Select text in the document</li>
-                    <li>Choose a category from the popup</li>
-                    <li>Annotation is saved automatically</li>
-                    <li>Click on annotations to delete them</li>
-                </ol>
-            </div>
+        <div class="selection-info">
+            <strong>How to Annotate:</strong>
+            <ol style="margin: 10px 0 0 0; padding-left: 20px; font-size: 0.9em;">
+                <li>Select text in the document</li>
+                <li>Choose a category from the popup</li>
+                <li>Annotation is saved automatically</li>
+                <li>You can click on annotations to delete them</li>
+            </ol>
         </div>
         
-        <!-- Scrollable Content -->
-        <div class="panel-scrollable">
-            <!-- Categories Section -->
-            <div class="panel-section">
-                <div class="panel-section-title">🏷️ Categories</div>
-                <div id="categoryList">
-                    {% for category in categories %}
-                        {% if not category.parent %}
-                        <div class="category-group" data-category-name="{{ category.name }}">
-                            <div class="category-parent-header">
-                                <div class="category-parent-info" style="border-left-color: {{ category.color }};">
-                                    <span class="category-parent-name">{{ category.name }}</span>
-                                    <span class="category-count-badge" data-count-for="{{ category.name }}">0</span>
-                                </div>
-                                <div class="category-collapse-icon">▼</div>
-                            </div>
-                            <div class="category-children">
-                                {% for subcategory in categories %}
-                                    {% if subcategory.parent and subcategory.parent.id == category.id %}
-                                    <div class="category-child-item category-option subcategory" style="background-color: {{ subcategory.color }}15; border-left: 3px solid {{ subcategory.color }};" data-category-name="{{ subcategory.name }}">
-                                        <strong>{{ subcategory.name }}</strong>
-                                        <span class="category-count-badge" data-count-for="{{ subcategory.name }}">0</span>
-                                        {% if subcategory.description %}
-                                        <div class="subcategory-description">{{ subcategory.description }}</div>
-                                        {% endif %}
-                                    </div>
-                                    {% endif %}
-                                {% endfor %}
-                            </div>
-                        </div>
-                        {% endif %}
-                    {% endfor %}
-                    
-                    {% if not categories %}
-                    <p class="text-muted">No categories defined. Please add categories in the admin panel.</p>
-                    {% endif %}
-                </div>
+        <h5>Categories</h5>
+        <div id="categoryList" class="mb-3">
+            {% for category in categories %}
+            <div class="category-option mb-2 {% if not category.parent %}parent-category{% else %}subcategory{% endif %}" style="{% if category.parent %}background-color: {{ category.color }}22; {% endif %}border-left: 4px solid {{ category.color }};" data-category-name="{{ category.name }}">
+                <strong>{{ category.name }}</strong>
+                <span class="category-count-badge" data-count-for="{{ category.name }}">0</span>
+                {% if category.description %}
+                <div style="font-size: 0.85em; color: #666; clear: both;">{{ category.description }}</div>
+                {% endif %}
             </div>
+            {% endfor %}
             
-            <!-- Annotations Section -->
-            <div class="panel-section">
-                <div class="panel-section-title">📋 Annotations</div>
-                <div id="annotationList">
-                    {% for annotation in annotations %}
-                    <div class="annotation-item" data-annotation-id="{{ annotation.id }}">
-                        <div class="category-badge" style="background-color: {{ annotation.category.color|default:'#007bff' }};">
-                            {{ annotation.category.name }}
-                        </div>
-                        <div class="text-preview">"{{ annotation.selected_text|truncatewords:15 }}"</div>
-                        <small class="text-muted">{{ annotation.created_at|date:"Y-m-d H:i" }}</small>
-                        <button class="btn btn-sm btn-danger float-end delete-annotation" data-id="{{ annotation.id }}">Delete</button>
-                    </div>
-                    {% endfor %}
+            {% if not categories %}
+            <p class="text-muted">No categories defined. Please add categories in the admin panel.</p>
+            {% endif %}
+        </div>
+        
+        <h5>Annotations</h5>
+        <div id="annotationList">
+            {% for annotation in annotations %}
+            <div class="annotation-item" data-annotation-id="{{ annotation.id }}">
+                <div class="category-badge" style="background-color: {{ annotation.category.color|default:'#007bff' }}; color: white;">
+                    {{ annotation.category.name }}
                 </div>
+                <div class="text-preview">"{{ annotation.selected_text|truncatewords:15 }}"</div>
+                <small class="text-muted">{{ annotation.created_at|date:"Y-m-d H:i" }}</small>
+                <button class="btn btn-sm btn-danger float-end delete-annotation" data-id="{{ annotation.id }}">Delete</button>
             </div>
-        </div>
-    </div>
-</div>
-
-<!-- Delete Confirmation Modal -->
-<div id="deleteModal" class="delete-modal">
-    <div class="delete-modal-content">
-        <div class="delete-modal-header">
-            <span class="delete-modal-icon">⚠️</span>
-            <h3>Delete Annotation</h3>
-        </div>
-        <div class="delete-modal-body">
-            <p class="delete-modal-message">Are you sure you want to delete this annotation? This action cannot be undone.</p>
-            <div class="delete-modal-info">
-                <div class="delete-modal-info-label">Category:</div>
-                <div class="delete-modal-info-value" id="deleteModalCategory"></div>
-            </div>
-            <div class="delete-modal-info">
-                <div class="delete-modal-info-label">Selected Text:</div>
-                <div class="delete-modal-info-value" id="deleteModalText"></div>
-            </div>
-        </div>
-        <div class="delete-modal-footer">
-            <button class="delete-modal-btn delete-modal-btn-cancel" id="deleteModalCancel">Cancel</button>
-            <button class="delete-modal-btn delete-modal-btn-delete" id="deleteModalConfirm">Delete Annotation</button>
+            {% endfor %}
         </div>
     </div>
 </div>
@@ -150,7 +337,7 @@
 <!-- Category Selector Popup -->
 <div id="categorySelector" class="category-selector">
     <div class="category-selector-header">
-        <div class="category-selector-title">Select Category:</div>
+        <div style="font-weight: bold; color: #333;">Select Category:</div>
         <button class="category-selector-close" id="categorySelectorClose" title="Close (Esc)">×</button>
     </div>
     <div id="categorySelectorOptions">
@@ -182,7 +369,6 @@
         </div>
     </div>
 </div>
-</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -194,87 +380,11 @@ document.addEventListener('DOMContentLoaded', function() {
     let currentSelection = null;
     let currentRange = null;
     
-    let currentZoom = 1.0;
-    const zoomStep = 0.2;
-    const minZoom = 0.5;
-    const maxZoom = 3.0;
-    
-    const htmlContent = document.getElementById('htmlContent');
-    const zoomWrapper = document.getElementById('zoomWrapper');
-    const zoomInBtn = document.getElementById('zoomIn');
-    const zoomOutBtn = document.getElementById('zoomOut');
-    const zoomResetBtn = document.getElementById('zoomReset');
-    const zoomLevelDisplay = document.getElementById('zoomLevel');
-    
-    function updateZoom(newZoom) {
-        currentZoom = Math.max(minZoom, Math.min(maxZoom, newZoom));
-        
-        htmlContent.style.transform = `scale(${currentZoom})`;
-        htmlContent.style.transformOrigin = 'top left';
-        htmlContent.style.transition = 'transform 0.2s ease';
-        
-        // Adjust wrapper to accommodate scaled content
-        htmlContent.style.width = `${100 / currentZoom}%`;
-        htmlContent.style.minHeight = `${100 / currentZoom}%`;
-        
-        zoomLevelDisplay.textContent = Math.round(currentZoom * 100) + '%';
-        
-        // Update button states
-        zoomInBtn.disabled = currentZoom >= maxZoom;
-        zoomOutBtn.disabled = currentZoom <= minZoom;
-    }
-    
-    zoomInBtn.addEventListener('click', () => {
-        updateZoom(currentZoom + zoomStep);
-    });
-    
-    zoomOutBtn.addEventListener('click', () => {
-        updateZoom(currentZoom - zoomStep);
-    });
-    
-    zoomResetBtn.addEventListener('click', () => {
-        updateZoom(1.0);
-    });
-    
-    // Keyboard shortcuts for zoom
-    /*
-    TODO da rivedere gli shortcut, pdfhtmlEX fornisce gli shortcut che quindi vanno in conflitto con il nostro zoom
-    document.addEventListener('keydown', (e) => {
-        // Ctrl/Cmd + Plus/Equals for zoom in
-        if ((e.ctrlKey || e.metaKey) && (e.key === '+' || e.key === '=')) {
-            e.preventDefault();
-            updateZoom(currentZoom + zoomStep);
-        }
-        // Ctrl/Cmd + Minus for zoom out
-        else if ((e.ctrlKey || e.metaKey) && e.key === '-') {
-            e.preventDefault();
-            updateZoom(currentZoom - zoomStep);
-        }
-        // Ctrl/Cmd + 0 for reset zoom
-        else if ((e.ctrlKey || e.metaKey) && e.key === '0') {
-            e.preventDefault();
-            updateZoom(1.0);
-        }
-    });*/
-    
-    // Mouse wheel zoom (Ctrl + wheel)
-    documentViewer.addEventListener('wheel', (e) => {
-        if (e.ctrlKey || e.metaKey) {
-            e.preventDefault();
-            const delta = e.deltaY > 0 ? -zoomStep : zoomStep;
-            updateZoom(currentZoom + delta);
-        }
-    }, { passive: false });
-    
-    // Initialize button states without applying transform
-    zoomInBtn.disabled = currentZoom >= maxZoom;
-    zoomOutBtn.disabled = currentZoom <= minZoom;
-    
     // CSRF token for POST requests
     const csrfToken = '{{ csrf_token }}';
     
-    // console.log('CSRF Token loaded:', csrfToken ? 'Yes' : 'No');
-    // console.log('CSRF Token length:', csrfToken.length);
+    console.log('CSRF Token loaded:', csrfToken ? 'Yes' : 'No');
+    console.log('CSRF Token length:', csrfToken.length);
     
     // Category colors mapping
     const categoryColors = {
@@ -362,56 +472,6 @@ document.addEventListener('DOMContentLoaded', function() {
         window.getSelection().removeAllRanges();
         currentSelection = null;
         currentRange = null;
-    }
-    
-    // Custom delete confirmation modal
-    const deleteModal = document.getElementById('deleteModal');
-    const deleteModalCategory = document.getElementById('deleteModalCategory');
-    const deleteModalText = document.getElementById('deleteModalText');
-    const deleteModalConfirm = document.getElementById('deleteModalConfirm');
-    const deleteModalCancel = document.getElementById('deleteModalCancel');
-    
-    function showDeleteModal(category, text) {
-        return new Promise((resolve) => {
-            deleteModalCategory.textContent = category;
-            deleteModalText.textContent = text;
-            deleteModal.classList.add('active');
-            
-            const handleConfirm = () => {
-                cleanup();
-                resolve(true);
-            };
-            
-            const handleCancel = () => {
-                cleanup();
-                resolve(false);
-            };
-            
-            const cleanup = () => {
-                deleteModal.classList.remove('active');
-                deleteModalConfirm.removeEventListener('click', handleConfirm);
-                deleteModalCancel.removeEventListener('click', handleCancel);
-                deleteModal.removeEventListener('click', handleBackdropClick);
-                document.removeEventListener('keydown', handleEscape);
-            };
-            
-            const handleBackdropClick = (e) => {
-                if (e.target === deleteModal) {
-                    handleCancel();
-                }
-            };
-            
-            const handleEscape = (e) => {
-                if (e.key === 'Escape') {
-                    handleCancel();
-                }
-            };
-            
-            deleteModalConfirm.addEventListener('click', handleConfirm);
-            deleteModalCancel.addEventListener('click', handleCancel);
-            deleteModal.addEventListener('click', handleBackdropClick);
-            document.addEventListener('keydown', handleEscape);
-        });
     }
     
     // Category selection handler
@@ -533,6 +593,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     color: color,
                     positionData: rangeInfo
                 });
+                
                 // Apply highlight using the same XPath method that works on page load
                 highlightUsingXPath({
                     id: result.annotation_id,
@@ -629,7 +690,7 @@ document.addEventListener('DOMContentLoaded', function() {
         annotationItem.className = 'annotation-item';
         annotationItem.dataset.annotationId = id;
         annotationItem.innerHTML = `
-            <div class="category-badge" style="background-color: ${color};">
+            <div class="category-badge" style="background-color: ${color}; color: white;">
                 ${category}
             </div>
             <div class="text-preview">"${text.substring(0, 100)}${text.length > 100 ? '...' : ''}"</div>
@@ -647,26 +708,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Delete annotation
     async function deleteAnnotation(annotationId) {
-        // Get annotation details for modal
-        const annotationElement = document.querySelector(`.annotation-item[data-annotation-id="${annotationId}"]`);
-        let category = 'Unknown';
-        let text = 'No text available';
-        
-        if (annotationElement) {
-            const categoryBadge = annotationElement.querySelector('.category-badge');
-            const textPreview = annotationElement.querySelector('.text-preview');
-            
-            if (categoryBadge) {
-                category = categoryBadge.textContent.trim();
-            }
-            if (textPreview) {
-                text = textPreview.textContent.trim().replace(/^"|"$/g, ''); // Remove quotes
-            }
-        }
-        
-        // Show custom modal and wait for user response
-        const confirmed = await showDeleteModal(category, text);
-        if (!confirmed) return;
+        if (!confirm('Are you sure you want to delete this annotation?')) return;
         
         try {
             const deleteUrl = '{% url "delete_annotation" document.pk 0 %}'.replace('/0/', `/${annotationId}/`);
@@ -691,6 +733,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (annotationIndex !== -1) {
                     existingAnnotations.splice(annotationIndex, 1);
                 }
+                
                 // Remove from UI
                 const annotationElement = document.querySelector(`.annotation-item[data-annotation-id="${annotationId}"]`);
                 if (annotationElement) {
@@ -698,7 +741,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 
                 // Remove highlight from document
-                const highlights = document.querySelectorAll(`[data-annotation-id"]`);
+                const highlights = document.querySelectorAll(`[data-annotation-id]`);
                 highlights.forEach(highlight => {
                     const ids = highlight.getAttribute('data-annotation-id').split(',');
                     
@@ -813,7 +856,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             
             parentTotals[parentName] = total;
-            //console.log(`Parent ${parentName} total: ${total}`);
+            console.log(`Parent ${parentName} total: ${total}`);
         });
         
         // Update counts in the category list (inline badges)
@@ -824,7 +867,7 @@ document.addEventListener('DOMContentLoaded', function() {
             // If it's a parent category, use the total from subcategories
             const count = parentEl ? (parentTotals[category] || 0) : (categoryCounts[category] || 0);
             
-            //console.log(`Inline badge - ${category}: ${count} (parent: ${!!parentEl})`);
+            console.log(`Inline badge - ${category}: ${count} (parent: ${!!parentEl})`);
             badge.textContent = count;
             // Toggle hidden class instead of display style
             if (count > 0) {
@@ -1359,14 +1402,6 @@ document.addEventListener('DOMContentLoaded', function() {
     loadExistingAnnotations();
     // Update stats after a short delay to ensure DOM is ready
     setTimeout(updateStats, 100);
-    
-    // Collapsible category groups
-    document.querySelectorAll('.category-parent-header').forEach(header => {
-        header.addEventListener('click', function() {
-            const group = this.closest('.category-group');
-            group.classList.toggle('collapsed');
-        });
-    });
 });
 </script>
 {% endblock %}

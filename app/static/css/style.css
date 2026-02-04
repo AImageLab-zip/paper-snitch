@@ -73,6 +73,7 @@ footer {
   display: flex;
   flex-direction: column;
   padding-bottom: 0;
+  overflow-y: auto;
 }
 
 .container-fluid {

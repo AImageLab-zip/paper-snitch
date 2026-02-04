@@ -120,7 +120,15 @@ class CheckPastAnalysesView(LoginRequiredMixin, View):
         paper = Paper.objects.filter(title=title).first()
 
         past_analyses = []
+
+        pdf_url = None
+
         if paper:
+
+            # Send the URL of the existing PDF so user can check it
+            if paper.file:
+                pdf_url = paper.file.url
+
             # Get all analyses for this paper (not just user's)
             analyses = (
                 Analysis.objects.filter(paper=paper)
@@ -167,6 +175,7 @@ class CheckPastAnalysesView(LoginRequiredMixin, View):
                 "title": title,
                 "has_past_analyses": len(past_analyses) > 0,
                 "past_analyses": past_analyses,
+                "pdf_url": pdf_url,
             }
         )
 

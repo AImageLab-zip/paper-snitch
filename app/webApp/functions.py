@@ -18,6 +18,7 @@ import shutil
 
 from webApp.models import Paper, TokenUsage
 
+
 os.environ.setdefault(
     "DJANGO_SETTINGS_MODULE",
     os.getenv("DJANGO_SETTINGS_MODULE", "web.settings.development"),
