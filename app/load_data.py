@@ -17,13 +17,89 @@ os.environ.setdefault(
 )
 django.setup()
 
-from web.settings import BASE_DIR, MEDIA_ROOT
+from web.settings.base import BASE_DIR, MEDIA_ROOT
 from webApp.models import Paper, Dataset, Conference
 from dotenv import load_dotenv
 
 sys.path.append(str(BASE_DIR))
 
 load_dotenv(BASE_DIR / ".env.local")
+
+import json
+
+
+def merge_json_files():
+
+    # File paths (Adjust these if your folder structure is different)
+    FIXTURE_PATH = "annotator/fixtures/categories.json"
+    EMBEDDINGS_PATH = "categories_embeddings_1536.json"
+    OUTPUT_PATH = "annotator/fixtures/categories_with_embeddings.json"
+    print(f"Loading fixture from {FIXTURE_PATH}...")
+    try:
+        with open(FIXTURE_PATH, "r", encoding="utf-8") as f:
+            fixture_data = json.load(f)
+    except FileNotFoundError:
+        print(f"Error: Could not find {FIXTURE_PATH}")
+        return
+
+    print(f"Loading embeddings from {EMBEDDINGS_PATH}...")
+    try:
+        with open(EMBEDDINGS_PATH, "r", encoding="utf-8") as f:
+            embeddings_data = json.load(f)
+    except FileNotFoundError:
+        print(f"Error: Could not find {EMBEDDINGS_PATH}")
+        return
+
+    print("Merging data...")
+    matched_count = 0
+
+    # Iterate through the list of fixture items
+    for item in fixture_data:
+        # We only care about the fields dictionary
+        fields = item.get("fields", {})
+        category_name = fields.get("name")
+
+        # Check if this category name exists in our embeddings file
+        if category_name in embeddings_data:
+            # Extract the embedding list
+            embedding_vector = embeddings_data[category_name].get("embedding")
+
+            if embedding_vector:
+                # Add the new field to the fixture
+                fields["embedding"] = embedding_vector
+                matched_count += 1
+            else:
+                print(
+                    f"Warning: No embedding vector found inside data for '{category_name}'"
+                )
+        else:
+            print(f"Warning: No embedding found for category '{category_name}'")
+
+    # Save the updated fixture
+    print(f"Saving updated fixture to {OUTPUT_PATH}...")
+    with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
+        json.dump(fixture_data, f, indent=2, ensure_ascii=False)
+
+    print(f"Success! Updated {matched_count} records.")
+
+
+def load_embeddings():
+    """Fill missing embeddings for AnnotationCategory entries in the database."""
+    from annotator.models import AnnotationCategory
+
+    categories = AnnotationCategory.objects.filter(embedding={})
+    print(f"Found {categories.count()} categories without embeddings.")
+    with open("categories_embeddings_1536.json") as f:
+        embeddings_data = json.load(f)
+    for category in categories:
+        print(f"Generating embedding for category: {category.name}")
+        # Here you would call your embedding generation function
+        embedding_vector = embeddings_data.get(category.name, {})
+
+        # Update the category with the new embedding
+        category.embedding = embedding_vector
+        category.save()
+        print(f"Updated category '{category.name}' with new embedding.")
 
 
 def parseArguments():
@@ -220,40 +296,41 @@ def load_data(file_path, conference_name, conference_year, conference_url):
 
 
 if __name__ == "__main__":
+    merge_json_files()
 
-    args = parseArguments()
-    if args.defaults is None and (
-        args.confName is None or args.confYear is None or args.confUrl is None
-    ):
-        print(
-            f"Information about the conference not provided (use -d for defaults values)"
-        )
-        exit(1)
+# args = parseArguments()
+# if args.defaults is None and (
+#     args.confName is None or args.confYear is None or args.confUrl is None
+# ):
+#     print(
+#         f"Information about the conference not provided (use -d for defaults values)"
+#     )
+#     exit(1)
 
-    json_file = MEDIA_ROOT / args.file if args.file else MEDIA_ROOT / "papers_info.json"
-    if args.defaults is not None:
-        args.confName = "MICCAI"
-        args.confYear = "2025"
-        args.confUrl = "https://papers.miccai.org/miccai-2025/"
+# json_file = MEDIA_ROOT / args.file if args.file else MEDIA_ROOT / "papers_info.json"
+# if args.defaults is not None:
+#     args.confName = "MICCAI"
+#     args.confYear = "2025"
+#     args.confUrl = "https://papers.miccai.org/miccai-2025/"
 
-    print(f"Loading papers from: {json_file}")
-    # load_data(json_file, args.confName, args.confYear, args.confUrl)
+# print(f"Loading papers from: {json_file}")
+# # load_data(json_file, args.confName, args.confYear, args.confUrl)
 
-    paper = {"pdf_url": "https://papers.miccai.org/miccai-2025/paper/0752_paper.pdf"}
-    response = requests.get(paper["pdf_url"], timeout=30)
-    response.raise_for_status()
-    # per ottenere i byte che compongono il PDF
-    pdf_content = response.content
+# paper = {"pdf_url": "https://papers.miccai.org/miccai-2025/paper/0752_paper.pdf"}
+# response = requests.get(paper["pdf_url"], timeout=30)
+# response.raise_for_status()
+# # per ottenere i byte che compongono il PDF
+# pdf_content = response.content
 
-    name = paper["pdf_url"].split("/")[-1]
-    name = f"{args.confName.lower()}_{args.confYear}_{name}"
-    with open(MEDIA_ROOT / "pdf" / name, "wb") as f:
-        f.write(pdf_content)
+# name = paper["pdf_url"].split("/")[-1]
+# name = f"{args.confName.lower()}_{args.confYear}_{name}"
+# with open(MEDIA_ROOT / "pdf" / name, "wb") as f:
+#     f.write(pdf_content)
 
-    reader = PdfReader(MEDIA_ROOT / "pdf" / name)
-    pages = reader.pages
-    text = ""
-    for page in pages:
-        text = text + page.extract_text()
-    with open(MEDIA_ROOT / "pdf" / f"{name.split('.')[0]}.txt", "w") as text_file:
-        text_file.write(text)
+# reader = PdfReader(MEDIA_ROOT / "pdf" / name)
+# pages = reader.pages
+# text = ""
+# for page in pages:
+#     text = text + page.extract_text()
+# with open(MEDIA_ROOT / "pdf" / f"{name.split('.')[0]}.txt", "w") as text_file:
+#     text_file.write(text)

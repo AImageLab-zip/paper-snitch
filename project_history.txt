@@ -199,6 +199,7 @@ Aggiunto retrieve degli url dal testo del paper
 
 TODO:
 Short term:
+in annotate.html i have the eventlistener about the mouseup to catch the selected text and to appear the categoryselector. I want to implement a different way to populate 
 
 - Aggiungere possibilità di cambiare la categoria dell'annotazione anzichè solo di eliminarla
 - Utilizzare embedding per suggerire la categoria di annotazione
@@ -347,6 +348,8 @@ The output MUST be a valid JSON.
      "experimental_results": list[str],
 }
 """
+
+
 
 
 
