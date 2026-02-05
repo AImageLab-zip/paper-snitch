@@ -517,5 +517,18 @@ def main():
 #     )
 # exit(0)
 
+
+def test_embedding():
+    from openai import OpenAI
+
+    client = OpenAI(api_key=api_key, base_url=base_url)
+
+    response = client.embeddings.create(
+        input="Your text string goes here", model="text-embedding-3-small"
+    )
+
+    print(response.data[0].embedding)
+
+
 if __name__ == "__main__":
-    main()
+    test_embedding()

@@ -48,6 +48,7 @@ class AnnotationCategory(models.Model):
         max_length=7, default="#FF0000", help_text="Hex color code"
     )
     description = models.TextField(blank=True)
+    embedding = models.JSONField(default=dict, help_text="Embedding vector as JSON")
     parent = models.ForeignKey(
         "self",
         on_delete=models.CASCADE,
