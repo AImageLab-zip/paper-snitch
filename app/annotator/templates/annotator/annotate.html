@@ -153,6 +153,10 @@
         <div class="category-selector-title">Select Category:</div>
         <button class="category-selector-close" id="categorySelectorClose" title="Close (Esc)">×</button>
     </div>
+    <div id="suggestedCategoriesSection" style="display:none; padding: 10px; border-bottom: 1px solid #ddd; background-color: #f8f9fa;">
+        <div style="font-weight: bold; margin-bottom: 5px; font-size: 0.85em; color: #666; text-transform: uppercase; letter-spacing: 0.5px;">✨ Suggested Categories</div>
+        <div id="suggestedCategoriesList"></div>
+    </div>
     <div id="categorySelectorOptions">
         {% for category in categories %}
         <div class="category-option {% if not category.parent %}parent-category{% else %}subcategory{% endif %}" data-category="{{ category.name }}" data-category-name="{{ category.name }}" style="border-left: 4px solid {{ category.color }};">
@@ -332,6 +336,11 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             const finalPreview = document.getElementById('selectionPreview');
             finalPreview.textContent = `"${selectedText.substring(0, 100)}${selectedText.length > 100 ? '...' : ''}"`;
+            
+            // Reset and fetch suggestions
+            const suggestedSection = document.getElementById('suggestedCategoriesSection');
+            if (suggestedSection) suggestedSection.style.display = 'none';
+            fetchSuggestions(selectedText);
         }
     });
     
@@ -1355,6 +1364,76 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     
+    // Fetch suggested categories
+    async function fetchSuggestions(text) {
+        const suggestedSection = document.getElementById('suggestedCategoriesSection');
+        const suggestedList = document.getElementById('suggestedCategoriesList');
+        
+        if (!suggestedSection || !suggestedList) return;
+        
+        // Show loading state
+        suggestedSection.style.display = 'block';
+        suggestedList.innerHTML = '<div style="padding:5px; font-style:italic; color:#999; font-size: 0.9em;">Thinking...</div>';
+        
+        try {
+            const response = await fetch('{% url "suggest_categories" %}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                },
+                body: JSON.stringify({ text: text })
+            });
+            
+            const result = await response.json();
+            
+            if (result.status === 'success' && result.suggestions && result.suggestions.length > 0) {
+                renderSuggestions(result.suggestions);
+            } else {
+                // Hide if no suggestions or error
+                suggestedSection.style.display = 'none';
+                console.log('No suggestions returned', result);
+            }
+        } catch (error) {
+            console.error('Error fetching suggestions:', error);
+            suggestedSection.style.display = 'none';
+        }
+    }
+
+    // Render suggestions
+    function renderSuggestions(suggestions) {
+        const suggestedList = document.getElementById('suggestedCategoriesList');
+        suggestedList.innerHTML = '';
+        
+        suggestions.forEach(cat => {
+            const div = document.createElement('div');
+            div.className = 'category-option suggested-category';
+            div.style.cssText = `border-left: 4px solid ${cat.color}; margin: 5px 0; padding: 8px; background: white; cursor: pointer; border-radius: 4px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); transition: background 0.2s; border: 1px solid #eee;`;
+            div.setAttribute('data-category', cat.name);
+            
+            // Hover effect handled via css class or inline here
+            div.onmouseover = function() { this.style.backgroundColor = '#f0f0f0'; };
+            div.onmouseout = function() { this.style.backgroundColor = 'white'; };
+            
+            const scorePercent = Math.round(cat.score * 100);
+            
+            div.innerHTML = `
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <span style="font-weight:600; font-size: 0.95em;">${cat.name}</span>
+                    <span style="font-size:0.75em; color:white; background:${cat.color}; padding:2px 6px; border-radius:10px; opacity: 0.8;">${scorePercent}% match</span>
+                </div>
+                ${cat.parent_name ? `<div style="font-size:0.75em; color:#888; margin-top:2px;">in ${cat.parent_name}</div>` : ''}
+            `;
+            
+            div.addEventListener('click', function() {
+                saveAnnotation(cat.name);
+                categorySelector.style.display = 'none';
+            });
+            
+            suggestedList.appendChild(div);
+        });
+    }
+
     // Initial setup
     loadExistingAnnotations();
     // Update stats after a short delay to ensure DOM is ready

@@ -12,6 +12,7 @@ import shutil
 
 from .models import Document, Annotation, AnnotationCategory
 from .forms import DocumentUploadForm
+from .utils import get_embedding, cosine_similarity
 
 import logging
 
@@ -481,3 +482,58 @@ def create_category(request):
             {"status": "error", "message": f"Error creating category: {str(e)}"},
             status=500,
         )
+
+
+@require_http_methods(["POST"])
+def suggest_categories(request):
+    """
+    Computes embedding for input text and returns top 3 similar categories.
+    """
+    try:
+        data = json.loads(request.body)
+        text = data.get("text", "")
+
+        if not text:
+            return JsonResponse(
+                {"status": "error", "message": "No text provided"}, status=400
+            )
+
+        # Get embedding for the text
+        text_embedding = get_embedding(text)
+
+        if not text_embedding:
+            return JsonResponse(
+                {"status": "error", "message": "Failed to generate embedding"},
+                status=500,
+            )
+
+        # Get all categories with embeddings
+        # We fetch all and filter in python to be safe with JSONField quirks across DBs
+        categories = AnnotationCategory.objects.all()
+
+        scored_categories = []
+        for cat in categories:
+            # Skip if embedding is empty or not a list/valid structure
+            if not cat.embedding or not isinstance(cat.embedding, list):
+                continue
+
+            score = cosine_similarity(text_embedding, cat.embedding)
+            scored_categories.append(
+                {
+                    "id": cat.id,
+                    "name": cat.name,
+                    "color": cat.color,
+                    "score": score,
+                    "parent_name": cat.parent.name if cat.parent else None,
+                }
+            )
+
+        # Sort by score descending and take top 3
+        scored_categories.sort(key=lambda x: x["score"], reverse=True)
+        top_categories = scored_categories[:3]
+
+        return JsonResponse({"status": "success", "suggestions": top_categories})
+
+    except Exception as e:
+        logger.error(f"Error in suggest_categories: {e}")
+        return JsonResponse({"status": "error", "message": str(e)}, status=500)
