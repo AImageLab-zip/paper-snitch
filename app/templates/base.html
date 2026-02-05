@@ -21,7 +21,8 @@
 <body>
 
 <nav class="navbar navbar-expand-lg navbar-dark custom-navbar">
-    <a class="navbar-brand">
+    {%comment%} TODO change redirect to the real home {%endcomment%}
+    <a class="navbar-brand" href="{% url 'home' %}">
         <i class="fas fa-search" style="transform: rotate(90deg)"></i>aper<i class="fas fa-dollar-sign"></i>nitch
     </a>
     <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#main_nav" aria-expanded="false"

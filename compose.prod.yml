@@ -14,9 +14,12 @@ services:
     group_add:
       - "988"
     depends_on:
-      - mysql
-      - redis
-      - grobid
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      grobid:
+        condition: service_started
     environment:
       - HOST_PROJECT_PATH=${PWD}
     restart: unless-stopped
@@ -31,6 +34,12 @@ services:
       - ./mysql_prod/my.cnf:/etc/mysql/my.cnf
     restart: unless-stopped
     ports: []
+    healthcheck: # <--- Add this block
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
 
   nginx:
     image: nginx:latest
@@ -82,9 +91,12 @@ services:
       - ./static:/app/staticfiles
       - ./media:/app/media
     depends_on:
-      - mysql
-      - redis
-      - grobid
+      mysql:
+        condition: service_healthy # <--- Changed here
+      redis:
+        condition: service_started
+      grobid:
+        condition: service_started
     restart: unless-stopped
 
   grobid:

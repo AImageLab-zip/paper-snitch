@@ -119,7 +119,7 @@
     }
     
     .annotation-badge {
-        background: rgba(10, 61, 98, 0.1);
+
         color: var(--primary, #0a3d62);
         padding: 6px 12px;
         border-radius: 20px;
@@ -191,6 +191,16 @@
     
     .action-btn-info:hover {
         background: #138496;
+        color: white;
+    }
+
+    .action-btn-danger {
+        background: #dc3545;
+        color: white;
+    }
+    
+    .action-btn-danger:hover {
+        background: #c82333;
         color: white;
     }
     
@@ -305,14 +315,15 @@
                                     <div class="action-buttons">
                                         {% if doc.conversion_status == 'success' %}
                                             <a href="{% url 'annotate_document' doc.pk %}" class="action-btn action-btn-primary">📝 Annotate</a>
-                                            <a href="{% url 'export_annotations' doc.pk %}" class="action-btn action-btn-success">📤 Export</a>
                                         {% elif doc.conversion_status == 'failed' %}
                                             <a href="{% url 'retry_conversion' doc.pk %}" class="action-btn action-btn-warning" title="{{ doc.conversion_error }}">🔄 Retry</a>
                                         {% endif %}
                                         <a href="{{ doc.pdf_file.url }}" class="action-btn action-btn-secondary" target="_blank">📄 PDF</a>
-                                        {% if doc.html_file %}
-                                            <a href="{{ doc.html_file.url }}" class="action-btn action-btn-info" target="_blank">🌐 HTML</a>
-                                        {% endif %}
+                                        
+                                        <form action="{% url 'delete_document' doc.pk %}" method="POST" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this document?');">
+                                            {% csrf_token %}
+                                            <button type="submit" class="action-btn action-btn-danger" style="border:none;">🗑️ Delete</button>
+                                        </form>
                                     </div>
                                 </td>
                             </tr>

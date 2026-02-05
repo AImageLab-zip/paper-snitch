@@ -22,9 +22,15 @@ urlpatterns = [
         name="delete_annotation",
     ),
     path(
+        "document/<int:pk>/annotations/<int:annotation_id>/update/",
+        views.update_annotation,
+        name="update_annotation",
+    ),
+    path(
         "document/<int:pk>/export/", views.export_annotations, name="export_annotations"
     ),
     path("document/<int:pk>/retry/", views.retry_conversion, name="retry_conversion"),
+    path("document/<int:pk>/delete/", views.delete_document, name="delete_document"),
     path("category/create/", views.create_category, name="create_category"),
     path("category/suggest/", views.suggest_categories, name="suggest_categories"),
 ]

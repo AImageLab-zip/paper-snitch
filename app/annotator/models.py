@@ -90,6 +90,12 @@ class Annotation(models.Model):
     position_data = models.JSONField(
         default=dict, help_text="Stores position and selection data"
     )
+    embedding = models.BinaryField(
+        null=True, blank=True, help_text="Embedding vector as binary data"
+    )
+    similarity_score = models.FloatField(
+        null=True, blank=True, help_text="Cosine similarity score with category"
+    )
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
 
