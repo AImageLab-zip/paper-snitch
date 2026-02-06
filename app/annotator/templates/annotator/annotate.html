@@ -105,7 +105,7 @@
                 <div id="annotationList">
                     {% for annotation in annotations %}
                     <div class="annotation-item" data-annotation-id="{{ annotation.id }}">
-                        <div class="category-badge" style="background-color: {{ annotation.category.color|default:'#007bff' }};">
+                        <div class="category-badge" style="background-color: {{ annotation.category.color|default:'#007bff' }}90;">
                             {{ annotation.category.name }}
                         </div>
                         <div class="text-preview">"{{ annotation.selected_text|truncatewords:15 }}"</div>
@@ -559,7 +559,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     
                     if (badge) {
                         badge.textContent = newCategory;
-                        badge.style.backgroundColor = categoryColors[newCategory];
+                        badge.style.backgroundColor = categoryColors[newCategory]+'90'; // Add transparency for badge background
                     }
                     if (editBtn) {
                         editBtn.setAttribute('data-category', newCategory);
@@ -942,7 +942,7 @@ document.addEventListener('DOMContentLoaded', function() {
         annotationItem.className = 'annotation-item';
         annotationItem.dataset.annotationId = id;
         annotationItem.innerHTML = `
-            <div class="category-badge" style="background-color: ${color};">
+            <div class="category-badge" style="background-color: ${color}90;">
                 ${category}
             </div>
             <div class="text-preview">"${text.substring(0, 100)}${text.length > 100 ? '...' : ''}"</div>

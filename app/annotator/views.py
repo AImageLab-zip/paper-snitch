@@ -99,6 +99,8 @@ def convert_pdf_to_html(document):
                 DOCKER_IMAGE,
                 "--process-outline",
                 "0",
+                "--zoom",
+                "1.7",
                 "--dest-dir",
                 "/output",
                 f"/pdf/{pdf_filename}",
@@ -465,6 +467,7 @@ def delete_document(request, pk):
     return redirect("document_list")
 
 
+# TODO Deprecated endpoint, remove in future releases
 @require_http_methods(["POST"])
 def create_category(request):
     """API endpoint to create a new annotation category"""

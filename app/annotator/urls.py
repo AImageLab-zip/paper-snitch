@@ -31,6 +31,7 @@ urlpatterns = [
     ),
     path("document/<int:pk>/retry/", views.retry_conversion, name="retry_conversion"),
     path("document/<int:pk>/delete/", views.delete_document, name="delete_document"),
-    path("category/create/", views.create_category, name="create_category"),
     path("category/suggest/", views.suggest_categories, name="suggest_categories"),
+    # TODO deprecated endpoint, remove in future releases
+    path("category/create/", views.create_category, name="create_category"),
 ]

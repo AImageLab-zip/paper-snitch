@@ -18,8 +18,7 @@ env/
 .env
 .env.*
 
-# File statici e media raccolti (devono essere generati sul server)
-# (La cartella 'static' sorgente di solito è tracciata)
+
 staticfiles/
 media/
 

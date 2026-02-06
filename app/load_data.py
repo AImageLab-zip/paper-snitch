@@ -28,61 +28,6 @@ load_dotenv(BASE_DIR / ".env.local")
 import json
 
 
-def merge_json_files():
-
-    # File paths (Adjust these if your folder structure is different)
-    FIXTURE_PATH = "annotator/fixtures/categories.json"
-    EMBEDDINGS_PATH = "categories_embeddings_1536.json"
-    OUTPUT_PATH = "annotator/fixtures/categories_with_embeddings.json"
-    print(f"Loading fixture from {FIXTURE_PATH}...")
-    try:
-        with open(FIXTURE_PATH, "r", encoding="utf-8") as f:
-            fixture_data = json.load(f)
-    except FileNotFoundError:
-        print(f"Error: Could not find {FIXTURE_PATH}")
-        return
-
-    print(f"Loading embeddings from {EMBEDDINGS_PATH}...")
-    try:
-        with open(EMBEDDINGS_PATH, "r", encoding="utf-8") as f:
-            embeddings_data = json.load(f)
-    except FileNotFoundError:
-        print(f"Error: Could not find {EMBEDDINGS_PATH}")
-        return
-
-    print("Merging data...")
-    matched_count = 0
-
-    # Iterate through the list of fixture items
-    for item in fixture_data:
-        # We only care about the fields dictionary
-        fields = item.get("fields", {})
-        category_name = fields.get("name")
-
-        # Check if this category name exists in our embeddings file
-        if category_name in embeddings_data:
-            # Extract the embedding list
-            embedding_vector = embeddings_data[category_name].get("embedding")
-
-            if embedding_vector:
-                # Add the new field to the fixture
-                fields["embedding"] = embedding_vector
-                matched_count += 1
-            else:
-                print(
-                    f"Warning: No embedding vector found inside data for '{category_name}'"
-                )
-        else:
-            print(f"Warning: No embedding found for category '{category_name}'")
-
-    # Save the updated fixture
-    print(f"Saving updated fixture to {OUTPUT_PATH}...")
-    with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
-        json.dump(fixture_data, f, indent=2, ensure_ascii=False)
-
-    print(f"Success! Updated {matched_count} records.")
-
-
 def load_embeddings():
     """Fill missing embeddings for AnnotationCategory entries in the database."""
     from annotator.models import AnnotationCategory
@@ -294,9 +239,6 @@ def load_data(file_path, conference_name, conference_year, conference_url):
         print(f"  Errors: {errors}")
     print("=" * 50)
 
-
-if __name__ == "__main__":
-    merge_json_files()
 
 # args = parseArguments()
 # if args.defaults is None and (
