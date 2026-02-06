@@ -200,14 +200,14 @@ Aggiunto retrieve degli url dal testo del paper
 TODO:
 Short term:
 
-- Aggiungere possibilità di cambiare la categoria dell'annotazione anzichè solo di eliminarl
-- Finire implementazione conferma paper trovato nel db rispetto a quello caricato dall'utente (prima di eseguire l'analisi) + Scorrimento della pagina quando compaiono le analisi passate
-
-
+- Analisi a livello globale o per user? (al momento è per user, ma non ha senso che un'analisi sia legata ad un utente specifico) (webApp/views.py line 242)
+- Cambiare visualizzazione visualizzazione pdf mostrato nella scelta multipla, sarebbe carino visualizzarlo come modal all'interno della pagina (webApp/templates/webApp/analyze.html)
 - Ripensare evidence locator (Unico che comprende tutti i tipi di paper, oppure farne N+1 - Un generico e uno per ogni tipo di paper)
 - Pensare al prompt per l'evidence locator
 - Ragionare su come gestire l'estrazione di parti salienti del testo e la valutazione tramite evidence locator
-- Finire di definire i campi e i valori attesi riguardo gli experimental resualts (Utilizzare come riferimento la chat di gemini "Reviewing AI model assumptions")
+
+
+
 
 - Chiedere CPU per far girare GROBID e vedere se si velocizza 
 - Analisi statica del codice (per vedere se non ci sono errori di sintassi trovabili senza LLM, esistono tool per fare ciò) - troppi errori inutili trovati da ruff e company, aggiustare da impostazioni (https://docs.astral.sh/ruff/linter/#rule-selection)

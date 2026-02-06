@@ -4,7 +4,7 @@
 {% block head_title %}Analyze Paper{% endblock %}
 
 {% block content %}
-<div class="container mt-4">
+<div class="container-fluid mt-4 px-4">
     <div class="row justify-content-center">
         <div class="col-lg-10">
             <div class="card shadow" style="position: relative;">
@@ -52,36 +52,57 @@
                         <div id="past-analyses-section" style="display: none;">
                             <hr>
                             <h5 class="mb-3"><i class="fas fa-database mr-2"></i>Search Result</h5>
-                            <div class="alert alert-info">
-                                <strong>Paper Title:</strong> <span id="paper-title"></span>
-                            </div>
-                            <div id="confirmation-section" style="display: none;">
-                                <hr>
-                                <div class="alert alert-warning shadow-sm">
-                                    <p class="mb-3">
-                                        Is this the same paper you uploaded? 
-                                        <a href="{{ pdf_url }}" target="_blank" id="confirm-pdf-link" class="btn btn-sm btn-outline-dark ml-2">
-                                            <i class="fas fa-file-pdf mr-1"></i>View Stored PDF
-                                        </a>
-                                    </p>
-                                
-                                    <div class="d-flex">
-                                        <button type="button" class="btn btn-success mr-2" id="btn-confirm-yes">
-                                            <i class="fas fa-check mr-1"></i>Yes, show analyses
-                                        </button>
-                                        <button type="button" class="btn btn-secondary" id="btn-confirm-no">
-                                            <i class="fas fa-times mr-1"></i>No, it's different
-                                        </button>
+                            
+                            <!-- Single Match Confirmation (Redesigned) -->
+                            <div id="confirmation-section" class="mb-4" style="display: none;">
+                                <div class="card border-primary shadow-sm">
+                                    <div class="card-body">
+                                        <div class="d-flex align-items-center mb-3">
+                                            <div class="bg-primary text-white rounded-circle p-3 mr-3">
+                                                <i class="fas fa-check fa-lg"></i>
+                                            </div>
+                                            <div>
+                                                <h5 class="card-title text-primary mb-1">Similar Paper Found</h5>
+                                                <p class="card-text text-muted mb-0">We found a paper with the title: <strong><span id="paper-title"></span></strong></p>
+                                            </div>
+                                        </div>
+                                        
+                                        <p class="card-text">Is this the paper you are looking for?</p>
+                                        
+                                        <div class="d-flex justify-content-between align-items-center mt-3">
+                                            <a href="#" target="_blank" id="confirm-pdf-link" class="btn btn-outline-dark btn-sm">
+                                                <i class="fas fa-file-pdf mr-1"></i>View PDF
+                                            </a>
+                                            <div>
+                                                 <button type="button" class="btn btn-secondary mr-2" id="btn-confirm-no">
+                                                     <i class="fas fa-times mr-1"></i>No, it's different
+                                                 </button>
+                                                 <button type="button" class="btn btn-success" id="btn-confirm-yes">
+                                                     <i class="fas fa-check mr-1"></i>Yes, show analyses
+                                                 </button>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
+
+                            <!-- Multiple Matches Selection (New) -->
+                            <div id="multiple-papers-section" class="mb-4" style="display: none;">
+                                <div class="alert alert-info">
+                                    <i class="fas fa-info-circle mr-2"></i>Multiple papers were found. Is your paper among these?
+                                     Choose one of the options below
+                                </div>
+                                <div id="multiple-papers-list" class="list-group mb-3 shadow-sm">
+                                    <!-- Javascript will populate this -->
+                                </div>
+                                <button type="button" class="btn btn-outline-secondary btn-block" id="btn-none-of-these">
+                                    None of these are my paper
+                                </button>
+                            </div>
+
                             <div id="past-analyses-list" class="mb-4">
                                 <!-- Past analyses will be listed here -->
                             </div>
-                            
-                            
-                            
-
                         </div>
 
                          <!-- Past Analyses Section Failure (Hidden initially) -->
@@ -92,6 +113,16 @@
                                 <strong>No paper found with title: </strong> <span id="paper-title-fail"></span>
                                 <br/>
                                 <strong>Proceed to analyze this paper</strong>
+                            </div>
+                        </div>
+
+                        <!-- Past Analyses Section Multiple Failure (Hidden initially) -->
+                        <div id="past-analyses-section-multiple" style="display: none;">
+                            <hr>
+                            <h5 class="mb-3"><i class="fas fa-database mr-2"></i>Search Result</h5>
+                            <div class="alert alert-info">
+                                <strong>No paper selected with title: </strong> <span id="paper-title-multiple-fail"></span>
+                                <br/>
                             </div>
                         </div>
                         
@@ -211,12 +242,14 @@ document.addEventListener('DOMContentLoaded', function() {
     const newAnalysisBtn = document.getElementById('new-analysis-btn');
     const retryBtn = document.getElementById('retry-btn');
     
+    
     let currentTaskId = null;
     let pollInterval = null;
     let lastStep = '';
     let startTime = null;
     let title = null;
-
+    let currentPaperId = null; 
+    let tmpTextPath = null;
     
     // Function to add a log line to the terminal
     function addLogLine(message, type = 'info') {
@@ -277,6 +310,17 @@ document.addEventListener('DOMContentLoaded', function() {
     const pastAnalysesList = document.getElementById('past-analyses-list');
     const paperTitleSpan = document.getElementById('paper-title');
     const paperTitleSpanFail = document.getElementById('paper-title-fail');
+    const paperTitleSpanMultipleFail = document.getElementById('paper-title-multiple-fail');
+    
+
+    const btnConfirmYes = document.getElementById('btn-confirm-yes');
+    const btnConfirmNo = document.getElementById('btn-confirm-no');
+    const confirmationSection = document.getElementById('confirmation-section');
+    const multiplePapersSection = document.getElementById('multiple-papers-section');
+    const multiplePapersList = document.getElementById('multiple-papers-list');
+    const btnNoneOfThese = document.getElementById('btn-none-of-these');
+    const pastAnalysesSectionMultiple = document.getElementById('past-analyses-section-multiple');
+    
     
     pdfFileInput.value = '';
     document.querySelector('.custom-file-label').textContent = 'Choose PDF file...';
@@ -307,9 +351,13 @@ document.addEventListener('DOMContentLoaded', function() {
         // Hide past analyses and model selection when new file is selected
         pastAnalysesSection.style.display = 'none';
         pastAnalysesSectionFail.style.display = 'none';
+        pastAnalysesSectionMultiple.style.display = 'none';
         modelSelectionSection.style.display = 'none';
+        confirmationSection.style.display = 'none';
+        multiplePapersSection.style.display = 'none';
         //TODO: Reset check past button state
         checkPastBtn.innerHTML = '<i class="fas fa-history mr-2"></i>Check for Past Analyses';
+        currentPaperId = null;
     });
     
     // Check past analyses form submission
@@ -346,22 +394,43 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             const data = await response.json();
-            
-            // Show model selection section
-            modelSelectionSection.style.display = 'block';
             title = data.title;
-            if (data.has_past_analyses) {
-                // Show past analyses
+            tmpTextPath = data.tmp_text_path; // Set tmp_text_path from response
+            console.log("Received response for past analyses check:", data);
+            // Handle different match statuses
+            if (data.match_status === 'single_match') {
+                currentPaperId = data.paper_id;
                 paperTitleSpan.textContent = data.title;
-                pastAnalysesSection.style.display = 'block';
+                pastAnalysesSection.style.display = 'block'; 
+                confirmationSection.style.display = 'block'; 
+                multiplePapersSection.style.display = 'none';
+                pastAnalysesList.style.display = 'none';      
+                modelSelectionSection.style.display = 'none'; 
                 pastAnalysesSectionFail.style.display = 'none';
+                pastAnalysesSectionMultiple.style.display = 'none';
+                
                 renderPastAnalyses(data.past_analyses);
-            } else {
-                // No past analyses, just show model selection
+
+            } else if (data.match_status === 'multiple_matches') {
+                currentPaperId = null; // Do not preset if multiple choice
+                pastAnalysesSection.style.display = 'block';
+                multiplePapersSection.style.display = 'block';
+                confirmationSection.style.display = 'none';
+                pastAnalysesList.style.display = 'none';
+                modelSelectionSection.style.display = 'none';
+                pastAnalysesSectionFail.style.display = 'none';
+                pastAnalysesSectionMultiple.style.display = 'none';
+
+                renderMultiplePapers(data.papers);
+
+            } else { 
+                // no_match or legacy fallback
+                currentPaperId = data.paper_id;
                 pastAnalysesSection.style.display = 'none';
                 paperTitleSpanFail.textContent = data.title;
                 pastAnalysesSectionFail.style.display = 'block';
-            }
+                modelSelectionSection.style.display = 'block';
+            }       
             
             checkPastBtn.disabled = true;
             checkPastBtn.innerHTML = '<i class="fas fa-check mr-2"></i>Checked';
@@ -372,6 +441,109 @@ document.addEventListener('DOMContentLoaded', function() {
             checkPastBtn.innerHTML = '<i class="fas fa-history mr-2"></i>Check for Past Analyses';
         }
     });
+
+    // NEW: Logic for clicking "Yes, show analyses"
+    btnConfirmYes.addEventListener('click', function() {
+        // Hide the confirmation alert
+        confirmationSection.style.display = 'none';
+        
+        // Show the previously hidden lists and model selection
+        pastAnalysesList.style.display = 'block';
+        modelSelectionSection.style.display = 'block';
+    });
+
+    // Logic for clicking "No, it's different"
+    btnConfirmNo.addEventListener('click', function() {
+        // Per your request, we don't change existing logic here, 
+        // usually this would reset the form or allow manual override.
+        currentPaperId = null; // Clear ID so we create new on analyze
+        alert("Please ensure the PDF metadata contains the correct title or try a different file. Next analysis will create a new entry.");
+        modelSelectionSection.style.display = 'block'; // allow to analyze as new
+        pastAnalysesSection.style.display = 'none';
+        confirmationSection.style.display = 'none'; // Hide confirmation
+    });
+
+    // NEW: Render Multiple Papers Function
+    function renderMultiplePapers(papers) {
+        multiplePapersList.innerHTML = '';
+        
+        papers.forEach(function(paper) {
+            const item = document.createElement('div');
+            item.className = 'list-group-item flex-column align-items-start';
+            
+            // Format existing analyses summary if any
+            let analysesSummary = '';
+            if (paper.past_analyses && paper.past_analyses.length > 0) {
+                 analysesSummary = `<small class="text-muted">Analyzed ${paper.past_analyses.length} times. Last: ${paper.past_analyses[0].created_at} by ${paper.past_analyses[0].user}</small>`;
+            } else {
+                 analysesSummary = '<small class="text-muted">No past analyses.</small>';
+            }
+
+            item.innerHTML = `
+                <div class="d-flex w-100 justify-content-between align-items-center">
+                    <div>
+                        <h5 class="mb-1 mr-3">${paper.title}</h5>
+                        <p class="mb-1 text-muted small"><i class="far fa-clock mr-1"></i>Last update: ${paper.last_update}</p>
+                        ${analysesSummary}
+                    </div>
+                    <div class="d-flex flex-column">
+                        <a href="${paper.pdf_url}" target="_blank" class="btn btn-sm btn-outline-info mb-2">
+                             <i class="fas fa-file-pdf fa-2x mr-1"></i>
+                        </a>
+                        <button class="btn btn-sm btn-primary select-paper-btn" data-paper-id="${paper.id}">
+                             <i class="fas fa-check mr-1"></i>Choose
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            // Store paper data on element for easy access
+            item.dataset.paperData = JSON.stringify(paper);
+            
+            multiplePapersList.appendChild(item);
+        });
+        
+        // Attach event listeners to select buttons
+        document.querySelectorAll('.select-paper-btn').forEach(button => {
+            button.addEventListener('click', function() {
+                const paperItem = this.closest('.list-group-item');
+                const paperData = JSON.parse(paperItem.dataset.paperData);
+                
+                // Set state
+                currentPaperId = paperData.id;
+                title = paperData.title; // Update title context
+                
+                // Switch view
+                multiplePapersSection.style.display = 'none';
+                pastAnalysesSection.style.display = 'block';
+                pastAnalysesList.style.display = 'block';
+                modelSelectionSection.style.display = 'block';
+                
+                // Show title
+                paperTitleSpan.textContent = paperData.title;
+                
+                // Render analyses for this paper
+                renderPastAnalyses(paperData.past_analyses);
+            });
+        });
+    }
+
+    // "None of these" button logic
+    btnNoneOfThese.addEventListener('click', function() {
+        // Placeholder behavior as requested: just shows button, but logically it should probably act like "No match"
+        // For now, let's treat it as "Create new paper" similar to single match 'No'
+        currentPaperId = null;
+        
+        // Hide multiple section and show upload/new logic
+        pastAnalysesSection.style.display = 'none';
+        multiplePapersSection.style.display = 'none';
+        
+        // Allow proceeding with new analysis (create new entry)
+        paperTitleSpanMultipleFail.textContent = title;
+        pastAnalysesSectionMultiple.style.display = 'block';
+        modelSelectionSection.style.display = 'block'; 
+    });
+
     
     // Render past analyses
     function renderPastAnalyses(analyses) {
@@ -480,10 +652,15 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Create a new FormData with the uploaded PDF file
         const formData = new FormData();
-        // formData.append('pdf_file', uploadedPdfFile);
-
-        // Add title if available
-        if (title) {
+        
+        if (currentPaperId) {
+             formData.append('paper_id', currentPaperId);
+        } else if (uploadedPdfFile) {
+             formData.append('pdf_file', uploadedPdfFile);
+        }
+        
+        if (tmpTextPath) {
+            formData.append('tmp_text_path', tmpTextPath);
             formData.append('title', title);
         }
         
@@ -506,6 +683,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     'X-CSRFToken': csrfToken
                 }
             });
+
 
             // Handle non-OK responses before trying to parse JSON
             if (!response.ok) {
@@ -586,6 +764,7 @@ document.addEventListener('DOMContentLoaded', function() {
         errorSection.style.display = 'none';
         pastAnalysesSection.style.display = 'none';
         pastAnalysesSectionFail.style.display = 'none';
+        pastAnalysesSectionMultiple.style.display = 'none';
         modelSelectionSection.style.display = 'none';
 
         
@@ -609,6 +788,8 @@ document.addEventListener('DOMContentLoaded', function() {
         lastStep = '';
         currentTaskId = null;
         uploadedPdfFile = null;
+        currentPaperId = null;
+        tmpTextPath = null;
     }
     
     function updateProgress(progress, status) {
