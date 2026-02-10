@@ -345,7 +345,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const selection = window.getSelection();
         const selectedText = selection.toString().trim();
         
-        if (selectedText.length > 0) {
+        if (selectedText.length !== 0) {
             currentSelection = selectedText;
             currentRange = selection.getRangeAt(0);
             
@@ -1605,8 +1605,6 @@ document.addEventListener('DOMContentLoaded', function() {
         
         console.log('✓ Highlighted using text search:', annotation.category);
     }
-    
-
     
     // Fetch suggested categories
     async function fetchSuggestions(text) {

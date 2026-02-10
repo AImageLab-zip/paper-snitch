@@ -16,11 +16,10 @@ import time
 from django.shortcuts import render, redirect
 from .functions import get_pdf_content
 
-from .tasks import run_analysis_celery_task
-
-from webApp.services.llm_analysis import (
-    create_analysis_task,
+from .tasks import (
+    run_analysis_celery_task,
     get_task_status,
+    create_analysis_task,
     cleanup_task,
     get_available_models,
 )
@@ -274,9 +273,28 @@ class AnalyzePaperView(View):
 
     def get(self, request):
         """Display the upload form with available models."""
+        from annotator.models import AnnotationCategory
+        import json
+
         available_models = get_available_models()
+
+        categories = AnnotationCategory.objects.select_related("parent").all()
+        categories_metadata = {}
+        for cat in categories:
+            categories_metadata[cat.name] = {
+                "parent": cat.parent.name if cat.parent else None,
+                "color": cat.color,
+                "description": cat.description,
+                "order": cat.order,
+            }
+
         return render(
-            request, self.template_name, {"available_models": available_models}
+            request,
+            self.template_name,
+            {
+                "available_models": available_models,
+                "categories_metadata": json.dumps(categories_metadata),
+            },
         )
 
     def post(self, request):

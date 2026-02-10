@@ -73,6 +73,24 @@ class AnnotationCategory(models.Model):
             return f"{self.parent.name} → {self.name}"
         return self.name
 
+    def get_prompt_text(self):
+        """
+        Returns a formatted string combining Hierarchy, Name, and Description.
+        Format: "Category: Parent > Name | Description: ..."
+        """
+        # Calculate full path
+        if self.parent:
+            full_path = f"{self.parent.name} > {self.name}"
+        else:
+            full_path = self.name
+
+        # Handle empty descriptions
+        desc_text = (
+            self.description.strip() if self.description else "No definition provided."
+        )
+
+        return f"Category: {full_path}\nDescription: {desc_text}"
+
 
 class Annotation(models.Model):
     """Model for storing annotations on HTML documents"""

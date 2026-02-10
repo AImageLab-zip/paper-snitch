@@ -35,7 +35,8 @@ def get_embedding(
         response = client.embeddings.create(
             input=[text], model=model, dimensions=dimensions
         )
-        return response.data[0].embedding
+        embedding_32 = np.array(response.data[0].embedding, dtype=np.float32)
+        return embedding_32
     except Exception as e:
         print(f"Error getting embedding: {e}")
         return []
@@ -43,7 +44,7 @@ def get_embedding(
 
 def cosine_similarity(a: List[float], b: List[float]) -> float:
     """Calculates cosine similarity between two vectors."""
-    if not a or not b:
+    if a is None or b is None:
         return 0.0
 
     a_arr = np.array(a)

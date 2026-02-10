@@ -245,7 +245,7 @@ def annotate_document(request, pk):
     categories_hierarchical = []
     for parent in parent_categories:
         categories_hierarchical.append(parent)
-        subcategories = parent.subcategories.all().order_by("order", "name")
+        subcategories = parent.subcategories.all().order_by("name")
         categories_hierarchical.extend(subcategories)
 
     categories = categories_hierarchical
@@ -546,7 +546,7 @@ def suggest_categories(request):
         # Get embedding for the text
         text_embedding = get_embedding(text)
 
-        if not text_embedding:
+        if text_embedding is None or len(text_embedding) == 0:
             return JsonResponse(
                 {"status": "error", "message": "Failed to generate embedding"},
                 status=500,
@@ -581,7 +581,7 @@ def suggest_categories(request):
             {
                 "status": "success",
                 "suggestions": top_categories,
-                "embedding": text_embedding,
+                "embedding": text_embedding.tolist(),
             }
         )
 

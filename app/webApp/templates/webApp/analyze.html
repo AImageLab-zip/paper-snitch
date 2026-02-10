@@ -229,6 +229,8 @@
 
 
 <script>
+    // Make categories metadata available globally
+    window.categoriesMetadata = {{ categories_metadata|default:"{}"|safe }};
 
 document.addEventListener('DOMContentLoaded', function() {
     const uploadForm = document.getElementById('upload-form');
@@ -253,50 +255,50 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Function to add a log line to the terminal
     function addLogLine(message, type = 'info') {
-    // 1. Rimuove lo spinner da tutte le righe precedenti
-    const activeSpinners = terminalLog.querySelectorAll('.fa-spinner');
-    activeSpinners.forEach(s => s.remove());
 
-    const line = document.createElement('div');
-    line.className = 'terminal-line';
-    
-    const now = new Date();
-    const timeStr = now.toLocaleTimeString('en-US', { hour12: false });
-    
-    let icon = '';
-    let textClass = 'terminal-info';
-    
-    switch(type) {
-        case 'success':
-            icon = '✓';
-            textClass = 'terminal-success';
-            break;
-        case 'error':
-            icon = '✗';
-            textClass = 'terminal-error';
-            break;
-        case 'warning':
-            icon = '⚠';
-            textClass = 'terminal-warning';
-            break;
-        case 'spinner':
-            icon = '●';
-            textClass = 'terminal-info';
-            break;
-        default:
-            icon = '→';
-            textClass = 'terminal-info';
+        const activeSpinners = terminalLog.querySelectorAll('.fa-spinner');
+        activeSpinners.forEach(s => s.remove());
+
+        const line = document.createElement('div');
+        line.className = 'terminal-line';
+        
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString('en-US', { hour12: false });
+        
+        let icon = '';
+        let textClass = 'terminal-info';
+        
+        switch(type) {
+            case 'success':
+                icon = '✓';
+                textClass = 'terminal-success';
+                break;
+            case 'error':
+                icon = '✗';
+                textClass = 'terminal-error';
+                break;
+            case 'warning':
+                icon = '⚠';
+                textClass = 'terminal-warning';
+                break;
+            case 'spinner':
+                icon = '●';
+                textClass = 'terminal-info';
+                break;
+            default:
+                icon = '→';
+                textClass = 'terminal-info';
+        }
+        
+        // 2. Aggiungiamo lo spinner solo se il tipo è 'spinner'
+        // Lo mettiamo alla fine del messaggio per pulizia visiva
+        const spinnerHtml = (type === 'spinner') ? ' <i class="fas fa-spinner fa-spin ml-2"></i>' : '';
+        
+        line.innerHTML = `<span class="terminal-time">[${timeStr}]</span> <span class="terminal-prompt">${icon}</span> <span class="${textClass}">${spinnerHtml} ${message}</span>`;
+        
+        terminalLog.appendChild(line);
+        terminalLog.scrollTop = terminalLog.scrollHeight;
     }
-    
-    // 2. Aggiungiamo lo spinner solo se il tipo è 'spinner'
-    // Lo mettiamo alla fine del messaggio per pulizia visiva
-    const spinnerHtml = (type === 'spinner') ? ' <i class="fas fa-spinner fa-spin ml-2"></i>' : '';
-    
-    line.innerHTML = `<span class="terminal-time">[${timeStr}]</span> <span class="terminal-prompt">${icon}</span> <span class="${textClass}">${spinnerHtml} ${message}</span>`;
-    
-    terminalLog.appendChild(line);
-    terminalLog.scrollTop = terminalLog.scrollHeight;
-}
     
     // Clear file input on page load to prevent browser restore
     const pdfFileInput = document.getElementById('pdf-file');
@@ -311,6 +313,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const paperTitleSpan = document.getElementById('paper-title');
     const paperTitleSpanFail = document.getElementById('paper-title-fail');
     const paperTitleSpanMultipleFail = document.getElementById('paper-title-multiple-fail');
+    const confirmPdfLink = document.getElementById('confirm-pdf-link');
     
 
     const btnConfirmYes = document.getElementById('btn-confirm-yes');
@@ -401,6 +404,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (data.match_status === 'single_match') {
                 currentPaperId = data.paper_id;
                 paperTitleSpan.textContent = data.title;
+                confirmPdfLink.href = data.pdf_url;
                 pastAnalysesSection.style.display = 'block'; 
                 confirmationSection.style.display = 'block'; 
                 multiplePapersSection.style.display = 'none';
@@ -722,18 +726,18 @@ document.addEventListener('DOMContentLoaded', function() {
         resetForm();
     });
     
-        function showProgress() {
-            uploadSection.style.display = 'none';
-            progressSection.style.display = 'block';
-            resultsSection.style.display = 'none';
-            errorSection.style.display = 'none';
-            // Clear terminal and add initial message
-            terminalLog.innerHTML = '';
-            lastStep = '';
-            addLogLine('Initializing analysis...', 'spinner');
-        }
-    
-        function showResults(results) {
+    function showProgress() {
+        uploadSection.style.display = 'none';
+        progressSection.style.display = 'block';
+        resultsSection.style.display = 'none';
+        errorSection.style.display = 'none';
+        // Clear terminal and add initial message
+        terminalLog.innerHTML = '';
+        lastStep = '';
+        addLogLine('Initializing analysis...', 'spinner');
+    }
+
+    function showResults(results) {
         // Add success message to terminal before transitioning
         addLogLine('Analysis completed successfully!', 'success');
         setTimeout(function() {
@@ -743,6 +747,19 @@ document.addEventListener('DOMContentLoaded', function() {
             errorSection.style.display = 'none';
             renderResults(results);
         }, 1000);
+    }
+    
+    function showLocators(results) {
+        // Add success message to terminal before transitioning
+        addLogLine('Locators extraction completed successfully!', 'success');
+        setTimeout(function() {
+            uploadSection.style.display = 'none';
+            progressSection.style.display = 'none';
+            resultsSection.style.display = 'block';
+            errorSection.style.display = 'none';
+            renderLocators(results);
+        }, 1000);
+
     }
     
     function showError(message) {
@@ -816,6 +833,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     showError('Task not found!');
                     return;
                 }
+                console.log("Polling status:", data.status);
                 
                 updateProgress(data.progress, data.current_step);
                 
@@ -823,6 +841,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     clearInterval(pollInterval);
                     showResults(data.results);
                 } 
+                else if (data.status === 'completed Locators') {
+                    clearInterval(pollInterval);
+                    showLocators(data.results);
+                }
                 else if (data.status === 'error') {
                     clearInterval(pollInterval);
                     showError(data.error || 'Analysis failed');
@@ -880,101 +902,52 @@ document.addEventListener('DOMContentLoaded', function() {
             isFirst = false;
         }
     }
-    
-    {% comment %} function renderModelResultOld(data) {
-        const result = data.result;
-        const uniqueId = Math.random().toString(36).substr(2, 9);
+    function renderLocators(results) {
+        const tabsContainer = document.getElementById('model-tabs');
+        const contentContainer = document.getElementById('model-tab-content');
         
-        let html = `
-            <div class="d-flex justify-content-between align-items-start mb-3">
-                <div class="text-muted small">
-                        <i class="fas fa-clock mr-1"></i>Duration: ${data.duration}s | 
-                        <i class="fas fa-arrow-down mr-1"></i>Input: ${data.input_tokens} tokens | 
-                        <i class="fas fa-arrow-up mr-1"></i>Output: ${data.output_tokens} tokens
-                </div>
-                <div class="text-right">
-                    <div class="h4 mb-0 text-primary font-weight-bold">
-                        ${data.final_score !== undefined ? data.final_score : 'N/A'}
-                    </div>
-                    <small class="text-muted">Final Score</small>
-                </div>
-            </div>
-        `;
+        tabsContainer.innerHTML = '';
+        contentContainer.innerHTML = '';
         
-        // Datasets section
-        html += `
-            <div class="card criterion-card">
-                <div class="card-header bg-light collapsible" data-toggle="collapse" data-target="#datasets-${uniqueId}" aria-expanded="true">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <h6 class="mb-0"><i class="fas fa-database mr-2"></i>Datasets</h6>
-                        <i class="fas fa-chevron-down toggle-icon"></i>
-                    </div>
-                </div>
-                <div id="datasets-${uniqueId}" class="collapse show">
-                    <div class="card-body">
-                        ${result.datasets && result.datasets.extracted && result.datasets.extracted.length > 0
-                            ? `<ul class="dataset-list mb-0">${result.datasets.extracted.map(d => `<li>${d}</li>`).join('')}</ul>`
-                            : '<p class="text-muted mb-0">No datasets identified</p>'}
-                    </div>
-                </div>
-            </div>
-        `;
+        let isFirst = true;
         
-        // Scored sections
-        const scoredSections = [
-            { key: 'code', icon: 'fa-code', title: 'Code Repository' },
-            { key: 'annotation', icon: 'fa-tags', title: 'Annotation' },
-            { key: 'preprocessing', icon: 'fa-cogs', title: 'Preprocessing' },
-            { key: 'evaluation', icon: 'fa-chart-bar', title: 'Evaluation' },
-            { key: 'licensing', icon: 'fa-balance-scale', title: 'Licensing' }
-        ];
-        
-        for (const section of scoredSections) {
-            const data = result[section.key];
-            const score = data && typeof data.score === 'number' ? data.score : 0;
-            const collapseId = `${section.key}-${uniqueId}`;
-            
-            console.log(JSON.stringify(data));
-
-            html += `
-                <div class="card criterion-card">
-                    <div class="card-header bg-light collapsible" data-toggle="collapse" data-target="#${collapseId}" aria-expanded="true">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <h6 class="mb-0"><i class="fas ${section.icon} mr-2"></i>${section.title}
-                            ${section.key === 'code' && data.url !== ''
-                                ? `<a href="${data.url}" target="_blank"
-                                    class="btn btn-sm btn-outline-secondary ml-2">
-                                    <i class="fas fa-external-link-alt mr-1"></i>
-                                    View Repository
-                                    </a>`
-                                : ''}</h6>
-                            <div class="d-flex align-items-center">
-                                ${score === -1 
-                                    ? `<span class="score-badge score-${score} mr-2">n/a</span>` 
-                                    : `<span class="score-badge score-${score} mr-2">${score}</span>`}
-                                <i class="fas fa-chevron-down toggle-icon"></i>
-                            </div>
-                        </div>
-                    </div>
-                    <div id="${collapseId}" class="collapse show">
-                        <div class="card-body">
-                            ${data && data.extracted 
-                                ? `
-                                    <h6 class="text-muted">Extracted Information:</h6>
-                                    <div class="extracted-text">${data.extracted}</div>
-                                    ${data.score_explanation 
-                                        ? `<h6 class="text-muted mt-3">Score Explanation:</h6><p class="mb-0">${data.score_explanation}</p>`
-                                        : ''}
-                                  `
-                                : '<p class="text-muted mb-0">No information extracted for this criterion</p>'}
-                        </div>
-                    </div>
-                </div>
+        for (const [modelKey, modelData] of Object.entries(results)) {
+            // Create tab
+            const tabLi = document.createElement('li');
+            tabLi.className = 'nav-item';
+            tabLi.innerHTML = `
+                <a class="nav-link ${isFirst ? 'active' : ''}" 
+                id="${modelKey}-tab" 
+                data-toggle="tab" 
+                href="#${modelKey}-content" 
+                role="tab">
+                    ${modelData.model || modelKey}
+                    ${modelData.error ? '<i class="fas fa-exclamation-circle text-danger ml-1"></i>' : ''}
+                </a>
             `;
-        } 
-        
-        return html;
-    }{% endcomment %}
+            tabsContainer.appendChild(tabLi);
+            
+            // Create tab content
+            const tabContent = document.createElement('div');
+            tabContent.className = `tab-pane fade ${isFirst ? 'show active' : ''}`;
+            tabContent.id = `${modelKey}-content`;
+            tabContent.setAttribute('role', 'tabpanel');
+            
+            if (modelData.error) {
+                tabContent.innerHTML = `
+                    <div class="alert alert-danger">
+                        <strong>Error:</strong> ${modelData.error}
+                    </div>
+                `;
+            } else {
+                tabContent.innerHTML = renderLocatorsDetails(modelData, false);
+            }
+            
+            contentContainer.appendChild(tabContent);
+            
+            isFirst = false;
+        }
+    }
 });
 </script>
 {% endblock %}

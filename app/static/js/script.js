@@ -240,4 +240,166 @@ function renderAnalysisDetails(data, is_details = true) {
     return html;
 }
 
+function renderLocatorsDetails(data, is_details = true) {
+
+    const result = data.result;
+    const uniqueId = Math.random().toString(36).slice(2, 11);
+
+    // --- 1. Metadata Header ---
+    // We strictly render values present in the 'data' object.
+
+    let metaHtml = '';
+
+    // Check for common metadata fields and append them if they exist
+    const metaFields = [];
+    if (data.duration !== undefined) metaFields.push(`<i class="fas fa-clock mr-1"></i>${data.duration}s`);
+    if (data.input_tokens !== undefined) metaFields.push(`<i class="fas fa-arrow-down mr-1"></i>In: ${data.input_tokens}`);
+    if (data.output_tokens !== undefined) metaFields.push(`<i class="fas fa-arrow-up mr-1"></i>Out: ${data.output_tokens}`);
+
+    // Build Header HTML
+    let html = `
+    <div class="mb-3">
+        <div class="d-flex justify-content-between align-items-start">
+            <div>
+                    ${is_details && data.paper_title ? `<h6 class="text-primary"><i class="fas fa-file-alt mr-2"></i>${data.paper_title}</h6>` : ''}
+                    <div class="text-muted small">
+                    ${data.model_name ? `<span class="badge badge-info mr-2">${data.model_name}</span>` : ''}
+                    ${data.created_at ? `<i class="fas fa-calendar mr-1"></i>${data.created_at} |` : ''}
+                    ${metaFields.join(' | ')}
+                    </div>
+            </div>
+            ${data.final_score !== undefined ? `
+            <div class="text-right">
+                <div class="h4 mb-0 text-primary font-weight-bold">${data.final_score}</div>
+                <small class="text-muted">Score</small>
+            </div>` : ''}
+        </div>
+    </div>
+`;
+
+    // Handle Errors or Missing Data
+    if (data.error) {
+        html += `<div class="alert alert-danger"><strong>Error:</strong> ${data.error}</div>`;
+        return html;
+    }
+
+    if (!result || typeof result !== 'object') {
+        html += `<div class="alert alert-warning">No analysis data available.</div>`;
+        return html;
+    }
+
+    // Grouping Logic
+    const metadata = window.categoriesMetadata || {};
+    const grouped = {};
+    const hasMetadata = Object.keys(metadata).length > 0;
+
+    // Iterate over whatever keys are returned in the result object
+    for (const [key, items] of Object.entries(result)) {
+        const meta = metadata[key] || {};
+        let parentName = meta.parent;
+        let color = meta.color || '#e9ecef';
+
+        if (!parentName) {
+            // Fallback logic
+            parentName = hasMetadata ? (meta.description ? 'Other' : 'Uncategorized') : key;
+            if (!hasMetadata) {
+                parentName = key;
+            }
+        }
+
+        if (!grouped[parentName]) {
+            grouped[parentName] = [];
+        }
+
+        grouped[parentName].push({
+            name: key,
+            items: Array.isArray(items) ? items : [items],
+            color: color
+        });
+    }
+
+    if (Object.keys(grouped).length === 0) {
+        html += `<div class="alert alert-info">No locators found.</div>`;
+        return html;
+    }
+
+    const sortOrder = Object.keys(grouped).sort((a, b) => {
+        const orderA = (metadata[a] && metadata[a].order) !== undefined ? metadata[a].order : 999;
+        const orderB = (metadata[b] && metadata[b].order) !== undefined ? metadata[b].order : 999;
+        return orderA - orderB || a.localeCompare(b);
+    });
+
+    // --- 2. Dynamic Content Generation ---
+    for (const parentName of sortOrder) {
+        // Sort subcategories alphabetically
+        const subcategories = grouped[parentName].sort((a, b) => a.name.localeCompare(b.name));
+        
+        const collapseId = `cat-${uniqueId}-${parentName.replace(/\s+/g, '-')}`;
+
+        const totalItems = subcategories.reduce((acc, sub) => acc + sub.items.length, 0);
+
+        // Build Inner HTML
+        let contentHtml = '';
+
+        subcategories.forEach((sub, idx) => {
+            const listHtml = sub.items.length > 0 ?
+                `<ul style="list-style-type: disc;" class="pl-4 mb-2">
+                ${sub.items.map(item => `<li class="py-1">${item}</li>`).join('')}
+                </ul>` : '<div class="text-muted small pl-3 mb-2">No items extracted.</div>';
+
+            const showSubHeader = hasMetadata || subcategories.length > 1 || sub.name !== parentName;
+
+            if (showSubHeader) {
+                const subCollapseId = `sub-${collapseId}-${idx}`;
+                contentHtml += `
+                    <div class="mb-2">
+                        <div class="p-2 rounded mb-1 d-flex align-items-center collapsed" 
+                             style="background-color: ${sub.color}40; border-left: 4px solid ${sub.color}; cursor: pointer;"
+                             data-toggle="collapse"
+                             data-target="#${subCollapseId}"
+                             aria-expanded="false">
+                             <span class="badge badge-dot mr-2" style="background-color: ${sub.color};"></span>
+                             <strong class="text-dark">${sub.name}</strong>
+                             <span class="badge badge-light ml-auto">${sub.items.length}</span>
+                        </div>
+                        <div id="${subCollapseId}" class="collapse">
+                            <div class="pt-1">
+                                ${listHtml}
+                            </div>
+                        </div>
+                    </div>
+                 `;
+            } else {
+                contentHtml += listHtml;
+            }
+        });
+
+        // Build the Card HTML
+        html += `
+        <div class="card mb-2 shadow-sm">
+            <div class="card-header bg-light py-2 px-3 collapsible" 
+                    data-toggle="collapse" 
+                    data-target="#${collapseId}" 
+                    aria-expanded="true" 
+                    style="cursor: pointer;">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0 text-dark font-weight-bold">
+                        ${parentName}
+                        <span class="badge badge-pill badge-light border ml-2">${totalItems}</span>
+                    </h6>
+                    <i class="fas fa-chevron-down text-muted toggle-icon"></i>
+                </div>
+            </div>
+            <div id="${collapseId}" class="collapse show">
+                <div class="card-body p-2">
+                    ${contentHtml}
+                </div>
+            </div>
+        </div>
+    `;
+    }
+
+    return html;
+}
+
 

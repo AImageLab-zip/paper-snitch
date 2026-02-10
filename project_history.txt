@@ -200,6 +200,9 @@ Aggiunto retrieve degli url dal testo del paper
 TODO:
 Short term:
 
+- Categorie annotazioni ordine alfabetico
+- rimozione conferma conversione documento in html
+
 - Analisi a livello globale o per user? (al momento è per user, ma non ha senso che un'analisi sia legata ad un utente specifico) (webApp/views.py line 242)
 - Cambiare visualizzazione visualizzazione pdf mostrato nella scelta multipla, sarebbe carino visualizzarlo come modal all'interno della pagina (webApp/templates/webApp/analyze.html)
 - Ripensare evidence locator (Unico che comprende tutti i tipi di paper, oppure farne N+1 - Un generico e uno per ogni tipo di paper)

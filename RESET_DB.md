@@ -25,3 +25,8 @@ exit;
 3. Riapplica le Migrazioni (per davvero)
 
 docker compose exec django-web uv run manage.py migrate webApp
+
+1. SHOW TABLES;
+2. DESCRIBE <nome_tabella>
+
+ALTER TABLE annotator_annotation MODIFY COLUMN embedding BLOB;

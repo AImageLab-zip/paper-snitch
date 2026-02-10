@@ -1,5 +1,6 @@
 from django.contrib import admin
 from .models import (
+    AnalysisTask,
     Operations,
     Conference,
     Paper,
@@ -192,4 +193,12 @@ class LLMModelConfigAdmin(admin.ModelAdmin):
 class PromptAdmin(admin.ModelAdmin):
     list_display = ["name", "template", "created_at", "updated_at"]
     search_fields = ["name", "template"]
+    readonly_fields = ["created_at", "updated_at"]
+
+
+@admin.register(AnalysisTask)
+class AnalysisTaskAdmin(admin.ModelAdmin):
+    list_display = ["id", "paper", "user", "status", "created_at", "updated_at"]
+    list_filter = ["status", "created_at", "updated_at"]
+    search_fields = ["paper__title", "user__username"]
     readonly_fields = ["created_at", "updated_at"]
