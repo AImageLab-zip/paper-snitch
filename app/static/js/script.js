@@ -333,7 +333,7 @@ function renderLocatorsDetails(data, is_details = true) {
     for (const parentName of sortOrder) {
         // Sort subcategories alphabetically
         const subcategories = grouped[parentName].sort((a, b) => a.name.localeCompare(b.name));
-        
+
         const collapseId = `cat-${uniqueId}-${parentName.replace(/\s+/g, '-')}`;
 
         const totalItems = subcategories.reduce((acc, sub) => acc + sub.items.length, 0);

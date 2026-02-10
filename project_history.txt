@@ -195,6 +195,20 @@ Implementate le API nel grafo
 Rimosse funzioni inutilizzate da functions.py
 Aggiunto retrieve degli url dal testo del paper
 
+02/02/2026
+Iniziato ad implementare il labelling
+
+03/02/2026
+continuata implementazione di labelling
+
+04/02/2026
+Finita prima implementazione del labelling, 
+09/02/2025
+Iniziata implementazione evidence locators
+
+10/02/2026
+Ultimata l'implementazione di evidence locator (manca da visualizzare l'analisi quando si clicca sull'occhio)
+
 
 
 TODO:
