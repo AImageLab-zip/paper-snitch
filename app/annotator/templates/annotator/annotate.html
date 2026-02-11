@@ -4,8 +4,6 @@
 
 <style> 
     
-    
-    
 </style>
 {% endblock %}
 
@@ -47,19 +45,6 @@
     </div>
     
     <div class="annotation-panel">
-        <!-- How to Annotate - Fixed Header -->
-        <div class="panel-header">
-            <div class="selection-info">
-                <strong class="annotation-rules-title">📝 How to Annotate:</strong>
-                <ol>
-                    <li>Select text in the document</li>
-                    <li>Choose a category from the popup</li>
-                    <li>Annotation is saved automatically</li>
-                    <li>Click on annotations to delete them</li>
-                </ol>
-            </div>
-        </div>
-        
         <!-- Scrollable Content -->
         <div class="panel-scrollable">
             <!-- Categories Section -->
@@ -101,7 +86,10 @@
             
             <!-- Annotations Section -->
             <div class="panel-section">
-                <div class="panel-section-title">📋 Annotations</div>
+                <div class="panel-section-title">
+                    📋 Annotations
+                    <button class="info-button" id="showInstructionsBtn" title="How to Annotate">i</button>
+                </div>
                 <div id="annotationList">
                     {% for annotation in annotations %}
                     <div class="annotation-item" data-annotation-id="{{ annotation.id }}">
@@ -224,6 +212,22 @@
         {% endfor %}
     </div>
 
+</div>
+
+<!-- How to Annotate Instructions Modal -->
+<div id="instructionsModal" class="instructions-modal">
+    <div class="instructions-modal-header">
+        <h3>📝 How to Annotate</h3>
+        <button class="instructions-modal-close" id="closeInstructionsBtn">×</button>
+    </div>
+    <div class="instructions-modal-body">
+        <ol>
+            <li>Select text in the document</li>
+            <li>Choose a category from the popup</li>
+            <li>Annotation is saved automatically</li>
+            <li>Click on annotations to delete them</li>
+        </ol>
+    </div>
 </div>
 </div>
 {% endblock %}
@@ -474,6 +478,62 @@ document.addEventListener('DOMContentLoaded', function() {
     // Attach click handler for "Edit" buttons
     // Note: Since we reload the page often, or manipulate the list, delegated event handling is safer if list is dynamic.
     // But currently loop is static mostly unless we add via JS. Let's use annotationList for delegation.
+    
+    // Instructions Modal Handlers
+    const instructionsModal = document.getElementById('instructionsModal');
+    const showInstructionsBtn = document.getElementById('showInstructionsBtn');
+    const closeInstructionsBtn = document.getElementById('closeInstructionsBtn');
+    
+    function positionInstructionsModal() {
+        const btnRect = showInstructionsBtn.getBoundingClientRect();
+        const modalWidth = 320;
+        const offset = 10;
+        
+        // Position below the button
+        instructionsModal.style.top = (btnRect.bottom + offset) + 'px';
+        
+        // Position to the left of the button, but check if it fits
+        let leftPos = btnRect.left - modalWidth + btnRect.width;
+        
+        // If it goes off screen to the left, align with button's left
+        if (leftPos < 10) {
+            leftPos = btnRect.left;
+        }
+        
+        // If it goes off screen to the right, align to the right edge
+        if (leftPos + modalWidth > window.innerWidth - 10) {
+            leftPos = window.innerWidth - modalWidth - 10;
+        }
+        
+        instructionsModal.style.left = leftPos + 'px';
+    }
+    
+    showInstructionsBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        positionInstructionsModal();
+        instructionsModal.classList.add('show');
+    });
+    
+    closeInstructionsBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        instructionsModal.classList.remove('show');
+    });
+    
+    // Close modal when clicking outside
+    document.addEventListener('click', function(e) {
+        if (instructionsModal.classList.contains('show') && 
+            !instructionsModal.contains(e.target) && 
+            e.target !== showInstructionsBtn) {
+            instructionsModal.classList.remove('show');
+        }
+    });
+    
+    // Close modal with ESC key
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && instructionsModal.classList.contains('show')) {
+            instructionsModal.classList.remove('show');
+        }
+    });
     
     annotationList.addEventListener('click', function(e) {
         // Handle Delete
