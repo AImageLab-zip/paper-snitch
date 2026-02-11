@@ -886,3 +886,7 @@
     opacity: 1;
   }
 }
+
+.tooltip {
+  z-index: 100000;
+}

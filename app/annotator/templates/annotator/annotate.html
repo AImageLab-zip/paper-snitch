@@ -205,7 +205,8 @@
     </div>
     <div id="categorySelectorOptions">
         {% for category in categories %}
-        <div class="category-option {% if not category.parent %}parent-category{% else %}subcategory{% endif %}" data-category="{{ category.name }}" data-category-name="{{ category.name }}" style="border-left: 4px solid {{ category.color }};">
+        <div class="category-option {% if not category.parent %}parent-category{% else %}subcategory{% endif %}" data-category="{{ category.name }}" data-category-name="{{ category.name }}" style="border-left: 4px solid {{ category.color }};"
+        {% if category.parent and category.description %} data-toggle="tooltip" data-placement="right" title="{{ category.description }}"{% endif %}>
             {{ category.name }}
             <span class="category-count-badge" data-count-for="{{ category.name }}">0</span>
         </div>
@@ -235,6 +236,15 @@
 {% block extra_js %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    // Initialize tooltips for category descriptions
+    $(function () {
+        $('[data-toggle="tooltip"]').tooltip({
+            boundary: 'window',
+            container: 'body',
+            html: false,
+            trigger: 'hover focus'
+        });
+    });
     const documentViewer = document.getElementById('documentViewer');
     const categorySelector = document.getElementById('categorySelector');
     const annotationList = document.getElementById('annotationList');
@@ -362,6 +372,15 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // Show category selector at fixed position: mid-left of the screen
             categorySelector.style.display = 'block';
+            
+            // Re-initialize tooltips for category descriptions
+            $('[data-toggle="tooltip"]').tooltip('dispose');
+            $('[data-toggle="tooltip"]').tooltip({
+                boundary: 'window',
+                container: 'body',
+                html: false,
+                trigger: 'hover focus'
+            });
             
             // Position at left: 20px from left edge, vertically centered
             const viewportHeight = window.innerHeight;
@@ -1718,6 +1737,10 @@ document.addEventListener('DOMContentLoaded', function() {
             div.className = 'category-option suggested-category';
             div.style.cssText = `border-left: 4px solid ${cat.color}; margin: 5px 0; padding: 8px; background: white; cursor: pointer; border-radius: 4px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); transition: background 0.2s; border: 1px solid #eee;`;
             div.setAttribute('data-category', cat.name);
+            // data-toggle="tooltip" data-placement="right" title="{{ category.description }}
+            div.setAttribute('data-toggle', 'tooltip');
+            div.setAttribute('data-placement', 'right');
+            div.setAttribute('title', cat.description || '');
             
             // Hover effect handled via css class or inline here
             div.onmouseover = function() { this.style.backgroundColor = '#f0f0f0'; };
@@ -1740,6 +1763,13 @@ document.addEventListener('DOMContentLoaded', function() {
             
             suggestedList.appendChild(div);
         });
+        $('[data-toggle="tooltip"]').tooltip('dispose');
+            $('[data-toggle="tooltip"]').tooltip({
+                boundary: 'window',
+                container: 'body',
+                html: false,
+                trigger: 'hover focus'
+            });
     }
 
     // Initial setup
