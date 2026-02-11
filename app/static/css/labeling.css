@@ -890,3 +890,7 @@
 .tooltip {
   z-index: 100000;
 }
+
+.form-control {
+  height: 100%;
+}
