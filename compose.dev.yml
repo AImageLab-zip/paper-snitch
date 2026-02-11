@@ -1,7 +1,7 @@
 services:
   django-web-dev:
     build: ./app
-    container_name: django-web-dev
+    container_name: django-web-${STACK_SUFFIX:-dev}
     command: /app/entrypoint.dev.sh
     env_file:
       - .env.local
@@ -9,12 +9,12 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./app:/app
-      - ./static:/app/staticfiles
-      - django-venv:/app/.venv
-      - ./media:/app/media
+      - ./static_${STACK_SUFFIX:-dev}:/app/staticfiles
+      - django-venv-${STACK_SUFFIX:-dev}:/app/.venv
+      - ./media_${STACK_SUFFIX:-dev}:/app/media
       - /var/run/docker.sock:/var/run/docker.sock
     ports:
-      - "8000:8000"
+      - "${DJANGO_PORT:-8000}:8000"
     depends_on:
       - mysql
       - redis
@@ -34,28 +34,28 @@ services:
           path: ./uv.lock
 
   mysql:
-    container_name: mysql
+    container_name: mysql-${STACK_SUFFIX:-dev}
     image: mysql
     ports:
-      - "3306:3306"
+      - "${MYSQL_PORT:-3306}:3306"
     volumes:
-      - ./mysql/lib:/var/lib/mysql
-      - ./mysql/.client.cnf:/root/.my.cnf
-      - ./mysql/my.cnf:/etc/mysql/my.cnf
+      - ./mysql_${STACK_SUFFIX:-dev}/lib:/var/lib/mysql
+      - ./mysql_${STACK_SUFFIX:-dev}/.client.cnf:/root/.my.cnf
+      - ./mysql_${STACK_SUFFIX:-dev}/my.cnf:/etc/mysql/my.cnf
     env_file:
       - .env.local
 
   redis:
     image: redis:7-alpine
-    container_name: redis-dev
+    container_name: redis-${STACK_SUFFIX:-dev}
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
     volumes:
-      - redis-data-dev:/data
+      - redis-data-${STACK_SUFFIX:-dev}:/data
 
   celery-worker:
     build: ./app
-    container_name: celery-worker-dev
+    container_name: celery-worker-${STACK_SUFFIX:-dev}
     command: watchfiles "celery -A web worker --loglevel=info"
     env_file:
       - .env.local
@@ -63,8 +63,8 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./app:/app
-      - django-venv:/app/.venv
-      - ./media:/app/media
+      - django-venv-${STACK_SUFFIX:-dev}:/app/.venv
+      - ./media_${STACK_SUFFIX:-dev}:/app/media
     depends_on:
       - mysql
       - redis
@@ -75,14 +75,14 @@ services:
 
   grobid:
     image: grobid/grobid:0.8.2-crf
-    container_name: grobid
+    container_name: grobid-${STACK_SUFFIX:-dev}
     init: true
     ports:
-      - "8070:8070"
+      - "${GROBID_PORT:-8070}:8070"
     ulimits:
       core: 0
     restart: unless-stopped
 
 volumes:
-  django-venv:
-  redis-data-dev:
+  django-venv-${STACK_SUFFIX:-dev}:
+  redis-data-${STACK_SUFFIX:-dev}:
