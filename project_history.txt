@@ -202,8 +202,15 @@ Iniziato ad implementare il labelling
 continuata implementazione di labelling
 
 04/02/2026
-Finita prima implementazione del labelling, 
-09/02/2025
+Finita prima implementazione del labelling, Modificato style dell'annotator
+
+05/02/2026
+Embeddings update
+
+06/02/2026
+Implementato il gestore di di pdf multipli durante la ricerca di paper già presenti sul db
+
+09/02/2026
 Iniziata implementazione evidence locators
 
 10/02/2026
