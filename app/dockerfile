@@ -19,18 +19,20 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # ================================= Final stage ================================
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS final
 
-RUN apt-get update && apt-get install -y && apt-get install -y \
+RUN apt-get update && apt-get install -y \
     git libpq5 docker.io\
     && rm -rf /var/lib/apt/lists/* 
-
 COPY --from=builder /app /app
-RUN chmod +x /app/entrypoint.prod.sh
+
+RUN chmod +x /app/entrypoint.prod.sh /app/entrypoint.dev.sh
 
 # Ensure media directory exists
-RUN mkdir -p /app/media
+RUN mkdir -p /app/media /app/staticfiles
 
-ENV PATH="/home/devuser/.local/bin:/app/.venv/bin:$PATH"
+ENV PATH="/app/.venv/bin:$PATH"
 ENV UV_CACHE_DIR="/home/nonroot/.cache/uv"
+
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 RUN playwright install-deps && playwright install
 

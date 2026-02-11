@@ -48,7 +48,7 @@ class AnnotationCategory(models.Model):
         max_length=7, default="#FF0000", help_text="Hex color code"
     )
     description = models.TextField(blank=True)
-    # embedding = models.JSONField(default=dict, help_text="Embedding vector as JSON")
+    embedding = models.JSONField(default=dict, help_text="Embedding vector as JSON")
     parent = models.ForeignKey(
         "self",
         on_delete=models.CASCADE,
@@ -73,6 +73,24 @@ class AnnotationCategory(models.Model):
             return f"{self.parent.name} → {self.name}"
         return self.name
 
+    def get_prompt_text(self):
+        """
+        Returns a formatted string combining Hierarchy, Name, and Description.
+        Format: "Category: Parent > Name | Description: ..."
+        """
+        # Calculate full path
+        if self.parent:
+            full_path = f"{self.parent.name} > {self.name}"
+        else:
+            full_path = self.name
+
+        # Handle empty descriptions
+        desc_text = (
+            self.description.strip() if self.description else "No definition provided."
+        )
+
+        return f"Category: {full_path}\nDescription: {desc_text}"
+
 
 class Annotation(models.Model):
     """Model for storing annotations on HTML documents"""
@@ -89,6 +107,12 @@ class Annotation(models.Model):
     )
     position_data = models.JSONField(
         default=dict, help_text="Stores position and selection data"
+    )
+    embedding = models.BinaryField(
+        null=True, blank=True, help_text="Embedding vector as binary data"
+    )
+    similarity_score = models.FloatField(
+        null=True, blank=True, help_text="Cosine similarity score with category"
     )
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)

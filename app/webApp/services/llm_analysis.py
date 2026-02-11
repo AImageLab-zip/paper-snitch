@@ -5,17 +5,12 @@ This module provides functions to extract text from PDFs and analyze them
 using various LLM models based on specific criteria.
 """
 
-import json
 import logging
-import os
-from pydoc import text
-import re
 import time
-import uuid
-import threading
 from typing import Dict, Any, Optional
 
 from openai import OpenAI
+import json
 
 logger = logging.getLogger(__name__)
 from dotenv import load_dotenv
@@ -26,20 +21,11 @@ from django.contrib.auth.models import User
 from webApp.models import (
     Paper,
     Analysis,
-    AnalysisTask,
     Criterion,
     AnalysisCriterion,
-    Dataset,
-    LLMModelConfig,
-    Prompt,
 )
-from webApp.functions import (
-    update_token,
-    TokenLimitExceededError,
-    get_pdf_content,
-)
+from webApp.functions import update_token
 from pydantic import BaseModel, Field
-from typing import List
 
 
 class CriterionResponse(BaseModel):
@@ -54,11 +40,6 @@ class CriterionResponse(BaseModel):
 
     class Config:
         extra = "forbid"
-
-
-def get_model_configs() -> Dict[str, Any]:
-    """Get model configurations from the database."""
-    return LLMModelConfig.get_all_configs()
 
 
 def code_tool():
@@ -235,10 +216,12 @@ def pdf_analysis(
     pdf: str,
     config: dict,
     code_text: Optional[str] = None,
+    output_format: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Get JSON response from the LLM model analyzing a PDF file."""
     if config["model"].startswith("gpt"):
+        print(f"PDF PATH: {pdf}")
         file = client.files.create(file=open(pdf, "rb"), purpose="user_data")
         input_list = [
             {
@@ -263,19 +246,37 @@ def pdf_analysis(
         if "reasoning" in config:
             reasoning = {"effort": config["reasoning"].get("effort", "none")}
 
-        response = client.responses.parse(
-            model=config["model"],
-            input=input_list,
-            reasoning=reasoning,
-            temperature=config.get("temperature", 0.1),
-            text_format=CriterionResponse,
-            max_output_tokens=10000,
-        )
+        if output_format and output_format.lower() == "structured":
+            response = client.responses.parse(
+                model=config["model"],
+                input=input_list,
+                reasoning=reasoning,
+                temperature=config.get("temperature", 0.1),
+                text_format=CriterionResponse,
+                max_output_tokens=10000,
+            )
+            parsed_result = response.output_parsed
+        else:
+            response = client.responses.create(
+                model=config["model"],
+                input=input_list,
+                reasoning=reasoning,
+                temperature=config.get("temperature", 0.1),
+            )
+            try:
+                parsed_result = json.loads(response.output_text)
+            except json.JSONDecodeError as e:
+                print(f"JSON decode error: {e}")
+                return {
+                    "model": config.get("visual_name", config["model_key"]),
+                    "result": None,
+                    "input_tokens": None,
+                    "output_tokens": None,
+                }
 
         output_tokens = response.usage.output_tokens
         input_tokens = response.usage.input_tokens
         total_tokens = response.usage.total_tokens
-        parsed_result = response.output_parsed
 
     else:
         time.sleep(1)
@@ -298,14 +299,6 @@ def pdf_analysis(
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
     }
-
-
-def get_available_models() -> Dict[str, str]:
-    """Get a dictionary of available models for selection.
-    Returns:
-        Dictionary with model_key as key and display name as value.
-    """
-    return LLMModelConfig.get_available_models()
 
 
 def _save_analysis_to_db(
@@ -396,86 +389,6 @@ def _save_analysis_to_db(
         return None
 
     return analysis
-
-
-def create_analysis_task(
-    paper: Paper, selected_models: list = None, user_id: int = None
-) -> str:
-    """Create a new analysis task and return its ID.
-    Args:
-        paper: Paper model instance containing the PDF text.
-        selected_models: List of model keys to use. If None, uses all models.
-        user_id: The ID of the user who initiated the analysis.
-    Returns:
-        Task ID for tracking progress.
-    """
-    # Get model configs from database
-    model_configs = get_model_configs()
-
-    # Filter models
-    if selected_models:
-        models_to_use = {k: v for k, v in model_configs.items() if k in selected_models}
-    else:
-        models_to_use = model_configs
-
-    user = None
-    if user_id:
-        try:
-            user = User.objects.get(id=user_id)
-        except User.DoesNotExist:
-            pass
-
-    task = AnalysisTask.objects.create(
-        status="pending",
-        progress=0,
-        current_step="Initializing...",
-        total_steps=len(models_to_use),
-        completed_steps=0,
-        results={},
-        error=None,
-        paper=paper,
-        user=user,
-        selected_models=list(models_to_use.keys()),
-    )
-
-    return str(task.id)
-
-
-def get_task_status(task_id: str) -> Optional[Dict[str, Any]]:
-    """Get the current status of an analysis task.
-    Args:
-        task_id: The task ID to check.
-    Returns:
-        Task status dictionary or None if not found.
-    """
-    try:
-        task = AnalysisTask.objects.get(id=task_id)
-        return {
-            "status": task.status,
-            "progress": task.progress,
-            "current_step": task.current_step,
-            "total_steps": task.total_steps,
-            "completed_steps": task.completed_steps,
-            "results": task.results,
-            "error": task.error,
-            "paper_id": task.paper.id,
-            "paper_text": task.paper.text,
-            "user_id": task.user.id if task.user else None,
-            "selected_models": task.selected_models,
-        }
-    except (AnalysisTask.DoesNotExist, ValueError):
-        return None
-
-
-def cleanup_task(task_id: str):
-    """Remove a completed task from database.
-    Args:
-        task_id: The task ID to remove.
-    """
-    try:
-        AnalysisTask.objects.filter(id=task_id).delete()
-    except Exception:
-        pass
 
 
 # def run_analysis_task(task_id: str):

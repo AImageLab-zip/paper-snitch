@@ -5,6 +5,7 @@ docker run --rm --init --ulimit core=0 -p 8070:8070 grobid/grobid:0.8.2-crf
 ssh -L 8000:localhost:8000 dsantoli@paper-snitch.ing.unimore.it
 
 
+
 {"endXPath": "/html/body/div/div/div[2]/div/div/div[2]/div/div/div[41]/text()[14]", "endOffset": 16, "startXPath": "/html/body/div/div/div[2]/div/div/div[2]/div/div/div[33]/text()[1]", "startOffset": 0}
 
 

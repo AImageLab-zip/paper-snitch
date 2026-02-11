@@ -3,11 +3,6 @@
 {% block extra_css %}
 
 <style> 
-    body ::selection {
-
-        color: #000 !important;
-    }
-    
     
 </style>
 {% endblock %}
@@ -18,7 +13,7 @@
             {% for message in messages %}
                 <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
                     {{ message }}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    
                 </div>
             {% endfor %}
         {% endif %}
@@ -30,8 +25,8 @@
             <h2>{{ document.title }}</h2>
             <p class="text-muted">
                 Uploaded: {{ document.uploaded_at|date:"Y-m-d H:i" }} | 
-                <a href="{% url 'document_list' %}">← Back to Documents</a> |
-                <a href="{% url 'export_annotations' document.pk %}">Export Annotations</a>
+                <a href="{% url 'document_list' %}">← Back to Documents</a> 
+                <a href="{% url 'export_annotations' document.pk %}" style="display: none;">Export Annotations</a>
             </p>
         </div>
         
@@ -50,19 +45,6 @@
     </div>
     
     <div class="annotation-panel">
-        <!-- How to Annotate - Fixed Header -->
-        <div class="panel-header">
-            <div class="selection-info">
-                <strong class="annotation-rules-title">📝 How to Annotate:</strong>
-                <ol>
-                    <li>Select text in the document</li>
-                    <li>Choose a category from the popup</li>
-                    <li>Annotation is saved automatically</li>
-                    <li>Click on annotations to delete them</li>
-                </ol>
-            </div>
-        </div>
-        
         <!-- Scrollable Content -->
         <div class="panel-scrollable">
             <!-- Categories Section -->
@@ -71,8 +53,8 @@
                 <div id="categoryList">
                     {% for category in categories %}
                         {% if not category.parent %}
-                        <div class="category-group" data-category-name="{{ category.name }}">
-                            <div class="category-parent-header">
+                        <div class="category-group collapsed" data-category-name="{{ category.name }}">
+                            <div class="category-parent-header" >
                                 <div class="category-parent-info" style="border-left-color: {{ category.color }};">
                                     <span class="category-parent-name">{{ category.name }}</span>
                                     <span class="category-count-badge" data-count-for="{{ category.name }}">0</span>
@@ -104,16 +86,22 @@
             
             <!-- Annotations Section -->
             <div class="panel-section">
-                <div class="panel-section-title">📋 Annotations</div>
+                <div class="panel-section-title">
+                    📋 Annotations
+                    <button class="info-button" id="showInstructionsBtn" title="How to Annotate">i</button>
+                </div>
                 <div id="annotationList">
                     {% for annotation in annotations %}
                     <div class="annotation-item" data-annotation-id="{{ annotation.id }}">
-                        <div class="category-badge" style="background-color: {{ annotation.category.color|default:'#007bff' }};">
+                        <div class="category-badge" style="background-color: {{ annotation.category.color|default:'#007bff' }}90;">
                             {{ annotation.category.name }}
                         </div>
                         <div class="text-preview">"{{ annotation.selected_text|truncatewords:15 }}"</div>
                         <small class="text-muted">{{ annotation.created_at|date:"Y-m-d H:i" }}</small>
-                        <button class="btn btn-sm btn-danger float-end delete-annotation" data-id="{{ annotation.id }}">Delete</button>
+                        <div class="float-end">
+                            <button class="btn btn-sm btn-outline-secondary edit-annotation me-1" data-id="{{ annotation.id }}" data-category="{{ annotation.category.name }}">Edit</button>
+                            <button class="btn btn-sm btn-danger delete-annotation" data-id="{{ annotation.id }}">Delete</button>
+                        </div>
                     </div>
                     {% endfor %}
                 </div>
@@ -147,39 +135,99 @@
     </div>
 </div>
 
+<!-- Edit Annotation Modal -->
+<div id="editModal" class="delete-modal">
+    <div class="delete-modal-content">
+        <div class="delete-modal-header">
+            <span class="delete-modal-icon">✏️</span>
+            <h3>Edit Annotation Category</h3>
+        </div>
+        <div class="delete-modal-body">
+            <p class="delete-modal-message">Select a new category for this annotation:</p>
+            <div class="form-group" style="margin-top: 15px;">
+                <select id="editCategorySelect" class="form-select" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #ccc;">
+                     {% for category in categories %}
+                        <option value="{{ category.name }}"
+                            {% if not category.parent %}
+                                style="font-weight: bold; background-color: #eeeeee; color: #000;"
+                            {% else %}
+                                style="padding-left: 10px;"
+                            {% endif %}>
+                            {% if category.parent %}&nbsp;&nbsp;&nbsp; - {% endif %}{{ category.name }}
+                        </option>
+                     {% endfor %}
+                </select>
+            </div>
+        </div>
+        <div class="delete-modal-footer">
+            <button class="delete-modal-btn delete-modal-btn-cancel" id="editModalCancel">Cancel</button>
+            <button class="delete-modal-btn delete-modal-btn-delete" style="background-color: #3498db;" id="editModalSave">Save Changes</button>
+        </div>
+    </div>
+</div>
+
+<!-- Action Choice Modal -->
+<div id="actionChoiceModal" class="delete-modal">
+    <div class="delete-modal-content">
+        <div class="delete-modal-header">
+            <span class="delete-modal-icon">⚙️</span>
+            <h3>Manage Annotation</h3>
+        </div>
+        <div class="delete-modal-body">
+            <p class="delete-modal-message">What would you like to do with this annotation?</p>
+            <div class="delete-modal-info">
+                <div class="delete-modal-info-label">Category:</div>
+                <div class="delete-modal-info-value" id="actionChoiceCategory"></div>
+            </div>
+            <div class="delete-modal-info">
+                <div class="delete-modal-info-label">Text:</div>
+                <div class="delete-modal-info-value" id="actionChoiceText"></div>
+            </div>
+        </div>
+        <div class="delete-modal-footer">
+            <button class="delete-modal-btn delete-modal-btn-cancel" id="actionChoiceCancel">Cancel</button>
+            <div style="flex-grow: 1;"></div>
+            <button class="delete-modal-btn delete-modal-btn-delete" style="background-color: #3498db; margin-right: 10px;" id="actionChoiceEdit">Change Category</button>
+            <button class="delete-modal-btn delete-modal-btn-delete" id="actionChoiceDelete">Delete</button>
+        </div>
+    </div>
+</div>
+
 <!-- Category Selector Popup -->
 <div id="categorySelector" class="category-selector">
     <div class="category-selector-header">
         <div class="category-selector-title">Select Category:</div>
         <button class="category-selector-close" id="categorySelectorClose" title="Close (Esc)">×</button>
     </div>
+    <div id="suggestedCategoriesSection" style="display:none; padding: 10px; border-bottom: 1px solid #ddd; background-color: #f8f9fa;">
+        <div style="font-weight: bold; margin-bottom: 5px; font-size: 0.85em; color: #666; text-transform: uppercase; letter-spacing: 0.5px;">✨ Suggested Categories</div>
+        <div id="suggestedCategoriesList"></div>
+    </div>
     <div id="categorySelectorOptions">
         {% for category in categories %}
-        <div class="category-option {% if not category.parent %}parent-category{% else %}subcategory{% endif %}" data-category="{{ category.name }}" data-category-name="{{ category.name }}" style="border-left: 4px solid {{ category.color }};">
+        <div class="category-option {% if not category.parent %}parent-category{% else %}subcategory{% endif %}" data-category="{{ category.name }}" data-category-name="{{ category.name }}" style="border-left: 4px solid {{ category.color }};"
+        {% if category.parent and category.description %} data-toggle="tooltip" data-placement="right" title="{{ category.description }}"{% endif %}>
             {{ category.name }}
             <span class="category-count-badge" data-count-for="{{ category.name }}">0</span>
         </div>
         {% endfor %}
     </div>
-    <div class="add-category-section">
-        <button class="add-category-btn" id="addCategoryBtn">+ Add New Category</button>
-        <div class="add-category-form" id="addCategoryForm">
-            <input type="text" id="newCategoryName" placeholder="Category name" required>
-            <select id="newCategoryParent">
-                <option value="">-- Top Level Category --</option>
-                {% for category in categories %}
-                {% if not category.parent %}
-                <option value="{{ category.id }}">{{ category.name }}</option>
-                {% endif %}
-                {% endfor %}
-            </select>
-            <input type="color" id="newCategoryColor" value="#3498db" title="Category color">
-            <input type="text" id="newCategoryDescription" placeholder="Description (optional)">
-            <div class="add-category-form-buttons">
-                <button class="btn-save-category" id="saveCategoryBtn">Save</button>
-                <button class="btn-cancel-category" id="cancelCategoryBtn">Cancel</button>
-            </div>
-        </div>
+
+</div>
+
+<!-- How to Annotate Instructions Modal -->
+<div id="instructionsModal" class="instructions-modal">
+    <div class="instructions-modal-header">
+        <h3>📝 How to Annotate</h3>
+        <button class="instructions-modal-close" id="closeInstructionsBtn">×</button>
+    </div>
+    <div class="instructions-modal-body">
+        <ol>
+            <li>Select text in the document</li>
+            <li>Choose a category from the popup</li>
+            <li>Annotation is saved automatically</li>
+            <li>Click on annotations to delete them</li>
+        </ol>
     </div>
 </div>
 </div>
@@ -188,11 +236,21 @@
 {% block extra_js %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    // Initialize tooltips for category descriptions
+    $(function () {
+        $('[data-toggle="tooltip"]').tooltip({
+            boundary: 'window',
+            container: 'body',
+            html: false,
+            trigger: 'hover focus'
+        });
+    });
     const documentViewer = document.getElementById('documentViewer');
     const categorySelector = document.getElementById('categorySelector');
     const annotationList = document.getElementById('annotationList');
     let currentSelection = null;
     let currentRange = null;
+    let currentEmbedding = null;
     
     let currentZoom = 1.0;
     const zoomStep = 0.2;
@@ -315,6 +373,15 @@ document.addEventListener('DOMContentLoaded', function() {
             // Show category selector at fixed position: mid-left of the screen
             categorySelector.style.display = 'block';
             
+            // Re-initialize tooltips for category descriptions
+            $('[data-toggle="tooltip"]').tooltip('dispose');
+            $('[data-toggle="tooltip"]').tooltip({
+                boundary: 'window',
+                container: 'body',
+                html: false,
+                trigger: 'hover focus'
+            });
+            
             // Position at left: 20px from left edge, vertically centered
             const viewportHeight = window.innerHeight;
             const selectorHeight = categorySelector.offsetHeight || 300; // estimated height if not rendered yet
@@ -332,6 +399,12 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             const finalPreview = document.getElementById('selectionPreview');
             finalPreview.textContent = `"${selectedText.substring(0, 100)}${selectedText.length > 100 ? '...' : ''}"`;
+            
+            // Reset and fetch suggestions
+            const suggestedSection = document.getElementById('suggestedCategoriesSection');
+            if (suggestedSection) suggestedSection.style.display = 'none';
+            currentEmbedding = null; // Reset embedding
+            fetchSuggestions(selectedText);
         }
     });
     
@@ -414,6 +487,322 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
+    // Edit annotation handlers
+    const editModal = document.getElementById('editModal');
+    const editCategorySelect = document.getElementById('editCategorySelect');
+    const editModalCancel = document.getElementById('editModalCancel');
+    const editModalSave = document.getElementById('editModalSave');
+    let editingAnnotationId = null;
+
+    // Attach click handler for "Edit" buttons
+    // Note: Since we reload the page often, or manipulate the list, delegated event handling is safer if list is dynamic.
+    // But currently loop is static mostly unless we add via JS. Let's use annotationList for delegation.
+    
+    // Instructions Modal Handlers
+    const instructionsModal = document.getElementById('instructionsModal');
+    const showInstructionsBtn = document.getElementById('showInstructionsBtn');
+    const closeInstructionsBtn = document.getElementById('closeInstructionsBtn');
+    
+    function positionInstructionsModal() {
+        const btnRect = showInstructionsBtn.getBoundingClientRect();
+        const modalWidth = 320;
+        const offset = 10;
+        
+        // Position below the button
+        instructionsModal.style.top = (btnRect.bottom + offset) + 'px';
+        
+        // Position to the left of the button, but check if it fits
+        let leftPos = btnRect.left - modalWidth + btnRect.width;
+        
+        // If it goes off screen to the left, align with button's left
+        if (leftPos < 10) {
+            leftPos = btnRect.left;
+        }
+        
+        // If it goes off screen to the right, align to the right edge
+        if (leftPos + modalWidth > window.innerWidth - 10) {
+            leftPos = window.innerWidth - modalWidth - 10;
+        }
+        
+        instructionsModal.style.left = leftPos + 'px';
+    }
+    
+    showInstructionsBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        positionInstructionsModal();
+        instructionsModal.classList.add('show');
+    });
+    
+    closeInstructionsBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        instructionsModal.classList.remove('show');
+    });
+    
+    // Close modal when clicking outside
+    document.addEventListener('click', function(e) {
+        if (instructionsModal.classList.contains('show') && 
+            !instructionsModal.contains(e.target) && 
+            e.target !== showInstructionsBtn) {
+            instructionsModal.classList.remove('show');
+        }
+    });
+    
+    // Close modal with ESC key
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && instructionsModal.classList.contains('show')) {
+            instructionsModal.classList.remove('show');
+        }
+    });
+    
+    annotationList.addEventListener('click', function(e) {
+        // Handle Delete
+        if (e.target.classList.contains('delete-annotation')) {
+             const id = e.target.getAttribute('data-id');
+             deleteAnnotation(id);
+        }
+        
+        // Handle Edit
+        if (e.target.classList.contains('edit-annotation')) {
+             const id = e.target.getAttribute('data-id');
+             const currentCategory = e.target.getAttribute('data-category');
+             openEditModal(id, currentCategory);
+        }
+    });
+
+    function openEditModal(id, currentCategory) {
+        editingAnnotationId = id;
+        editCategorySelect.value = currentCategory;
+        editModal.classList.add('active');
+        
+        // Focus for keyboard accessibility
+        editCategorySelect.focus();
+        
+        // Add escape key handler specifically for this modal
+        const handleEscapeEdit = (e) => {
+             if (e.key === 'Escape') closeEditModal();
+        };
+        document.addEventListener('keydown', handleEscapeEdit);
+        
+        // Store reference to clean up
+        editModal.handleEscape = handleEscapeEdit;
+    }
+
+    function closeEditModal() {
+        editModal.classList.remove('active');
+        editingAnnotationId = null;
+        if (editModal.handleEscape) {
+            document.removeEventListener('keydown', editModal.handleEscape);
+            editModal.handleEscape = null;
+        }
+    }
+
+    editModalCancel.addEventListener('click', closeEditModal);
+
+    editModalSave.addEventListener('click', async function() {
+        if (!editingAnnotationId) return;
+        
+        const newCategory = editCategorySelect.value;
+        if (!newCategory) return;
+        
+        const updateUrl = `{% url 'update_annotation' pk=document.pk annotation_id=0 %}`.replace('0', editingAnnotationId);
+        
+        try {
+            editModalSave.textContent = 'Saving...';
+            editModalSave.disabled = true;
+            
+            const response = await fetch(updateUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                },
+                body: JSON.stringify({ category: newCategory })
+            });
+            
+            const result = await response.json();
+            
+            if (response.ok && result.status === 'success') {
+                // 1. Update internal data
+                const targetAnn = existingAnnotations.find(a => a.id === parseInt(editingAnnotationId));
+                if (targetAnn) {
+                    targetAnn.category = newCategory;
+                    targetAnn.color = categoryColors[newCategory];
+                }
+
+                // 2. Update the List Item (Sidebar)
+                // This updates the badge text/color but leaves the item background alone
+                const listItem = document.querySelector(`.annotation-item[data-annotation-id="${editingAnnotationId}"]`);
+                if (listItem) {
+                    const badge = listItem.querySelector('.category-badge');
+                    const editBtn = listItem.querySelector('.edit-annotation');
+                    
+                    if (badge) {
+                        badge.textContent = newCategory;
+                        badge.style.backgroundColor = categoryColors[newCategory]+'90'; // Add transparency for badge background
+                    }
+                    if (editBtn) {
+                        editBtn.setAttribute('data-category', newCategory);
+                    }
+                    // Explicitly clear any background style if it was wrongly added previously
+                    listItem.style.background = '';
+                    listItem.style.borderBottom = '';
+                    listItem.style.boxShadow = ''; 
+                }
+
+                // 3. Update Document Highlights ONLY
+                // FIX: Added '.highlight' class to selector so we don't target sidebar items
+                const highlights = document.querySelectorAll(`.highlight[data-annotation-id]`);
+                
+                highlights.forEach(span => {
+                    const idAttr = span.getAttribute('data-annotation-id');
+                    if (!idAttr) return;
+
+                    const ids = idAttr.split(',');
+                    const index = ids.indexOf(String(editingAnnotationId));
+
+                    if (index !== -1) {
+                        const catAttr = span.getAttribute('data-category');
+                        const cats = (catAttr || '').split(',');
+
+                        while (cats.length <= index) cats.push('');
+                        cats[index] = newCategory;
+                        span.setAttribute('data-category', cats.join(','));
+
+                        // Re-apply Highlight Styling
+                        const currentColors = ids.map(id => {
+                            const ann = existingAnnotations.find(a => a.id === parseInt(id));
+                            return ann ? ann.color : '#cccccc';
+                        });
+
+                        if (currentColors.length === 1) {
+                            const color = currentColors[0];
+                            span.style.background = hexToRGBA(color, 0.3);
+                            span.style.backgroundColor = hexToRGBA(color, 0.3);
+                            span.style.borderBottom = `2px solid ${color}`;
+                            span.style.boxShadow = '';
+                        } else {
+                            const gradientStops = currentColors.map((color, idx) => {
+                                const start = (idx / currentColors.length) * 100;
+                                const end = ((idx + 1) / currentColors.length) * 100;
+                                return `${hexToRGBA(color, 0.3)} ${start}%, ${hexToRGBA(color, 0.3)} ${end}%`;
+                            }).join(', ');
+
+                            span.style.background = `linear-gradient(to bottom, ${gradientStops})`;
+                            span.style.borderBottom = `2px solid ${currentColors[0]}`;
+                            span.style.boxShadow = `inset 0 -4px 0 -2px ${currentColors[currentColors.length - 1]}`;
+                        }
+                        
+                        span.title = cats.join(', ') + ' - Click to manage';
+                    }
+                });
+
+                // 4. Update Stats and Notify
+                updateStats();
+                showNotification('Annotation updated successfully', 'success');
+
+            } else {
+                showNotification('Error updating annotation: ' + (result.message || 'Unknown error'), 'error');
+            }
+        } catch(error) {
+            console.error('Error updating:', error);
+            showNotification('Network error occurred', 'error');
+        } finally {
+             editModalSave.textContent = 'Save Changes';
+             editModalSave.disabled = false;
+             closeEditModal();
+        }
+    });
+
+    // Action Choice Modal handlers
+    const actionChoiceModal = document.getElementById('actionChoiceModal');
+    const actionChoiceCategory = document.getElementById('actionChoiceCategory');
+    const actionChoiceText = document.getElementById('actionChoiceText');
+    const actionChoiceCancel = document.getElementById('actionChoiceCancel');
+    const actionChoiceEdit = document.getElementById('actionChoiceEdit');
+    const actionChoiceDelete = document.getElementById('actionChoiceDelete');
+    
+    let currentActionAnnotationId = null;
+
+    function openActionChoiceModal(annotationId) {
+        // Handle comma-separated IDs (overlapping annotations)
+        const ids = String(annotationId).split(',');
+        let targetId = null;
+        let annotation = null;
+        
+        // Find first valid annotation that exists in our list
+        for (const id of ids) {
+             const found = existingAnnotations.find(a => a.id === parseInt(id));
+             if (found) {
+                 targetId = id;
+                 annotation = found;
+                 break;
+             }
+        }
+        
+        // If we can't find it in existingAnnotations (maybe it was just added but list not updated? 
+        // normally saveAnnotation updates list), try to infer category?
+        // But for now, let's rely on finding it.
+        
+        if (!annotation) {
+             console.warn("Could not find annotation data for ID:", annotationId);
+             // Verify if we can still offer delete?
+             currentActionAnnotationId = ids[0];
+             actionChoiceCategory.textContent = "Unknown";
+             actionChoiceText.textContent = "Could not retreive details";
+        } else {
+             currentActionAnnotationId = targetId;
+             actionChoiceCategory.textContent = annotation.category;
+             actionChoiceText.textContent = `"${annotation.text.substring(0, 100)}${annotation.text.length > 100 ? '...' : ''}"`;
+        }
+        
+        actionChoiceModal.classList.add('active');
+        
+        // Setup escape key
+        const handleEscape = (e) => {
+            if (e.key === 'Escape') closeActionChoiceModal();
+        };
+        document.addEventListener('keydown', handleEscape);
+        actionChoiceModal.handleEscape = handleEscape;
+    }
+    
+    function closeActionChoiceModal() {
+        actionChoiceModal.classList.remove('active');
+        currentActionAnnotationId = null;
+        if (actionChoiceModal.handleEscape) {
+            document.removeEventListener('keydown', actionChoiceModal.handleEscape);
+            actionChoiceModal.handleEscape = null;
+        }
+    }
+    
+    actionChoiceCancel.addEventListener('click', closeActionChoiceModal);
+    
+    actionChoiceEdit.addEventListener('click', () => {
+        const id = currentActionAnnotationId;
+        const annotation = existingAnnotations.find(a => a.id === parseInt(id));
+        closeActionChoiceModal();
+        if (annotation) {
+            openEditModal(id, annotation.category);
+        } else if (id) {
+             // Fallback if we have ID but no object (shouldn't happen often)
+             // We need category for edit modal... maybe fetch or guess?
+             // Since edit modal needs current category selected, if we don't know it, maybe default to first?
+             openEditModal(id, "");
+        }
+    });
+    
+    actionChoiceDelete.addEventListener('click', () => {
+        const id = currentActionAnnotationId;
+        closeActionChoiceModal();
+        if (id) {
+            deleteAnnotation(id);
+        }
+    });
+    
+    // Close on backdrop click
+    actionChoiceModal.addEventListener('click', (e) => {
+        if (e.target === actionChoiceModal) closeActionChoiceModal();
+    });
+
     // Category selection handler
     document.querySelectorAll('#categorySelectorOptions .category-option').forEach(option => {
         option.addEventListener('click', function() {
@@ -499,13 +888,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 endXPath: endXPath,
                 startOffset: actualStartOffset,
                 endOffset: actualEndOffset
-            }
+            },
+            embedding: currentEmbedding
         };
         
         console.log('Sending data to server:', {
             category: data.category,
             textLength: data.selectedText.length,
-            hasXPath: !!(startXPath && endXPath)
+            hasXPath: !!(startXPath && endXPath),
+            hasEmbedding: !!currentEmbedding
         });
         
         try {
@@ -557,6 +948,7 @@ document.addEventListener('DOMContentLoaded', function() {
         window.getSelection().removeAllRanges();
         currentSelection = null;
         currentRange = null;
+        currentEmbedding = null;
     }
     
     // Get XPath for a node
@@ -629,11 +1021,11 @@ document.addEventListener('DOMContentLoaded', function() {
         annotationItem.className = 'annotation-item';
         annotationItem.dataset.annotationId = id;
         annotationItem.innerHTML = `
-            <div class="category-badge" style="background-color: ${color};">
+            <div class="category-badge" style="background-color: ${color}90;">
                 ${category}
             </div>
             <div class="text-preview">"${text.substring(0, 100)}${text.length > 100 ? '...' : ''}"</div>
-            <small class="text-muted">Just now</small>
+            <button class="btn btn-sm btn-outline-secondary edit-annotation me-1" data-id="${id}" data-category="${category}">Edit</button>
             <button class="btn btn-sm btn-danger float-end delete-annotation" data-id="${id}">Delete</button>
         `;
         
@@ -698,7 +1090,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 
                 // Remove highlight from document
-                const highlights = document.querySelectorAll(`[data-annotation-id"]`);
+                const highlights = document.querySelectorAll('[data-annotation-id]');
                 highlights.forEach(highlight => {
                     const ids = highlight.getAttribute('data-annotation-id').split(',');
                     
@@ -845,10 +1237,7 @@ document.addEventListener('DOMContentLoaded', function() {
         alert.style.top = '20px';
         alert.style.right = '20px';
         alert.style.zIndex = '10001';
-        alert.innerHTML = `
-            ${message}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        `;
+        alert.innerHTML = `${message}`;
         document.body.appendChild(alert);
         
         setTimeout(() => alert.remove(), 3000);
@@ -1018,7 +1407,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     
                     // Update title to show multiple categories
                     const categories = targetNode.getAttribute('data-category').split(',');
-                    targetNode.title = categories.join(', ') + ' - Click to delete';
+                    targetNode.title = categories.join(', ') + ' - Click to manage';
                     
                     return;
                 }
@@ -1055,7 +1444,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     
                     // Update title
                     const categories = highlightSpan.getAttribute('data-category').split(',');
-                    highlightSpan.title = categories.join(', ') + ' - Click to delete';
+                    highlightSpan.title = categories.join(', ') + ' - Click to manage';
                     
                     console.log('✓ Added overlapping annotation to existing highlight');
                     return;
@@ -1077,13 +1466,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 span.style.backgroundColor = hexToRGBA(annotation.color, 0.3);
                 span.style.borderBottom = `2px solid ${annotation.color}`;
                 span.textContent = highlightText;
-                span.title = `${annotation.category} - Click to delete`;
+                span.title = `${annotation.category} - Click to manage`;
                 
                 // Add click handler for deletion
                 span.addEventListener('click', function(e) {
                     e.stopPropagation();
                     const annotationId = this.getAttribute('data-annotation-id');
-                    deleteAnnotation(annotationId);
+                    openActionChoiceModal(annotationId);
                 });
                 
                 // Replace the text node with the parts
@@ -1213,7 +1602,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         
                         // Update title
                         const categories = targetNode.getAttribute('data-category').split(',');
-                        targetNode.title = categories.join(', ') + ' - Click to delete';
+                        targetNode.title = categories.join(', ') + ' - Click to manage';
                         
                         console.log('✓ Added overlapping annotation to existing highlight');
                         continue;
@@ -1247,7 +1636,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         highlightSpan.style.boxShadow = `inset 0 -4px 0 -2px ${annotation.color}`;
                         
                         const categories = highlightSpan.getAttribute('data-category').split(',');
-                        highlightSpan.title = categories.join(', ') + ' - Click to delete';
+                        highlightSpan.title = categories.join(', ') + ' - Click to manage';
                         
                         console.log('✓ Added overlapping annotation to parent highlight');
                         continue;
@@ -1269,13 +1658,13 @@ document.addEventListener('DOMContentLoaded', function() {
                     span.style.backgroundColor = hexToRGBA(annotation.color, 0.3);
                     span.style.borderBottom = `2px solid ${annotation.color}`;
                     span.textContent = highlightText;
-                    span.title = `${annotation.category} - Click to delete`;
+                    span.title = `${annotation.category} - Click to manage`;
                     
                     // Add click handler for deletion
                     span.addEventListener('click', function(e) {
                         e.stopPropagation();
                         const annotationId = this.getAttribute('data-annotation-id');
-                        deleteAnnotation(annotationId);
+                        openActionChoiceModal(annotationId);
                     });
                     
                     // Replace the text node with the parts
@@ -1296,65 +1685,93 @@ document.addEventListener('DOMContentLoaded', function() {
         console.log('✓ Highlighted using text search:', annotation.category);
     }
     
-    // Add category form handlers
-    const addCategoryBtn = document.getElementById('addCategoryBtn');
-    const addCategoryForm = document.getElementById('addCategoryForm');
-    const saveCategoryBtn = document.getElementById('saveCategoryBtn');
-    const cancelCategoryBtn = document.getElementById('cancelCategoryBtn');
-    
-    addCategoryBtn.addEventListener('click', function() {
-        addCategoryForm.classList.add('active');
-        addCategoryBtn.style.display = 'none';
-    });
-    
-    cancelCategoryBtn.addEventListener('click', function() {
-        addCategoryForm.classList.remove('active');
-        addCategoryBtn.style.display = 'block';
-        document.getElementById('newCategoryName').value = '';
-        document.getElementById('newCategoryDescription').value = '';
-    });
-    
-    saveCategoryBtn.addEventListener('click', async function() {
-        const name = document.getElementById('newCategoryName').value.trim();
-        const parentId = document.getElementById('newCategoryParent').value;
-        const color = document.getElementById('newCategoryColor').value;
-        const description = document.getElementById('newCategoryDescription').value.trim();
+    // Fetch suggested categories
+    async function fetchSuggestions(text) {
+        const suggestedSection = document.getElementById('suggestedCategoriesSection');
+        const suggestedList = document.getElementById('suggestedCategoriesList');
         
-        if (!name) {
-            alert('Please enter a category name');
-            return;
-        }
+        if (!suggestedSection || !suggestedList) return;
+        
+        // Show loading state
+        suggestedSection.style.display = 'block';
+        suggestedList.innerHTML = '<div style="padding:5px; font-style:italic; color:#999; font-size: 0.9em;">Thinking...</div>';
         
         try {
-            const response = await fetch('{% url "create_category" %}', {
+            const response = await fetch('{% url "suggest_categories" %}', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'X-CSRFToken': csrfToken
                 },
-                body: JSON.stringify({
-                    name: name,
-                    parent_id: parentId || null,
-                    color: color,
-                    description: description
-                })
+                body: JSON.stringify({ text: text })
             });
             
             const result = await response.json();
             
             if (result.status === 'success') {
-                showNotification('Category created successfully! Reloading...', 'success');
-                // Reload the page to show the new category
-                setTimeout(() => location.reload(), 1000);
-            } else {
-                showNotification('Error: ' + result.message, 'error');
+                if (result.embedding) {
+                    currentEmbedding = result.embedding;
+                }
+                
+                if (result.suggestions && result.suggestions.length > 0) {
+                    renderSuggestions(result.suggestions);
+                } else {
+                // Hide if no suggestions or error
+                suggestedSection.style.display = 'none';
+                console.log('No suggestions returned', result);
+                }
             }
         } catch (error) {
-            console.error('Error creating category:', error);
-            showNotification('Error creating category: ' + error.message, 'error');
+            console.error('Error fetching suggestions:', error);
+            suggestedSection.style.display = 'none';
         }
-    });
-    
+    }
+
+    // Render suggestions
+    function renderSuggestions(suggestions) {
+        const suggestedList = document.getElementById('suggestedCategoriesList');
+        suggestedList.innerHTML = '';
+        
+        suggestions.forEach(cat => {
+            const div = document.createElement('div');
+            div.className = 'category-option suggested-category';
+            div.style.cssText = `border-left: 4px solid ${cat.color}; margin: 5px 0; padding: 8px; background: white; cursor: pointer; border-radius: 4px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); transition: background 0.2s; border: 1px solid #eee;`;
+            div.setAttribute('data-category', cat.name);
+            // data-toggle="tooltip" data-placement="right" title="{{ category.description }}
+            div.setAttribute('data-toggle', 'tooltip');
+            div.setAttribute('data-placement', 'right');
+            div.setAttribute('title', cat.description || '');
+            
+            // Hover effect handled via css class or inline here
+            div.onmouseover = function() { this.style.backgroundColor = '#f0f0f0'; };
+            div.onmouseout = function() { this.style.backgroundColor = 'white'; };
+            
+            const scorePercent = Math.round(cat.score * 100);
+            
+            div.innerHTML = `
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <span style="font-weight:600; font-size: 0.95em;">${cat.name}</span>
+                    <span style="font-size:0.75em; color:white; background:${cat.color}; padding:2px 6px; border-radius:10px; opacity: 0.8;">${scorePercent}% match</span>
+                </div>
+                ${cat.parent_name ? `<div style="font-size:0.75em; color:#888; margin-top:2px;">in ${cat.parent_name}</div>` : ''}
+            `;
+            
+            div.addEventListener('click', function() {
+                saveAnnotation(cat.name);
+                categorySelector.style.display = 'none';
+            });
+            
+            suggestedList.appendChild(div);
+        });
+        $('[data-toggle="tooltip"]').tooltip('dispose');
+            $('[data-toggle="tooltip"]').tooltip({
+                boundary: 'window',
+                container: 'body',
+                html: false,
+                trigger: 'hover focus'
+            });
+    }
+
     // Initial setup
     loadExistingAnnotations();
     // Update stats after a short delay to ensure DOM is ready

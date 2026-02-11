@@ -1,6 +1,8 @@
 services:
   django-web-dev:
-    build: ./app
+    build:
+      context: ./app
+      dockerfile: Dockerfile
     container_name: django-web-${STACK_SUFFIX:-dev}
     command: /app/entrypoint.dev.sh
     env_file:
@@ -29,9 +31,32 @@ services:
           target: /app
           ignore:
             - .venv/
+            - __pycache__/
 
         - action: rebuild
           path: ./uv.lock
+
+  celery-worker:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    container_name: celery-worker-dev
+    command: watchfiles "celery -A web worker --loglevel=info"
+    env_file:
+      - .env.local
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./app:/app
+      - django-venv:/app/.venv
+      - ./media:/app/media
+    depends_on:
+      - mysql
+      - redis
+    environment:
+      - UV_CACHE_DIR=/tmp/uv-cache
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
 
   mysql:
     container_name: mysql-${STACK_SUFFIX:-dev}
@@ -52,7 +77,6 @@ services:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redis-data-${STACK_SUFFIX:-dev}:/data
-
   celery-worker:
     build: ./app
     container_name: celery-worker-${STACK_SUFFIX:-dev}
@@ -72,7 +96,6 @@ services:
       - UV_CACHE_DIR=/tmp/uv-cache
       - PYTHONUNBUFFERED=1
     restart: unless-stopped
-
   grobid:
     image: grobid/grobid:0.8.2-crf
     container_name: grobid-${STACK_SUFFIX:-dev}

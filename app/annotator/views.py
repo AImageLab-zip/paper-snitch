@@ -9,9 +9,11 @@ import os
 import json
 from pathlib import Path
 import shutil
+import struct
 
 from .models import Document, Annotation, AnnotationCategory
 from .forms import DocumentUploadForm
+from .utils import get_embedding, cosine_similarity
 
 import logging
 
@@ -97,6 +99,8 @@ def convert_pdf_to_html(document):
                 DOCKER_IMAGE,
                 "--process-outline",
                 "0",
+                "--zoom",
+                "1.7",
                 "--dest-dir",
                 "/output",
                 f"/pdf/{pdf_filename}",
@@ -241,7 +245,7 @@ def annotate_document(request, pk):
     categories_hierarchical = []
     for parent in parent_categories:
         categories_hierarchical.append(parent)
-        subcategories = parent.subcategories.all().order_by("order", "name")
+        subcategories = parent.subcategories.all().order_by("name")
         categories_hierarchical.extend(subcategories)
 
     categories = categories_hierarchical
@@ -299,12 +303,37 @@ def save_annotation(request, pk):
                 status=400,
             )
 
+        # Calculate embedding and similarity
+        embedding = data.get("embedding")
+        similarity_score = None
+        embedding_binary = None
+
+        try:
+            # Get embedding for selected text if not provided
+
+            # Check if we have an embedding
+            if embedding:
+                # Calculate similarity if category has embedding
+                if category.embedding and isinstance(category.embedding, list):
+                    similarity_score = cosine_similarity(embedding, category.embedding)
+
+                # Pack embedding to binary
+                try:
+                    embedding_binary = struct.pack(f"{len(embedding)}f", *embedding)
+                except Exception as e:
+                    logger.error(f"Error packing embedding: {e}")
+
+        except Exception as e:
+            logger.error(f"Error calculating embedding/similarity: {e}")
+
         annotation = Annotation.objects.create(
             document=document,
             category=category,
             selected_text=data.get("selectedText"),
             html_selector=data.get("htmlSelector", ""),
             position_data=data.get("positionData", {}),
+            embedding=embedding_binary,
+            similarity_score=similarity_score,
         )
 
         print(f"Annotation created successfully: {annotation.id}")
@@ -423,6 +452,23 @@ def retry_conversion(request, pk):
 
 
 @require_http_methods(["POST"])
+def delete_document(request, pk):
+    """Delete a document"""
+    document = get_object_or_404(Document, pk=pk)
+    try:
+        # Delete files from filesystem (Django signals usually handle this but let's be safe for custom logic if needed)
+        # Using default behavior of Django FileField/OneToOneField on_delete=CASCADE should be enough for DB models
+        title = document.title
+        document.delete()
+        messages.success(request, f'Document "{title}" deleted successfully.')
+    except Exception as e:
+        messages.error(request, f"Error deleting document: {str(e)}")
+
+    return redirect("document_list")
+
+
+# TODO Deprecated endpoint, remove in future releases
+@require_http_methods(["POST"])
 def create_category(request):
     """API endpoint to create a new annotation category"""
     try:
@@ -481,3 +527,129 @@ def create_category(request):
             {"status": "error", "message": f"Error creating category: {str(e)}"},
             status=500,
         )
+
+
+@require_http_methods(["POST"])
+def suggest_categories(request):
+    """
+    Computes embedding for input text and returns top 3 similar categories.
+    """
+    try:
+        data = json.loads(request.body)
+        text = data.get("text", "")
+
+        if not text:
+            return JsonResponse(
+                {"status": "error", "message": "No text provided"}, status=400
+            )
+
+        # Get embedding for the text
+        text_embedding = get_embedding(text)
+
+        if text_embedding is None or len(text_embedding) == 0:
+            return JsonResponse(
+                {"status": "error", "message": "Failed to generate embedding"},
+                status=500,
+            )
+
+        # Get all categories with embeddings
+        # We fetch all and filter in python to be safe with JSONField quirks across DBs
+        categories = AnnotationCategory.objects.all()
+
+        scored_categories = []
+        for cat in categories:
+            # Skip if embedding is empty or not a list/valid structure
+            if not cat.embedding or not isinstance(cat.embedding, list):
+                continue
+
+            score = cosine_similarity(text_embedding, cat.embedding)
+            scored_categories.append(
+                {
+                    "id": cat.id,
+                    "name": cat.name,
+                    "color": cat.color,
+                    "score": score,
+                    "parent_name": cat.parent.name if cat.parent else None,
+                    "description": cat.description,
+                }
+            )
+
+        # Sort by score descending and take top 3
+        scored_categories.sort(key=lambda x: x["score"], reverse=True)
+        top_categories = scored_categories[:3]
+
+        return JsonResponse(
+            {
+                "status": "success",
+                "suggestions": top_categories,
+                "embedding": text_embedding.tolist(),
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"Error in suggest_categories: {e}")
+        return JsonResponse({"status": "error", "message": str(e)}, status=500)
+
+
+@require_http_methods(["POST"])
+def update_annotation(request, pk, annotation_id):
+    """API endpoint to update an annotation's category"""
+    document = get_object_or_404(Document, pk=pk)
+    annotation = get_object_or_404(Annotation, pk=annotation_id, document=document)
+
+    try:
+        data = json.loads(request.body)
+        new_category_name = data.get("category")
+
+        if not new_category_name:
+            return JsonResponse(
+                {"status": "error", "message": "Category is required"}, status=400
+            )
+
+        try:
+            category = AnnotationCategory.objects.get(name=new_category_name)
+        except AnnotationCategory.DoesNotExist:
+            return JsonResponse(
+                {
+                    "status": "error",
+                    "message": f'Category "{new_category_name}" not found',
+                },
+                status=400,
+            )
+
+        # Update category
+        annotation.category = category
+
+        # Recalculate similarity if possible
+        if (
+            annotation.embedding
+            and category.embedding
+            and isinstance(category.embedding, list)
+        ):
+            try:
+                # Unpack embedding (assuming it's a list of floats)
+                # length is len(annotation.embedding) / 4 (since float is 4 bytes)
+                num_floats = len(annotation.embedding) // 4
+                embedding_vector = struct.unpack(f"{num_floats}f", annotation.embedding)
+
+                similarity_score = cosine_similarity(
+                    list(embedding_vector), category.embedding
+                )
+                annotation.similarity_score = similarity_score
+            except Exception as e:
+                logger.error(f"Error recalculating similarity during update: {e}")
+
+        annotation.save()
+
+        return JsonResponse(
+            {
+                "status": "success",
+                "message": "Annotation updated successfully",
+                "category_name": category.name,
+                "category_color": category.color,
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"Error updating annotation: {e}")
+        return JsonResponse({"status": "error", "message": str(e)}, status=400)

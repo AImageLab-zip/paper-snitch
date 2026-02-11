@@ -308,11 +308,10 @@ a:hover {
 
 /* Selection highlight */
 ::selection {
-  background-color: var(--teal);
   color: var(--bg-white);
 }
 body ::selection {
-  background-color: var(--teal);
+  background-color: #1abc9c;
   color: var(--bg-white);
 }
 
