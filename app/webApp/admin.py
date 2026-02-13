@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.utils.html import format_html
 from .models import (
     AnalysisTask,
     Operations,
@@ -14,6 +15,7 @@ from .models import (
     LLMModelConfig,
     Prompt,
 )
+from .models_schema import DatabaseSchema
 
 
 @admin.register(Operations)
@@ -202,3 +204,53 @@ class AnalysisTaskAdmin(admin.ModelAdmin):
     list_filter = ["status", "created_at", "updated_at"]
     search_fields = ["paper__title", "user__username"]
     readonly_fields = ["created_at", "updated_at"]
+
+
+@admin.register(DatabaseSchema)
+class DatabaseSchemaAdmin(admin.ModelAdmin):
+    list_display = ["created_at", "migration_name", "schema_preview"]
+    readonly_fields = ["created_at", "schema_diagram_preview", "schema_dot"]
+    list_filter = ["created_at"]
+    search_fields = ["migration_name", "notes"]
+    
+    fieldsets = (
+        (
+            "Schema Information",
+            {
+                "fields": ("created_at", "migration_name", "notes"),
+            },
+        ),
+        (
+            "Diagram",
+            {
+                "fields": ("schema_diagram_preview", "schema_diagram"),
+            },
+        ),
+        (
+            "GraphViz Source",
+            {
+                "fields": ("schema_dot",),
+                "classes": ("collapse",),
+            },
+        ),
+    )
+    
+    def schema_preview(self, obj):
+        """Small thumbnail preview in list view."""
+        if obj.schema_diagram:
+            return format_html(
+                '<img src="{}" style="max-height: 40px; max-width: 60px;" />',
+                obj.schema_diagram.url
+            )
+        return "No diagram"
+    schema_preview.short_description = "Preview"
+    
+    def schema_diagram_preview(self, obj):
+        """Full size preview in detail view."""
+        if obj.schema_diagram:
+            return format_html(
+                '<img src="{}" style="max-width: 100%; height: auto;" />',
+                obj.schema_diagram.url
+            )
+        return "No diagram available"
+    schema_diagram_preview.short_description = "Database Schema Diagram"
