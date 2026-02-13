@@ -224,6 +224,7 @@ dependencies = [
     { name = "fsspec" },
     { name = "gitingest" },
     { name = "google-genai" },
+    { name = "graphviz" },
     { name = "greenlet" },
     { name = "gunicorn" },
     { name = "h11" },
@@ -343,6 +344,7 @@ requires-dist = [
     { name = "fsspec", marker = "python_full_version >= '3.9'", specifier = "==2025.10.0" },
     { name = "gitingest", specifier = ">=0.3.1" },
     { name = "google-genai", specifier = ">=1.50.0" },
+    { name = "graphviz", specifier = ">=0.21" },
     { name = "greenlet", marker = "python_full_version >= '3.9'", specifier = "==3.2.4" },
     { name = "gunicorn", marker = "python_full_version >= '3.7'", specifier = "==23.0.0" },
     { name = "h11", marker = "python_full_version >= '3.8'", specifier = "==0.16.0" },
@@ -1125,6 +1127,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/5f/7b/0d0c8f3a52cfda38064e650f7d2c02a7108d3a34d161bd5191069f909cf1/google_genai-1.50.0.tar.gz", hash = "sha256:b1ee723b3491977166cf268e6fb44e5dc430fbbd3c45011e752826a4ffdf2066", size = 254654, upload-time = "2025-11-12T22:45:21.964Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/9f/0c/959a1343003bbbb50b20541304c5eee5564225182c285aab3e0d09f24db0/google_genai-1.50.0-py3-none-any.whl", hash = "sha256:adfb8ab3fca612693c1778267649d955757f95a7a1bf97e781802ab3b5b993a0", size = 257311, upload-time = "2025-11-12T22:45:20.731Z" },
+]
+
+[[package]]
+name = "graphviz"
+version = "0.21"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f8/b3/3ac91e9be6b761a4b30d66ff165e54439dcd48b83f4e20d644867215f6ca/graphviz-0.21.tar.gz", hash = "sha256:20743e7183be82aaaa8ad6c93f8893c923bd6658a04c32ee115edb3c8a835f78", size = 200434, upload-time = "2025-06-15T09:35:05.824Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/91/4c/e0ce1ef95d4000ebc1c11801f9b944fa5910ecc15b5e351865763d8657f8/graphviz-0.21-py3-none-any.whl", hash = "sha256:54f33de9f4f911d7e84e4191749cac8cc5653f815b06738c54db9a15ab8b1e42", size = 47300, upload-time = "2025-06-15T09:35:04.433Z" },
 ]
 
 [[package]]

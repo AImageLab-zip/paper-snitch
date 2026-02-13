@@ -1,6 +1,7 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
+from django.contrib.auth.decorators import login_required
 from django.core.files.base import ContentFile
 from django.utils import timezone
 from django.contrib import messages
@@ -211,6 +212,7 @@ def convert_pdf_to_html(document):
         raise Exception(f"PDF to HTML conversion failed: {str(e)}")
 
 
+@login_required
 def annotate_document(request, pk):
     """View for annotating a document"""
     document = get_object_or_404(Document, pk=pk)
@@ -219,8 +221,8 @@ def annotate_document(request, pk):
         messages.error(request, "Document has not been converted to HTML yet.")
         return redirect("home")
 
-    # Get all annotations for this document with category info
-    annotations = document.annotations.all()
+    # Get only this user's annotations for this document
+    annotations = document.annotations.filter(user=request.user)
 
     # Enrich annotations with category objects
     annotations_with_categories = []
@@ -270,6 +272,7 @@ def annotate_document(request, pk):
     return render(request, "annotator/annotate.html", context)
 
 
+@login_required
 @require_http_methods(["POST"])
 def save_annotation(request, pk):
     """API endpoint to save annotations"""
@@ -328,6 +331,7 @@ def save_annotation(request, pk):
 
         annotation = Annotation.objects.create(
             document=document,
+            user=request.user,
             category=category,
             selected_text=data.get("selectedText"),
             html_selector=data.get("htmlSelector", ""),
@@ -358,10 +362,11 @@ def save_annotation(request, pk):
         return JsonResponse({"status": "error", "message": str(e)}, status=400)
 
 
+@login_required
 @require_http_methods(["DELETE"])
 def delete_annotation(request, pk, annotation_id):
-    """API endpoint to delete an annotation"""
-    annotation = get_object_or_404(Annotation, pk=annotation_id, document_id=pk)
+    """API endpoint to delete an annotation - only delete own annotations"""
+    annotation = get_object_or_404(Annotation, pk=annotation_id, document_id=pk, user=request.user)
     annotation.delete()
 
     return JsonResponse(
@@ -369,11 +374,12 @@ def delete_annotation(request, pk, annotation_id):
     )
 
 
+@login_required
 @require_http_methods(["GET"])
 def get_annotations(request, pk):
-    """API endpoint to get all annotations for a document"""
+    """API endpoint to get all annotations for a document - only user's own annotations"""
     document = get_object_or_404(Document, pk=pk)
-    annotations = document.annotations.all()
+    annotations = document.annotations.filter(user=request.user)
 
     data = [
         {
@@ -401,10 +407,11 @@ def document_list(request):
     return render(request, "annotator/document_list.html", {"documents": documents})
 
 
+@login_required
 def export_annotations(request, pk):
-    """Export annotations as JSON"""
+    """Export annotations as JSON - only user's own annotations"""
     document = get_object_or_404(Document, pk=pk)
-    annotations = document.annotations.all()
+    annotations = document.annotations.filter(user=request.user)
 
     data = {
         "document": {
@@ -591,11 +598,12 @@ def suggest_categories(request):
         return JsonResponse({"status": "error", "message": str(e)}, status=500)
 
 
+@login_required
 @require_http_methods(["POST"])
 def update_annotation(request, pk, annotation_id):
-    """API endpoint to update an annotation's category"""
+    """API endpoint to update an annotation's category - only own annotations"""
     document = get_object_or_404(Document, pk=pk)
-    annotation = get_object_or_404(Annotation, pk=annotation_id, document=document)
+    annotation = get_object_or_404(Annotation, pk=annotation_id, document=document, user=request.user)
 
     try:
         data = json.loads(request.body)

@@ -1,5 +1,6 @@
 from django.db import models
 from django.utils import timezone
+from django.contrib.auth.models import User
 import json
 
 
@@ -97,6 +98,10 @@ class Annotation(models.Model):
 
     document = models.ForeignKey(
         Document, on_delete=models.CASCADE, related_name="annotations"
+    )
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="annotations",
+        help_text="User who created this annotation"
     )
     category = models.ForeignKey(
         "AnnotationCategory", on_delete=models.PROTECT, related_name="annotations"

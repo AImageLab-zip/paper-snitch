@@ -12,7 +12,7 @@ services:
     volumes:
       - ./app:/app
       - ./static_${STACK_SUFFIX:-dev}:/app/staticfiles
-      - django-venv-${STACK_SUFFIX:-dev}:/app/.venv
+      - django-venv:/app/.venv
       - ./media_${STACK_SUFFIX:-dev}:/app/media
       - /var/run/docker.sock:/var/run/docker.sock
     ports:
@@ -36,28 +36,6 @@ services:
         - action: rebuild
           path: ./uv.lock
 
-  celery-worker:
-    build:
-      context: ./app
-      dockerfile: Dockerfile
-    container_name: celery-worker-dev
-    command: watchfiles "celery -A web worker --loglevel=info"
-    env_file:
-      - .env.local
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    volumes:
-      - ./app:/app
-      - django-venv:/app/.venv
-      - ./media:/app/media
-    depends_on:
-      - mysql
-      - redis
-    environment:
-      - UV_CACHE_DIR=/tmp/uv-cache
-      - PYTHONUNBUFFERED=1
-    restart: unless-stopped
-
   mysql:
     container_name: mysql-${STACK_SUFFIX:-dev}
     image: mysql
@@ -76,7 +54,7 @@ services:
     ports:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
-      - redis-data-${STACK_SUFFIX:-dev}:/data
+      - redis-data:/data
   celery-worker:
     build: ./app
     container_name: celery-worker-${STACK_SUFFIX:-dev}
@@ -87,7 +65,7 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./app:/app
-      - django-venv-${STACK_SUFFIX:-dev}:/app/.venv
+      - django-venv:/app/.venv
       - ./media_${STACK_SUFFIX:-dev}:/app/media
     depends_on:
       - mysql
@@ -96,6 +74,27 @@ services:
       - UV_CACHE_DIR=/tmp/uv-cache
       - PYTHONUNBUFFERED=1
     restart: unless-stopped
+
+  celery-beat:
+    build: ./app
+    container_name: celery-beat-${STACK_SUFFIX:-dev}
+    command: watchfiles "celery -A web beat --loglevel=info"
+    env_file:
+      - .env.local
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./app:/app
+      - django-venv:/app/.venv
+      - ./media_${STACK_SUFFIX:-dev}:/app/media
+    depends_on:
+      - mysql
+      - redis
+    environment:
+      - UV_CACHE_DIR=/tmp/uv-cache
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+
   grobid:
     image: grobid/grobid:0.8.2-crf
     container_name: grobid-${STACK_SUFFIX:-dev}
@@ -107,5 +106,7 @@ services:
     restart: unless-stopped
 
 volumes:
-  django-venv-${STACK_SUFFIX:-dev}:
-  redis-data-${STACK_SUFFIX:-dev}:
+  django-venv:
+    name: django-venv-${STACK_SUFFIX:-dev}
+  redis-data:
+    name: redis-data-${STACK_SUFFIX:-dev}

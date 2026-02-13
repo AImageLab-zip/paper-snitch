@@ -88,16 +88,30 @@ EOF
         cp mysql/.client.cnf "mysql_${STACK_NAME}/.client.cnf"
     fi
     
-    # Create environment file if needed
-    if [ ! -f ".env.${STACK_NAME}" ] && [ -f ".env.local" ]; then
-        cp .env.local ".env.${STACK_NAME}"
-        echo "✅ Created .env.${STACK_NAME} from .env.local"
+    # Create/update .env file for this stack
+    if [ -f ".env.local" ]; then
+        # Merge .env.local with stack-specific port configuration
+        cat .env.local > ".env.${STACK_NAME}"
+        echo "" >> ".env.${STACK_NAME}"
+        echo "# Stack-specific port configuration" >> ".env.${STACK_NAME}"
+        cat ".stacks/${STACK_NAME}.env" >> ".env.${STACK_NAME}"
+        echo "✅ Created .env.${STACK_NAME} from .env.local with port config"
+    elif [ ! -f ".env.${STACK_NAME}" ]; then
+        cp ".stacks/${STACK_NAME}.env" ".env.${STACK_NAME}"
+        echo "⚠️  Created .env.${STACK_NAME} with only port config (no .env.local found)"
     fi
     
 else
     # Load existing configuration
     if [ -f ".stacks/${STACK_NAME}.env" ]; then
         source ".stacks/${STACK_NAME}.env"
+        # Also update the main env file to ensure ports are set
+        if [ -f ".env.local" ]; then
+            cat .env.local > ".env.${STACK_NAME}"
+            echo "" >> ".env.${STACK_NAME}"
+            echo "# Stack-specific port configuration" >> ".env.${STACK_NAME}"
+            cat ".stacks/${STACK_NAME}.env" >> ".env.${STACK_NAME}"
+        fi
         echo "📋 Loaded configuration for stack: $STACK_NAME"
     else
         echo "⚠️  No configuration found for stack: $STACK_NAME"
@@ -117,9 +131,16 @@ export STACK_SUFFIX=${STACK_NAME}
 
 echo ""
 echo "🐳 Running: docker compose -p ${PROJECT_NAME} -f compose.dev.yml --env-file .env.${STACK_NAME} $ACTION"
+echo "   DJANGO_PORT=${DJANGO_PORT}, MYSQL_PORT=${MYSQL_PORT}, REDIS_PORT=${REDIS_PORT}, GROBID_PORT=${GROBID_PORT}"
 echo ""
 
-docker compose -p ${PROJECT_NAME} -f compose.dev.yml --env-file ".env.${STACK_NAME}" $ACTION -d
+if [ "$ACTION" = "up" ]; then
+    COMPOSE_PROJECT_NAME=${PROJECT_NAME} DJANGO_PORT=${DJANGO_PORT} MYSQL_PORT=${MYSQL_PORT} REDIS_PORT=${REDIS_PORT} GROBID_PORT=${GROBID_PORT} STACK_SUFFIX=${STACK_NAME} \
+        docker compose -p ${PROJECT_NAME} -f compose.dev.yml --env-file ".env.${STACK_NAME}" $ACTION -d
+else
+    COMPOSE_PROJECT_NAME=${PROJECT_NAME} DJANGO_PORT=${DJANGO_PORT} MYSQL_PORT=${MYSQL_PORT} REDIS_PORT=${REDIS_PORT} GROBID_PORT=${GROBID_PORT} STACK_SUFFIX=${STACK_NAME} \
+        docker compose -p ${PROJECT_NAME} -f compose.dev.yml --env-file ".env.${STACK_NAME}" $ACTION
+fi
 
 if [ "$ACTION" = "up" ]; then
     echo ""

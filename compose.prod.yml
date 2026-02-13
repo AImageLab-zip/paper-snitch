@@ -50,6 +50,32 @@ services:
         condition: service_started
       grobid:
         condition: service_started
+    environment:
+      - UV_CACHE_DIR=/tmp/uv-cache
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+
+  celery-beat:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    container_name: celery-beat-prod
+    command: celery -A web beat --loglevel=info
+    env_file:
+      - .env.prod
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./static:/app/staticfiles
+      - ./media:/app/media
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      - UV_CACHE_DIR=/tmp/uv-cache
+      - PYTHONUNBUFFERED=1
     restart: unless-stopped
 
   nginx:

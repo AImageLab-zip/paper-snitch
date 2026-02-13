@@ -24,6 +24,7 @@ from django.urls import path
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path("accounts/", include("django.contrib.auth.urls")),  # Login, logout, password management
     path("", include("webApp.urls")),
     path("annotator/", include("annotator.urls")),
     # path("login/", login, name="login"),

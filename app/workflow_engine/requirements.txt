@@ -1,0 +1,19 @@
+# Additional Dependencies for Workflow Engine
+
+# Core workflow engine (already satisfied by your current requirements)
+# django>=5.2
+# celery>=5.3
+# pymysql>=1.1.2
+
+# Optional: LangGraph integration (uncomment if using AI agent nodes)
+# langgraph>=0.2.0
+# langgraph-checkpoint>=0.1.0
+# langgraph-checkpoint-mysql>=0.1.0
+
+# Optional: For enhanced monitoring
+# flower>=2.0.0  # Celery monitoring tool
+# django-celery-results>=2.5.0  # Store Celery results in Django DB
+
+# Optional: For visualization
+# graphviz>=0.20.0  # DAG visualization
+# pydot>=1.4.0
