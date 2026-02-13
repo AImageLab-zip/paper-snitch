@@ -37,7 +37,8 @@ class Command(BaseCommand):
         
         if workflow_run.completed_at:
             self.stdout.write(f'Completed: {workflow_run.completed_at}')
-            self.stdout.write(f'Duration: {workflow_run.duration:.2f}s')
+            if workflow_run.duration:
+                self.stdout.write(f'Duration: {workflow_run.duration:.2f}s')
         
         if workflow_run.error_message:
             self.stdout.write(self.style.ERROR(f'\nError: {workflow_run.error_message}'))

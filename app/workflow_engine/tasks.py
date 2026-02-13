@@ -17,6 +17,51 @@ from workflow_engine.services.orchestrator import (
 logger = logging.getLogger(__name__)
 
 
+def update_workflow_run_status():
+    """
+    Check and update status of running workflow runs.
+    
+    Updates runs to 'completed' or 'failed' when all nodes are finished.
+    
+    Returns:
+        Number of workflow runs updated
+    """
+    from django.db.models import Count, Q
+    
+    # Get all running workflow runs
+    running_runs = WorkflowRun.objects.filter(status='running')
+    
+    updated_count = 0
+    
+    for run in running_runs:
+        # Get node status counts
+        nodes = run.nodes.aggregate(
+            total=Count('id'),
+            completed=Count('id', filter=Q(status='completed')),
+            failed=Count('id', filter=Q(status='failed')),
+            skipped=Count('id', filter=Q(status='skipped')),
+            running=Count('id', filter=Q(status__in=['running', 'claimed'])),
+            pending=Count('id', filter=Q(status__in=['ready', 'pending']))
+        )
+        
+        # Check if all nodes are in a terminal state
+        terminal_nodes = nodes['completed'] + nodes['failed'] + nodes['skipped']
+        
+        if terminal_nodes == nodes['total']:
+            # All nodes are done - determine final status
+            if nodes['failed'] > 0:
+                run.status = 'failed'
+                logger.info(f"Workflow run {run.id} marked as failed ({nodes['failed']} failed nodes)")
+            else:
+                run.status = 'completed'
+                logger.info(f"Workflow run {run.id} marked as completed")
+            
+            run.save(update_fields=['status'])
+            updated_count += 1
+    
+    return updated_count
+
+
 @shared_task(bind=True, max_retries=0)
 def workflow_scheduler_task(self):
     """
@@ -25,6 +70,9 @@ def workflow_scheduler_task(self):
     This should be run via Celery Beat on a schedule (e.g., every 10 seconds).
     """
     orchestrator = WorkflowOrchestrator()
+    
+    # First, update status of any completed/failed workflow runs
+    updated_runs = update_workflow_run_status()
     
     # Claim and dispatch up to 100 ready tasks
     dispatched_count = 0
@@ -45,7 +93,8 @@ def workflow_scheduler_task(self):
         logger.info(f"Dispatched {dispatched_count} workflow tasks")
     
     return {
-        'dispatched_count': dispatched_count
+        'dispatched_count': dispatched_count,
+        'updated_runs': updated_runs
     }
 
 
