@@ -731,3 +731,166 @@
   font-weight: bold;
   color: #333;
 }
+
+/* Info Button Styles */
+.info-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--teal) 0%, var(--teal-light) 100%);
+  color: white;
+  font-size: 12px;
+  font-weight: bold;
+  cursor: pointer;
+  margin-left: 8px;
+  border: none;
+  box-shadow: 0 2px 5px rgba(102, 126, 234, 0.3);
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.info-button:hover {
+  transform: scale(1.15);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.5);
+  background: linear-gradient(135deg, var(--teal) 0%, var(--teal-light) 100%);
+}
+
+.info-button:active {
+  transform: scale(0.95);
+}
+
+/* Instructions Modal Styles */
+.instructions-modal {
+  display: none;
+  position: fixed;
+  z-index: 10000;
+  background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+  border-radius: 12px;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.2),
+    0 0 0 1px rgba(102, 126, 234, 0.1);
+  width: 320px;
+  overflow: hidden;
+}
+
+.instructions-modal.show {
+  display: block;
+  animation: popIn 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+.instructions-modal::before {
+  content: "";
+  position: absolute;
+  top: -8px;
+  left: 20px;
+  width: 16px;
+  height: 16px;
+  background: linear-gradient(135deg, var(--teal) 0%, var(--teal-light) 100%);
+  transform: rotate(45deg);
+  z-index: -1;
+}
+
+.instructions-modal-header {
+  background: linear-gradient(135deg, var(--teal) 0%, var(--teal-light) 100%);
+  color: white;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.instructions-modal-header h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.instructions-modal-close {
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: white;
+  font-size: 20px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+}
+
+.instructions-modal-close:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: rotate(90deg);
+}
+
+.instructions-modal-body {
+  padding: 16px;
+}
+
+.instructions-modal-body ol {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+  counter-reset: instruction-counter;
+}
+
+.instructions-modal-body ol li {
+  counter-increment: instruction-counter;
+  margin-bottom: 12px;
+  padding-left: 32px;
+  position: relative;
+  line-height: 1.5;
+  color: #333;
+  font-size: 14px;
+}
+
+.instructions-modal-body ol li:before {
+  content: counter(instruction-counter);
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 24px;
+  height: 24px;
+  background: linear-gradient(135deg, var(--teal) 0%, var(--teal-light) 100%);
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 12px;
+}
+
+.instructions-modal-body ol li:last-child {
+  margin-bottom: 0;
+}
+
+@keyframes popIn {
+  0% {
+    transform: scale(0.8) translateY(-10px);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.05) translateY(0);
+  }
+  100% {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+}
+
+.tooltip {
+  z-index: 100000;
+}
+
+.form-control {
+  height: 100%;
+}

@@ -26,7 +26,13 @@ exit;
 
 docker compose exec django-web uv run manage.py migrate webApp
 
+Per vedere i field di una tabella
+
 1. SHOW TABLES;
 2. DESCRIBE <nome_tabella>
 
+per modificare il tipo di un campo
 ALTER TABLE annotator_annotation MODIFY COLUMN embedding BLOB;
+
+Per visualizzare la struttura del progetto
+tree -I "static|mysql\*" -L 2

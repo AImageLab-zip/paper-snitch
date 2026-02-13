@@ -1,6 +1,8 @@
 services:
   django-web-dev:
-    build: ./app
+    build:
+      context: ./app
+      dockerfile: Dockerfile
     container_name: django-web-${STACK_SUFFIX:-dev}
     command: /app/entrypoint.dev.sh
     env_file:
@@ -10,7 +12,7 @@ services:
     volumes:
       - ./app:/app
       - ./static_${STACK_SUFFIX:-dev}:/app/staticfiles
-      - django-venv:/app/.venv
+      - django-venv-${STACK_SUFFIX:-dev}:/app/.venv
       - ./media_${STACK_SUFFIX:-dev}:/app/media
       - /var/run/docker.sock:/var/run/docker.sock
     ports:
@@ -22,7 +24,39 @@ services:
       - UV_CACHE_DIR=/tmp/uv-cache # Cache in /tmp for development
       - PYTHONUNBUFFERED=1
       - HOST_PROJECT_PATH=${PWD}
-      - WATCHFILES_FORCE_POLLING=true  # Better file watching in Docker
+    develop:
+      watch:
+        - action: sync
+          path: .
+          target: /app
+          ignore:
+            - .venv/
+            - __pycache__/
+
+        - action: rebuild
+          path: ./uv.lock
+
+  celery-worker:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    container_name: celery-worker-dev
+    command: watchfiles "celery -A web worker --loglevel=info"
+    env_file:
+      - .env.local
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./app:/app
+      - django-venv:/app/.venv
+      - ./media:/app/media
+    depends_on:
+      - mysql
+      - redis
+    environment:
+      - UV_CACHE_DIR=/tmp/uv-cache
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
 
   mysql:
     container_name: mysql-${STACK_SUFFIX:-dev}
@@ -42,8 +76,7 @@ services:
     ports:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
-      - redis-data:/data
-
+      - redis-data-${STACK_SUFFIX:-dev}:/data
   celery-worker:
     build: ./app
     container_name: celery-worker-${STACK_SUFFIX:-dev}
@@ -54,7 +87,7 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./app:/app
-      - django-venv:/app/.venv
+      - django-venv-${STACK_SUFFIX:-dev}:/app/.venv
       - ./media_${STACK_SUFFIX:-dev}:/app/media
     depends_on:
       - mysql
@@ -74,7 +107,7 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./app:/app
-      - django-venv:/app/.venv
+      - django-venv-${STACK_SUFFIX:-dev}:/app/.venv
       - ./media_${STACK_SUFFIX:-dev}:/app/media
     depends_on:
       - mysql
@@ -95,5 +128,5 @@ services:
     restart: unless-stopped
 
 volumes:
-  django-venv:
-  redis-data:
+  django-venv-${STACK_SUFFIX:-dev}:
+  redis-data-${STACK_SUFFIX:-dev}:

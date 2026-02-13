@@ -577,6 +577,7 @@ def suggest_categories(request):
                     "color": cat.color,
                     "score": score,
                     "parent_name": cat.parent.name if cat.parent else None,
+                    "description": cat.description,
                 }
             )
 

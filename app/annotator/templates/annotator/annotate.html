@@ -4,8 +4,6 @@
 
 <style> 
     
-    
-    
 </style>
 {% endblock %}
 
@@ -47,19 +45,6 @@
     </div>
     
     <div class="annotation-panel">
-        <!-- How to Annotate - Fixed Header -->
-        <div class="panel-header">
-            <div class="selection-info">
-                <strong class="annotation-rules-title">📝 How to Annotate:</strong>
-                <ol>
-                    <li>Select text in the document</li>
-                    <li>Choose a category from the popup</li>
-                    <li>Annotation is saved automatically</li>
-                    <li>Click on annotations to delete them</li>
-                </ol>
-            </div>
-        </div>
-        
         <!-- Scrollable Content -->
         <div class="panel-scrollable">
             <!-- Categories Section -->
@@ -101,7 +86,10 @@
             
             <!-- Annotations Section -->
             <div class="panel-section">
-                <div class="panel-section-title">📋 Annotations</div>
+                <div class="panel-section-title">
+                    📋 Annotations
+                    <button class="info-button" id="showInstructionsBtn" title="How to Annotate">i</button>
+                </div>
                 <div id="annotationList">
                     {% for annotation in annotations %}
                     <div class="annotation-item" data-annotation-id="{{ annotation.id }}">
@@ -217,7 +205,8 @@
     </div>
     <div id="categorySelectorOptions">
         {% for category in categories %}
-        <div class="category-option {% if not category.parent %}parent-category{% else %}subcategory{% endif %}" data-category="{{ category.name }}" data-category-name="{{ category.name }}" style="border-left: 4px solid {{ category.color }};">
+        <div class="category-option {% if not category.parent %}parent-category{% else %}subcategory{% endif %}" data-category="{{ category.name }}" data-category-name="{{ category.name }}" style="border-left: 4px solid {{ category.color }};"
+        {% if category.parent and category.description %} data-toggle="tooltip" data-placement="right" title="{{ category.description }}"{% endif %}>
             {{ category.name }}
             <span class="category-count-badge" data-count-for="{{ category.name }}">0</span>
         </div>
@@ -225,12 +214,37 @@
     </div>
 
 </div>
+
+<!-- How to Annotate Instructions Modal -->
+<div id="instructionsModal" class="instructions-modal">
+    <div class="instructions-modal-header">
+        <h3>📝 How to Annotate</h3>
+        <button class="instructions-modal-close" id="closeInstructionsBtn">×</button>
+    </div>
+    <div class="instructions-modal-body">
+        <ol>
+            <li>Select text in the document</li>
+            <li>Choose a category from the popup</li>
+            <li>Annotation is saved automatically</li>
+            <li>Click on annotations to delete them</li>
+        </ol>
+    </div>
+</div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    // Initialize tooltips for category descriptions
+    $(function () {
+        $('[data-toggle="tooltip"]').tooltip({
+            boundary: 'window',
+            container: 'body',
+            html: false,
+            trigger: 'hover focus'
+        });
+    });
     const documentViewer = document.getElementById('documentViewer');
     const categorySelector = document.getElementById('categorySelector');
     const annotationList = document.getElementById('annotationList');
@@ -359,6 +373,15 @@ document.addEventListener('DOMContentLoaded', function() {
             // Show category selector at fixed position: mid-left of the screen
             categorySelector.style.display = 'block';
             
+            // Re-initialize tooltips for category descriptions
+            $('[data-toggle="tooltip"]').tooltip('dispose');
+            $('[data-toggle="tooltip"]').tooltip({
+                boundary: 'window',
+                container: 'body',
+                html: false,
+                trigger: 'hover focus'
+            });
+            
             // Position at left: 20px from left edge, vertically centered
             const viewportHeight = window.innerHeight;
             const selectorHeight = categorySelector.offsetHeight || 300; // estimated height if not rendered yet
@@ -474,6 +497,62 @@ document.addEventListener('DOMContentLoaded', function() {
     // Attach click handler for "Edit" buttons
     // Note: Since we reload the page often, or manipulate the list, delegated event handling is safer if list is dynamic.
     // But currently loop is static mostly unless we add via JS. Let's use annotationList for delegation.
+    
+    // Instructions Modal Handlers
+    const instructionsModal = document.getElementById('instructionsModal');
+    const showInstructionsBtn = document.getElementById('showInstructionsBtn');
+    const closeInstructionsBtn = document.getElementById('closeInstructionsBtn');
+    
+    function positionInstructionsModal() {
+        const btnRect = showInstructionsBtn.getBoundingClientRect();
+        const modalWidth = 320;
+        const offset = 10;
+        
+        // Position below the button
+        instructionsModal.style.top = (btnRect.bottom + offset) + 'px';
+        
+        // Position to the left of the button, but check if it fits
+        let leftPos = btnRect.left - modalWidth + btnRect.width;
+        
+        // If it goes off screen to the left, align with button's left
+        if (leftPos < 10) {
+            leftPos = btnRect.left;
+        }
+        
+        // If it goes off screen to the right, align to the right edge
+        if (leftPos + modalWidth > window.innerWidth - 10) {
+            leftPos = window.innerWidth - modalWidth - 10;
+        }
+        
+        instructionsModal.style.left = leftPos + 'px';
+    }
+    
+    showInstructionsBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        positionInstructionsModal();
+        instructionsModal.classList.add('show');
+    });
+    
+    closeInstructionsBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        instructionsModal.classList.remove('show');
+    });
+    
+    // Close modal when clicking outside
+    document.addEventListener('click', function(e) {
+        if (instructionsModal.classList.contains('show') && 
+            !instructionsModal.contains(e.target) && 
+            e.target !== showInstructionsBtn) {
+            instructionsModal.classList.remove('show');
+        }
+    });
+    
+    // Close modal with ESC key
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && instructionsModal.classList.contains('show')) {
+            instructionsModal.classList.remove('show');
+        }
+    });
     
     annotationList.addEventListener('click', function(e) {
         // Handle Delete
@@ -1658,6 +1737,10 @@ document.addEventListener('DOMContentLoaded', function() {
             div.className = 'category-option suggested-category';
             div.style.cssText = `border-left: 4px solid ${cat.color}; margin: 5px 0; padding: 8px; background: white; cursor: pointer; border-radius: 4px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); transition: background 0.2s; border: 1px solid #eee;`;
             div.setAttribute('data-category', cat.name);
+            // data-toggle="tooltip" data-placement="right" title="{{ category.description }}
+            div.setAttribute('data-toggle', 'tooltip');
+            div.setAttribute('data-placement', 'right');
+            div.setAttribute('title', cat.description || '');
             
             // Hover effect handled via css class or inline here
             div.onmouseover = function() { this.style.backgroundColor = '#f0f0f0'; };
@@ -1680,6 +1763,13 @@ document.addEventListener('DOMContentLoaded', function() {
             
             suggestedList.appendChild(div);
         });
+        $('[data-toggle="tooltip"]').tooltip('dispose');
+            $('[data-toggle="tooltip"]').tooltip({
+                boundary: 'window',
+                container: 'body',
+                html: false,
+                trigger: 'hover focus'
+            });
     }
 
     // Initial setup
