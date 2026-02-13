@@ -37,6 +37,20 @@ class Command(BaseCommand):
         except Paper.DoesNotExist:
             raise CommandError(f'Paper {paper_id} does not exist')
         
+        # Check for running workflows on this paper
+        from workflow_engine.models import WorkflowRun
+        running_workflow = WorkflowRun.objects.filter(
+            paper=paper,
+            status='running'
+        ).first()
+        
+        if running_workflow:
+            raise CommandError(
+                f'Cannot start workflow: Paper {paper_id} already has a running workflow '
+                f'(Run ID: {running_workflow.id}, Run #{running_workflow.run_number}). '
+                f'Wait for it to complete or cancel it first.'
+            )
+        
         # Parse input data
         import json
         try:

@@ -228,8 +228,10 @@ class WorkflowRun(models.Model):
             models.Index(fields=['paper', 'status']),
             models.Index(fields=['status', 'created_at']),
             models.Index(fields=['workflow_definition', 'status']),
+            models.Index(fields=['paper', 'run_number']),
         ]
-        unique_together = [['paper', 'run_number']]
+        # No unique constraint - allow re-running workflows
+        # run_number is auto-incremented in save() method
     
     def __str__(self):
         return f"{self.workflow_definition.name} - Run #{self.run_number} for {self.paper.title[:50]}"
