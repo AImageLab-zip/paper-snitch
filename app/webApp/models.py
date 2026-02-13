@@ -1,5 +1,6 @@
 from django.db import models
 import uuid
+from .models_schema import DatabaseSchema
 
 
 class Operations(models.Model):
