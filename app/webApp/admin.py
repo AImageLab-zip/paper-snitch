@@ -32,11 +32,32 @@ class ConferenceAdmin(admin.ModelAdmin):
     readonly_fields = ["last_update"]
 
 
+class DatasetInline(admin.TabularInline):
+    model = Dataset.papers.through
+    extra = 0
+    verbose_name = "Dataset"
+    verbose_name_plural = "Datasets"
+    fields = ["dataset"]
+    readonly_fields = ["dataset"]
+    
+    def dataset(self, obj):
+        if obj.dataset:
+            return format_html(
+                '<a href="{}">{}</a><br><small>{}</small>',
+                obj.dataset.url if obj.dataset.url else "#",
+                obj.dataset.name,
+                obj.dataset.url if obj.dataset.url else "No URL"
+            )
+        return "-"
+    dataset.short_description = "Dataset"
+
+
 @admin.register(Paper)
 class PaperAdmin(admin.ModelAdmin):
     list_display = ["title", "doi", "last_update"]
     search_fields = ["title", "doi", "authors", "abstract"]
     readonly_fields = ["last_update"]
+    inlines = [DatasetInline]
 
 
 @admin.register(Dataset)
