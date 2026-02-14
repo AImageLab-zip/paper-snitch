@@ -20,6 +20,13 @@ env/
 .env.*
 *.env
 
+# Celery runtime files
+celerybeat-schedule
+celerybeat-schedule.*
+
+# Temporary files
+temp_schema.dot
+
 staticfiles/
 media/
 
