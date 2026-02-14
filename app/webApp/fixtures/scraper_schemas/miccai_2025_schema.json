@@ -1,0 +1,34 @@
+{
+  "name": "MICCAI 2025 Paper Listings",
+  "baseSelector": ".posts-list-item",
+  "fields": [
+    {
+      "name": "title",
+      "selector": ".posts-list-item-name b",
+      "type": "text"
+    },
+    {
+      "name": "authors",
+      "type": "list",
+      "selector": "ul li a[href^='/miccai-2025/tags']",
+      "fields": [
+        {
+          "name": "author_name",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "name": "paper_url",
+      "selector": "li a[href*='Paper']",
+      "type": "attribute",
+      "attribute": "href"
+    },
+    {
+      "name": "pdf_url",
+      "selector": "a[href*='paper.pdf']",
+      "type": "attribute",
+      "attribute": "href"
+    }
+  ]
+}
