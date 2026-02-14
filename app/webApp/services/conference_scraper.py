@@ -24,6 +24,7 @@ import asyncio
 from asgiref.sync import sync_to_async
 
 from webApp.models import Conference, Paper, Dataset
+from webApp.functions import get_pdf_content
 
 logger = logging.getLogger(__name__)
 
@@ -311,6 +312,17 @@ class ConferenceScraper:
         # Save if files were added
         if pdf_content or supp_content:
             paper.save()
+        
+        # Extract text from PDF using Grobid
+        if pdf_content and paper.file and (created or not paper.text):
+            try:
+                pdf_path = paper.file.path
+                title, text = get_pdf_content(pdf_path)
+                paper.text = text
+                paper.save()
+                logger.info(f"Extracted text from PDF for: {paper.title} ({len(text)} characters)")
+            except Exception as e:
+                logger.error(f"Failed to extract text from PDF for {paper.title}: {e}")
 
         action = "Created" if created else "Updated"
         logger.info(f"{action} paper: {paper.title}")
@@ -328,7 +340,7 @@ class ConferenceScraper:
                 )
                 paper.datasets.add(dataset)
 
-        return paper
+        return paper, created
 
     async def scrape_conference(
         self,
@@ -413,11 +425,11 @@ class ConferenceScraper:
         for paper_data in results:
             if paper_data:
                 try:
-                    paper = await self.save_paper_to_db(paper_data, conference)
-                    if paper.pk:
-                        # Check if it was just created or updated based on last_update
-                        # This is a simplification; ideally track in save_paper_to_db
+                    paper, was_created = await self.save_paper_to_db(paper_data, conference)
+                    if was_created:
                         created_count += 1
+                    else:
+                        updated_count += 1
                     processed_papers.append(paper)
                 except Exception as e:
                     import traceback
