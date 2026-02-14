@@ -6,6 +6,7 @@ import os
 import json
 import re
 import logging
+import httpx
 from pathlib import Path
 from copy import deepcopy
 from typing import Dict, List, Optional
@@ -167,6 +168,8 @@ class ConferenceScraper:
             doi_match = re.search(doi_pattern, section)
             if doi_match:
                 doi_value = doi_match.group(1).strip()
+                # Remove angular brackets if present
+                doi_value = re.sub(r'^<(.+)>$', r'\1', doi_value)
                 cleaned["doi"] = None if doi_value.lower().startswith("not") else doi_value
             else:
                 cleaned["doi"] = None
@@ -178,16 +181,17 @@ class ConferenceScraper:
                 pdf_value = pdf_match.group(1).strip()
                 cleaned["pdf_url"] = None if pdf_value.lower().startswith("not") else pdf_value
             else:
-                cleaned["pdf_url"] = None
-
-            # Supplementary materials
-            supp_pattern = r"Supplementary Material:\s*<?([^>\n]+)>?"
+                # Fallback to pdf_url if already extracted from schema
+                pass
+            
+            # Supplementary materials PDF
+            supp_pattern = r"Supplementary Material:\s*<([^>]+)>"
             supp_match = re.search(supp_pattern, section)
             if supp_match:
                 supp_value = supp_match.group(1).strip()
-                cleaned["supp_materials"] = None if supp_value.lower().startswith("not") else supp_value
+                cleaned["supp_materials_url"] = None if supp_value.lower().startswith("not") else supp_value
             else:
-                cleaned["supp_materials"] = None
+                cleaned["supp_materials_url"] = None
 
         # Clean meta-review
         if "meta-review" in cleaned:
@@ -197,6 +201,25 @@ class ConferenceScraper:
             ).strip()
 
         return cleaned
+
+    @staticmethod
+    async def download_pdf(url: str) -> Optional[bytes]:
+        """Download PDF file from URL."""
+        if not url:
+            return None
+        
+        try:
+            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+                response = await client.get(url)
+                if response.status_code == 200 and response.headers.get('content-type', '').startswith('application/pdf'):
+                    logger.info(f"Downloaded PDF from {url} ({len(response.content)} bytes)")
+                    return response.content
+                else:
+                    logger.warning(f"Failed to download PDF from {url}: status {response.status_code}")
+                    return None
+        except Exception as e:
+            logger.error(f"Error downloading PDF from {url}: {e}")
+            return None
 
     async def _process_paper(self, paper_data: dict, schema: dict) -> Optional[dict]:
         """Process a single paper: crawl details and clean data."""
@@ -227,6 +250,17 @@ class ConferenceScraper:
 
             # Clean and normalize
             cleaned = self._clean_paper_data(paper)
+
+            # Download PDFs
+            if cleaned.get("pdf_url"):
+                pdf_content = await self.download_pdf(cleaned["pdf_url"])
+                if pdf_content:
+                    cleaned["pdf_content"] = pdf_content
+            
+            if cleaned.get("supp_materials_url"):
+                supp_content = await self.download_pdf(cleaned["supp_materials_url"])
+                if supp_content:
+                    cleaned["supp_materials_content"] = supp_content
 
             logger.info(f"Processed paper: {cleaned.get('title', 'Unknown')}")
             return cleaned
@@ -259,6 +293,24 @@ class ConferenceScraper:
             paper_url=paper_fields["paper_url"],
             defaults=paper_fields,
         )
+
+        # Download and save PDF files
+        pdf_content = paper_data.get("pdf_content")
+        if pdf_content and (created or not paper.file):
+            # Generate filename from title or DOI
+            filename = re.sub(r'[^a-zA-Z0-9_-]', '_', paper.title[:50]) + ".pdf"
+            paper.file.save(filename, ContentFile(pdf_content), save=False)
+            logger.info(f"Saved PDF file for: {paper.title}")
+        
+        supp_content = paper_data.get("supp_materials_content")
+        if supp_content and (created or not paper.supp_materials):
+            filename = re.sub(r'[^a-zA-Z0-9_-]', '_', paper.title[:50]) + "_supp.pdf"
+            paper.supp_materials.save(filename, ContentFile(supp_content), save=False)
+            logger.info(f"Saved supplementary materials for: {paper.title}")
+        
+        # Save if files were added
+        if pdf_content or supp_content:
+            paper.save()
 
         action = "Created" if created else "Updated"
         logger.info(f"{action} paper: {paper.title}")
