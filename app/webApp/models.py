@@ -132,29 +132,6 @@ class Dataset(models.Model):
         return self.name
 
 
-class PDFPaper(models.Model):
-
-    paper = models.ForeignKey(
-        Paper, on_delete=models.CASCADE, related_name="pdf_papers"
-    )
-    abstract = models.TextField(verbose_name="Abstract")
-    supp_materials = models.TextField(
-        verbose_name="Supplementary materials", blank=True, null=True
-    )
-    code_url = models.URLField(verbose_name="code URL", blank=True, max_length=500)
-    text = models.TextField(verbose_name="Full paper text", blank=True, null=True)
-    last_update = models.DateTimeField(
-        auto_now=True, verbose_name="Last update", blank=True, null=True
-    )
-
-    class Meta:
-        verbose_name = "PDF Paper"
-        verbose_name_plural = "PDF Papers"
-
-    def __str__(self):
-        return self.title
-
-
 class Criterion(models.Model):
     """Defines evaluation criteria for paper analysis."""
 
