@@ -280,6 +280,84 @@ def visualize_workflow(workflow_definition: WorkflowDefinition) -> str:
     return "\n".join(lines)
 
 
+def generate_dag_diagram(workflow_definition: WorkflowDefinition) -> bool:
+    """
+    Generate and save a Graphviz DAG diagram for a workflow definition.
+    
+    Args:
+        workflow_definition: WorkflowDefinition instance
+        
+    Returns:
+        True if diagram was generated successfully, False otherwise
+    """
+    try:
+        import graphviz
+        import tempfile
+        import os
+        from django.core.files import File
+    except ImportError:
+        return False
+    
+    try:
+        dag_structure = workflow_definition.dag_structure
+        
+        # Create graphviz digraph
+        dot = graphviz.Digraph(
+            comment=workflow_definition.name,
+            format='png',
+            engine='dot'
+        )
+        
+        # Set graph attributes for better visualization
+        dot.attr(rankdir='TB', size='10,15')
+        dot.attr('node', shape='box', style='rounded,filled', 
+                fillcolor='lightblue', fontname='Arial', fontsize='10')
+        dot.attr('edge', fontsize='8', color='gray40')
+        
+        # Add nodes with colors based on type
+        node_colors = {
+            'celery': 'lightblue',
+            'langgraph': 'lightgreen',
+            'python': 'lightyellow'
+        }
+        
+        for node in dag_structure.get('nodes', []):
+            node_id = node['id']
+            node_type = node.get('type', 'celery')
+            description = node.get('description', '')
+            color = node_colors.get(node_type, 'lightgray')
+            
+            # Create label with node ID and description
+            label = f"{node_id}\n({node_type})\n{description}"
+            dot.node(node_id, label=label, fillcolor=color)
+        
+        # Add edges
+        for edge in dag_structure.get('edges', []):
+            dot.edge(edge['from'], edge['to'])
+        
+        # Render to temporary file
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = os.path.join(tmpdir, 'dag')
+            dot.render(output_path, cleanup=True)
+            
+            # Save to model
+            png_path = f'{output_path}.png'
+            with open(png_path, 'rb') as f:
+                workflow_definition.dag_diagram.save(
+                    f'{workflow_definition.name}_dag.png',
+                    File(f),
+                    save=False  # Don't trigger another save
+                )
+        
+        return True
+        
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f'Failed to generate DAG diagram for {workflow_definition.name}: {e}')
+        return False
+
+
 def cleanup_old_workflows(days: int = 30, keep_failed: bool = True) -> int:
     """
     Cleanup old completed workflow runs.
