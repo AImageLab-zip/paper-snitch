@@ -28,9 +28,20 @@ from webApp.functions import get_pdf_content
 
 logger = logging.getLogger(__name__)
 
-MAX_CONCURRENT_CRAWLS = int(os.getenv("MAX_CONCURRENT_CRAWLS", "5"))
+MAX_CONCURRENT_CRAWLS = int(os.getenv("MAX_CONCURRENT_CRAWLS", "3"))
+MAX_CONCURRENT_GROBID = int(os.getenv("MAX_CONCURRENT_GROBID", "2"))
+BATCH_SIZE = int(os.getenv("SCRAPER_BATCH_SIZE", "50"))
 BASE_DIR = Path(__file__).resolve().parent.parent
 FIXTURES_DIR = BASE_DIR / "fixtures"
+
+# Global semaphore for Grobid processing (shared across all instances)
+_grobid_semaphore = None
+
+def get_grobid_semaphore():
+    global _grobid_semaphore
+    if _grobid_semaphore is None:
+        _grobid_semaphore = asyncio.Semaphore(MAX_CONCURRENT_GROBID)
+    return _grobid_semaphore
 
 
 class ConferenceScraper:
@@ -312,20 +323,6 @@ class ConferenceScraper:
         # Save if files were added
         if pdf_content or supp_content:
             paper.save()
-        
-        # Extract text from PDF using Grobid
-        if pdf_content and paper.file and (created or not paper.text):
-            try:
-                pdf_path = paper.file.path
-                title, text = get_pdf_content(pdf_path)
-                paper.text = text
-                paper.save()
-                logger.info(f"Extracted text from PDF for: {paper.title} ({len(text)} characters)")
-            except Exception as e:
-                logger.error(f"Failed to extract text from PDF for {paper.title}: {e}")
-
-        action = "Created" if created else "Updated"
-        logger.info(f"{action} paper: {paper.title}")
 
         # Handle datasets
         datasets = paper_data.get("datasets")
@@ -339,8 +336,51 @@ class ConferenceScraper:
                     },
                 )
                 paper.datasets.add(dataset)
-
+        
+        action = "Created" if created else "Updated"
+        logger.info(f"{action} paper: {paper.title}")
+        
+        # Note: Text extraction will be done separately after PDF is saved
+        # to avoid blocking the database transaction
         return paper, created
+
+    async def extract_text_from_pdf(self, paper) -> bool:
+        """
+        Extract text from a paper's PDF file using Grobid.
+        Uses semaphore to limit concurrent Grobid calls.
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        if not paper.file:
+            return False
+            
+        grobid_sem = get_grobid_semaphore()
+        async with grobid_sem:
+            try:
+                # Run Grobid extraction in thread pool
+                pdf_path = paper.file.path
+                
+                @sync_to_async
+                def extract():
+                    title, text = get_pdf_content(pdf_path)
+                    return text
+                
+                text = await extract()
+                
+                # Save text to database
+                @sync_to_async
+                def save_text():
+                    paper.text = text
+                    paper.save(update_fields=['text'])
+                
+                await save_text()
+                logger.info(f"Extracted text from PDF for: {paper.title} ({len(text)} characters)")
+                return True
+                
+            except Exception as e:
+                logger.error(f"Failed to extract text from PDF for {paper.title}: {e}")
+                return False
 
     async def scrape_conference(
         self,
@@ -401,6 +441,8 @@ class ConferenceScraper:
         total_papers = len(paper_list)
         processed_papers = []
         failed_papers = []
+        created_count = 0
+        updated_count = 0
 
         # Create semaphore for concurrent crawling
         semaphore = asyncio.Semaphore(MAX_CONCURRENT_CRAWLS)
@@ -411,34 +453,58 @@ class ConferenceScraper:
                     progress_callback(idx + 1, total_papers, f"Processing: {p.get('title', 'Unknown')}")
                 return await self._process_paper(p, schema)
 
-        # Process all papers concurrently
-        tasks = [
-            asyncio.create_task(limited_process(idx, paper))
-            for idx, paper in enumerate(paper_list)
-        ]
-        results = await asyncio.gather(*tasks)
+        # Process papers in batches to avoid memory overload
+        logger.info(f"Processing {total_papers} papers in batches of {BATCH_SIZE}")
+        
+        for batch_start in range(0, total_papers, BATCH_SIZE):
+            batch_end = min(batch_start + BATCH_SIZE, total_papers)
+            batch = paper_list[batch_start:batch_end]
+            
+            logger.info(f"Processing batch {batch_start//BATCH_SIZE + 1}/{(total_papers + BATCH_SIZE - 1)//BATCH_SIZE} (papers {batch_start+1}-{batch_end})")
+            
+            # Process current batch concurrently
+            tasks = [
+                asyncio.create_task(limited_process(batch_start + idx, paper))
+                for idx, paper in enumerate(batch)
+            ]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # Save to database
-        created_count = 0
-        updated_count = 0
-
-        for paper_data in results:
-            if paper_data:
-                try:
-                    paper, was_created = await self.save_paper_to_db(paper_data, conference)
-                    if was_created:
-                        created_count += 1
-                    else:
-                        updated_count += 1
-                    processed_papers.append(paper)
-                except Exception as e:
-                    import traceback
-                    logger.error(f"Error saving paper: {e}")
-                    logger.error(f"Traceback: {traceback.format_exc()}")
-                    logger.error(f"Paper data: {paper_data}")
-                    failed_papers.append(paper_data.get("title", "Unknown"))
-            else:
-                failed_papers.append("Unknown (processing failed)")
+            # Save batch results to database
+            batch_papers = []
+            for i, paper_data in enumerate(results):
+                if isinstance(paper_data, Exception):
+                    logger.error(f"Error processing paper: {paper_data}")
+                    failed_papers.append(batch[i].get("title", "Unknown"))
+                    continue
+                    
+                if paper_data:
+                    try:
+                        paper, was_created = await self.save_paper_to_db(paper_data, conference)
+                        if was_created:
+                            created_count += 1
+                        else:
+                            updated_count += 1
+                        batch_papers.append(paper)
+                        processed_papers.append(paper)
+                    except Exception as e:
+                        import traceback
+                        logger.error(f"Error saving paper: {e}")
+                        logger.error(f"Traceback: {traceback.format_exc()}")
+                        logger.error(f"Paper data: {paper_data}")
+                        failed_papers.append(paper_data.get("title", "Unknown"))
+                else:
+                    failed_papers.append("Unknown (processing failed)")
+            
+            # Extract text from PDFs in this batch (with Grobid rate limiting)
+            if batch_papers:
+                logger.info(f"Extracting text from {len(batch_papers)} PDFs in batch...")
+                text_tasks = [
+                    asyncio.create_task(self.extract_text_from_pdf(paper))
+                    for paper in batch_papers
+                ]
+                await asyncio.gather(*text_tasks, return_exceptions=True)
+            
+            logger.info(f"Batch complete: {len(batch_papers)} papers processed, {created_count} created, {updated_count} updated")
 
         result = {
             "conference": conference.name,
