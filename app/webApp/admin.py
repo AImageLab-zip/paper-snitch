@@ -55,8 +55,8 @@ class DatasetInline(admin.TabularInline):
 class PaperAdmin(admin.ModelAdmin):
     list_display = ["title", "doi", "last_update"]
     search_fields = ["title", "doi", "authors", "abstract"]
-    readonly_fields = ["last_update", "text_preview", "reviews_preview", "author_feedback_preview", "meta_review_preview"]
-    exclude = ["text", "reviews", "author_feedback", "meta_review"]
+    readonly_fields = ["last_update", "text_preview", "reviews_preview", "author_feedback_preview", "meta_review_preview", "metadata_display"]
+    exclude = ["text", "reviews", "author_feedback", "meta_review", "metadata"]
     inlines = [DatasetInline]
     
     def text_preview(self, obj):
@@ -166,6 +166,31 @@ class PaperAdmin(admin.ModelAdmin):
             )
         return "No meta-review available"
     meta_review_preview.short_description = "All meta review text"
+    
+    def metadata_display(self, obj):
+        if obj.metadata:
+            import json
+            formatted_json = json.dumps(obj.metadata, indent=2, ensure_ascii=False)
+            return format_html(
+                '<div style="max-width: 1000px;">'
+                '<pre style="'
+                'background: #f8f8f8;'
+                'border: 1px solid #ddd;'
+                'border-radius: 4px;'
+                'padding: 15px;'
+                'overflow-x: auto;'
+                'font-family: \"Courier New\", monospace;'
+                'font-size: 13px;'
+                'line-height: 1.5;'
+                'color: #333;'
+                'max-height: 600px;'
+                'overflow-y: auto;'
+                '">{}</pre>'
+                '</div>',
+                formatted_json
+            )
+        return format_html('<em style="color: #999;">No metadata available</em>')
+    metadata_display.short_description = "Metadata (unknown/unexpected fields)"
 
 
 @admin.register(Dataset)

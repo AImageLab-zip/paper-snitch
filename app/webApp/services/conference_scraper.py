@@ -285,6 +285,23 @@ class ConferenceScraper:
     @transaction.atomic
     def save_paper_to_db(self, paper_data: dict, conference: Conference) -> Paper:
         """Save or update a paper in the database."""
+        # Define expected fields (Paper model fields and special processing fields)
+        expected_fields = {
+            "title", "doi", "abstract", "paper_url", "pdf_url", "code_url",
+            "authors", "meta_review", "reviews", "author_feedback",
+            "datasets", "pdf_content", "supp_materials_content", "supp_materials_url"
+        }
+        
+        # Store unexpected fields in metadata instead of discarding them
+        unexpected_fields = set(paper_data.keys()) - expected_fields
+        metadata = {}
+        if unexpected_fields:
+            logger.info(f"Storing unexpected fields in metadata: {unexpected_fields}")
+            for field in unexpected_fields:
+                metadata[field] = paper_data.pop(field)
+        
+        paper_data['metadata'] = metadata if metadata else None
+        
         # Prepare paper fields
         paper_fields = {
             "title": (paper_data.get("title") or "")[:500],
@@ -297,6 +314,7 @@ class ConferenceScraper:
             "meta_review": paper_data.get("meta_review"),
             "reviews": paper_data.get("reviews"),
             "author_feedback": paper_data.get("author_feedback"),
+            "metadata": paper_data.get("metadata"),
             "conference": conference,
         }
 

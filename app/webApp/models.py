@@ -92,6 +92,13 @@ class Paper(models.Model):
     meta_review = models.TextField(
         verbose_name="All Meta-reviews text", blank=True, null=True
     )
+    metadata = models.JSONField(
+        verbose_name="Metadata (unknown/unexpected fields)",
+        blank=True,
+        null=True,
+        default=dict,
+        help_text="Stores unexpected fields extracted during scraping"
+    )
     last_update = models.DateTimeField(
         auto_now=True, verbose_name="Last update", blank=True, null=True
     )
