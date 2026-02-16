@@ -1,0 +1,584 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block head_title %}{{ paper.title }} - Details{% endblock %}
+
+{% block extra_head %}
+<style>
+    .workflow-diagram-container {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        overflow-x: auto;
+        margin-bottom: 30px;
+    }
+    
+    .workflow-diagram {
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        min-height: 150px;
+        gap: 10px;
+        flex-wrap: nowrap;
+    }
+    
+    .workflow-node {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        min-width: 120px;
+        cursor: pointer;
+        transition: transform 0.2s;
+    }
+    
+    .workflow-node:hover {
+        transform: scale(1.05);
+    }
+    
+    .node-box {
+        width: 100px;
+        height: 80px;
+        border-radius: 8px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 10px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        position: relative;
+    }
+    
+    .node-box.completed {
+        background: linear-gradient(135deg, #0e8c82 0%, #1abc9c 100%);
+        border: 2px solid #0e8c82;
+        color: white;
+    }
+    
+    .node-box.running {
+        background: linear-gradient(135deg, #3498db 0%, #5dade2 100%);
+        border: 2px solid #3498db;
+        color: white;
+    }
+    
+    .node-box.failed {
+        background: linear-gradient(135deg, #c0392b 0%, #e74c3c 100%);
+        border: 2px solid #c0392b;
+        color: white;
+    }
+    
+    .node-box.pending, .node-box.ready {
+        background: linear-gradient(135deg, #f1c40f 0%, #f4d03f 100%);
+        border: 2px solid #e2b90a;
+        color: #2e2e2e;
+    }
+    
+    .node-box.skipped, .node-box.cancelled {
+        background: linear-gradient(135deg, #7d7d7d 0%, #a0a0a0 100%);
+        border: 2px solid #5a5a5a;
+        color: white;
+    }
+    
+    .node-icon {
+        font-size: 1.5rem;
+        margin-bottom: 5px;
+    }
+    
+    .node-label {
+        font-size: 0.75rem;
+        font-weight: 600;
+        word-wrap: break-word;
+        max-width: 90px;
+    }
+    
+    .node-arrow {
+        color: var(--primary);
+        font-size: 1.5rem;
+        margin: 0 5px;
+    }
+    
+    .status-badge-large {
+        font-size: 0.7rem;
+        padding: 2px 6px;
+        position: absolute;
+        top: 2px;
+        right: 2px;
+        border-radius: 3px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4 px-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-11">
+            <!-- Paper Header -->
+            <div class="card shadow mb-4">
+                <div class="card-header bg-primary text-white">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="flex-grow-1">
+                            <h4 class="mb-2">
+                                <i class="fas fa-file-pdf mr-2"></i>{{ paper.title }}
+                            </h4>
+                            <div class="small">
+                                {% if paper.conference %}
+                                <span class="mr-3">
+                                    <i class="fas fa-building mr-1"></i>
+                                    <a href="{% url 'conference_detail' paper.conference.id %}" class="text-white">
+                                        {{ paper.conference.name }}{% if paper.conference.year %} {{ paper.conference.year }}{% endif %}
+                                    </a>
+                                </span>
+                                {% endif %}
+                                {% if paper.doi %}
+                                <span class="mr-3"><i class="fas fa-fingerprint mr-1"></i>{{ paper.doi }}</span>
+                                {% endif %}
+                                {% if paper.authors %}
+                                <span><i class="fas fa-users mr-1"></i>{{ paper.authors|truncatewords:5 }}</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div>
+                            {% if paper.conference %}
+                            <a href="{% url 'conference_detail' paper.conference.id %}" class="btn btn-light btn-sm">
+                                <i class="fas fa-arrow-left mr-1"></i> Back
+                            </a>
+                            {% else %}
+                            <a href="{% url 'conference_list' %}" class="btn btn-light btn-sm">
+                                <i class="fas fa-arrow-left mr-1"></i> Conferences
+                            </a>
+                            {% endif %}
+                            {% if paper.file %}
+                            <a href="{{ paper.file.url }}" target="_blank" class="btn btn-outline-light btn-sm">
+                                <i class="fas fa-download mr-1"></i> Download PDF
+                            </a>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Latest Workflow Diagram -->
+            {% if latest_workflow %}
+            <div class="card shadow mb-4">
+                <div class="card-header bg-light">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="fas fa-project-diagram mr-2"></i>Latest Workflow Analysis
+                        </h5>
+                        <div>
+                            <span class="badge badge-{{ latest_workflow.status|lower }}">
+                                {% if latest_workflow.status == 'completed' %}
+                                <i class="fas fa-check-circle"></i> Completed
+                                {% elif latest_workflow.status == 'running' %}
+                                <i class="fas fa-spinner fa-spin"></i> Running
+                                {% elif latest_workflow.status == 'failed' %}
+                                <i class="fas fa-times-circle"></i> Failed
+                                {% elif latest_workflow.status == 'pending' %}
+                                <i class="fas fa-clock"></i> Pending
+                                {% else %}
+                                {{ latest_workflow.status|title }}
+                                {% endif %}
+                            </span>
+                            <small class="text-muted ml-2">
+                                Run #{{ latest_workflow.run_number }} • 
+                                {{ latest_workflow.created_at|date:"M d, Y H:i" }}
+                            </small>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body workflow-diagram-container">
+                    <div class="workflow-diagram">
+                        {% for node in workflow_nodes %}
+                            {% if not forloop.first %}
+                            <div class="node-arrow">
+                                <i class="fas fa-arrow-right"></i>
+                            </div>
+                            {% endif %}
+                            <div class="workflow-node" 
+                                 data-node-id="{{ node.id }}"
+                                 data-node-name="{{ node.node_id }}"
+                                 onclick="showNodeDetails('{{ node.id }}', '{{ node.node_id }}')">
+                                <div class="node-box {{ node.status }}">
+                                    <div class="node-icon">
+                                        {% if node.status == 'completed' %}
+                                        <i class="fas fa-check-circle"></i>
+                                        {% elif node.status == 'running' %}
+                                        <i class="fas fa-spinner fa-spin"></i>
+                                        {% elif node.status == 'failed' %}
+                                        <i class="fas fa-times-circle"></i>
+                                        {% elif node.status == 'pending' or node.status == 'ready' %}
+                                        <i class="fas fa-clock"></i>
+                                        {% else %}
+                                        <i class="fas fa-circle"></i>
+                                        {% endif %}
+                                    </div>
+                                    <div class="node-label">{{ node.node_id|title }}</div>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                    <div class="text-muted text-center mt-3 small">
+                        <i class="fas fa-info-circle mr-1"></i> Click on any node to view execution details and logs
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Other Workflow Runs -->
+            <div class="card shadow">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0">
+                        <i class="fas fa-history mr-2"></i>Workflow Run History
+                        <span class="badge badge-secondary ml-2">{{ workflow_runs.count }}</span>
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% if workflow_runs %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Run #</th>
+                                    <th>Workflow</th>
+                                    <th>Status</th>
+                                    <th>Progress</th>
+                                    <th>Started</th>
+                                    <th>Duration</th>
+                                    <th>Created By</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for run in workflow_runs %}
+                                <tr class="{% if run.id == latest_workflow.id %}table-active{% endif %}">
+                                    <td>
+                                        <strong>#{{ run.run_number }}</strong>
+                                        {% if run.id == latest_workflow.id %}
+                                        <span class="badge badge-info ml-1">Latest</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <small class="text-muted">
+                                            {{ run.workflow_definition.name }}
+                                            <span class="text-muted">(v{{ run.workflow_definition.version }})</span>
+                                        </small>
+                                    </td>
+                                    <td>
+                                        {% if run.status == 'completed' %}
+                                        <span class="badge badge-success">
+                                            <i class="fas fa-check-circle"></i> Completed
+                                        </span>
+                                        {% elif run.status == 'running' %}
+                                        <span class="badge badge-info">
+                                            <i class="fas fa-spinner fa-spin"></i> Running
+                                        </span>
+                                        {% elif run.status == 'failed' %}
+                                        <span class="badge badge-danger">
+                                            <i class="fas fa-times-circle"></i> Failed
+                                        </span>
+                                        {% elif run.status == 'pending' %}
+                                        <span class="badge badge-warning">
+                                            <i class="fas fa-clock"></i> Pending
+                                        </span>
+                                        {% else %}
+                                        <span class="badge badge-secondary">{{ run.status|title }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <div class="progress" style="height: 20px; min-width: 100px;">
+                                            <div class="progress-bar" 
+                                                 role="progressbar" 
+                                                 style="width: {{ run.progress.percentage }}%"
+                                                 aria-valuenow="{{ run.progress.percentage }}" 
+                                                 aria-valuemin="0" 
+                                                 aria-valuemax="100">
+                                                {{ run.progress.completed }}/{{ run.progress.total }}
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <small>{{ run.created_at|date:"M d, Y H:i" }}</small>
+                                    </td>
+                                    <td>
+                                        {% if run.duration %}
+                                        <small>{{ run.duration|floatformat:1 }}s</small>
+                                        {% else %}
+                                        <small class="text-muted">-</small>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <small>
+                                            {% if run.created_by %}
+                                            {{ run.created_by.username }}
+                                            {% else %}
+                                            <em class="text-muted">System</em>
+                                            {% endif %}
+                                        </small>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-5">
+                        <i class="fas fa-info-circle fa-4x text-muted mb-3"></i>
+                        <h5 class="text-muted">No workflow runs for this paper yet</h5>
+                        <p class="text-muted">This paper has not been analyzed by any workflow.</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Node Details Modal -->
+<div class="modal fade" id="nodeDetailsModal" tabindex="-1" role="dialog" aria-labelledby="nodeDetailsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl" role="document">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="nodeDetailsModalLabel">
+                    <i class="fas fa-code mr-2"></i>Node Execution Details
+                </h5>
+                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body" id="node-details-content">
+                <div class="text-center py-5">
+                    <i class="fas fa-spinner fa-spin fa-2x"></i>
+                    <p class="mt-2">Loading node details...</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function showNodeDetails(nodeId, nodeName) {
+    $('#nodeDetailsModal').modal('show');
+    $('#nodeDetailsModalLabel').html('<i class="fas fa-code mr-2"></i>Node: ' + nodeName);
+    
+    // Load node details via AJAX
+    $.ajax({
+        url: '{% url "workflow_node_detail" 0 %}'.replace('0', nodeId),
+        method: 'GET',
+        success: function(data) {
+            renderNodeDetails(data);
+        },
+        error: function() {
+            $('#node-details-content').html(
+                '<div class="alert alert-danger">' +
+                '<i class="fas fa-exclamation-triangle mr-2"></i>' +
+                'Failed to load node details.' +
+                '</div>'
+            );
+        }
+    });
+}
+
+function renderNodeDetails(node) {
+    let statusBadge = '';
+    let statusIcon = '';
+    
+    if (node.status === 'completed') {
+        statusBadge = '<span class="badge badge-success"><i class="fas fa-check-circle"></i> Completed</span>';
+        statusIcon = '✓';
+    } else if (node.status === 'running') {
+        statusBadge = '<span class="badge badge-info"><i class="fas fa-spinner fa-spin"></i> Running</span>';
+        statusIcon = '●';
+    } else if (node.status === 'failed') {
+        statusBadge = '<span class="badge badge-danger"><i class="fas fa-times-circle"></i> Failed</span>';
+        statusIcon = '✗';
+    } else if (node.status === 'pending' || node.status === 'ready') {
+        statusBadge = '<span class="badge badge-warning"><i class="fas fa-clock"></i> ' + node.status + '</span>';
+        statusIcon = '⏳';
+    } else {
+        statusBadge = '<span class="badge badge-secondary">' + node.status + '</span>';
+        statusIcon = '○';
+    }
+    
+    let html = `
+        <div class="mb-4">
+            <h6 class="border-bottom pb-2">
+                <i class="fas fa-info-circle text-primary mr-2"></i>Node Information
+            </h6>
+            <table class="table table-sm">
+                <tr>
+                    <th style="width: 25%;">Node ID:</th>
+                    <td><code>${node.node_id}</code></td>
+                </tr>
+                <tr>
+                    <th>Node Type:</th>
+                    <td>${node.node_type}</td>
+                </tr>
+                <tr>
+                    <th>Handler:</th>
+                    <td><code>${node.handler}</code></td>
+                </tr>
+                <tr>
+                    <th>Status:</th>
+                    <td>${statusBadge}</td>
+                </tr>
+                <tr>
+                    <th>Attempts:</th>
+                    <td>${node.attempt_count} / ${node.max_retries}</td>
+                </tr>
+    `;
+    
+    if (node.started_at) {
+        html += `
+                <tr>
+                    <th>Started:</th>
+                    <td>${node.started_at}</td>
+                </tr>
+        `;
+    }
+    
+    if (node.completed_at) {
+        html += `
+                <tr>
+                    <th>Completed:</th>
+                    <td>${node.completed_at}</td>
+                </tr>
+        `;
+    }
+    
+    if (node.duration) {
+        html += `
+                <tr>
+                    <th>Duration:</th>
+                    <td>${node.duration.toFixed(2)}s</td>
+                </tr>
+        `;
+    }
+    
+    if (node.celery_task_id) {
+        html += `
+                <tr>
+                    <th>Celery Task ID:</th>
+                    <td><code>${node.celery_task_id}</code></td>
+                </tr>
+        `;
+    }
+    
+    html += `
+            </table>
+        </div>
+    `;
+    
+    // Console/Terminal Log
+    html += `
+        <div class="mb-4">
+            <h6 class="border-bottom pb-2">
+                <i class="fas fa-terminal text-primary mr-2"></i>Execution Log
+            </h6>
+            <div class="terminal-output" style="max-height: 400px;">
+    `;
+    
+    if (node.error_message || node.error_traceback) {
+        html += `
+                <div class="terminal-line">
+                    <span class="terminal-time">[${new Date(node.started_at || Date.now()).toLocaleTimeString()}]</span>
+                    <span class="terminal-prompt">${statusIcon}</span>
+                    <span class="terminal-error">Error occurred during execution</span>
+                </div>
+        `;
+        
+        if (node.error_message) {
+            html += `
+                <div class="terminal-line">
+                    <span class="terminal-error"><strong>Error Message:</strong> ${escapeHtml(node.error_message)}</span>
+                </div>
+            `;
+        }
+        
+        if (node.error_traceback) {
+            html += `
+                <div class="terminal-line">
+                    <span class="terminal-error"><strong>Traceback:</strong></span>
+                </div>
+                <div class="terminal-line">
+                    <pre class="terminal-error mb-0" style="white-space: pre-wrap; font-family: inherit;">${escapeHtml(node.error_traceback)}</pre>
+                </div>
+            `;
+        }
+    } else if (node.status === 'completed') {
+        html += `
+                <div class="terminal-line">
+                    <span class="terminal-time">[${new Date(node.completed_at || Date.now()).toLocaleTimeString()}]</span>
+                    <span class="terminal-prompt">${statusIcon}</span>
+                    <span class="terminal-success">Node executed successfully</span>
+                </div>
+        `;
+        
+        if (node.output_data && Object.keys(node.output_data).length > 0) {
+            html += `
+                <div class="terminal-line">
+                    <span class="terminal-info">Output data available (see below)</span>
+                </div>
+            `;
+        }
+    } else if (node.status === 'running') {
+        html += `
+                <div class="terminal-line">
+                    <span class="terminal-time">[${new Date(node.started_at || Date.now()).toLocaleTimeString()}]</span>
+                    <span class="terminal-prompt">${statusIcon}</span>
+                    <span class="terminal-info">Node is currently executing...</span>
+                </div>
+        `;
+    } else {
+        html += `
+                <div class="terminal-line">
+                    <span class="terminal-info">Node has not started execution yet</span>
+                </div>
+        `;
+    }
+    
+    html += `
+            </div>
+        </div>
+    `;
+    
+    // Output Data
+    if (node.output_data && Object.keys(node.output_data).length > 0) {
+        html += `
+            <div class="mb-3">
+                <h6 class="border-bottom pb-2">
+                    <i class="fas fa-database text-primary mr-2"></i>Output Data
+                </h6>
+                <pre class="bg-light p-3 rounded" style="max-height: 300px; overflow-y: auto;"><code>${escapeHtml(JSON.stringify(node.output_data, null, 2))}</code></pre>
+            </div>
+        `;
+    }
+    
+    // Input Data
+    if (node.input_data && Object.keys(node.input_data).length > 0) {
+        html += `
+            <div class="mb-3">
+                <h6 class="border-bottom pb-2">
+                    <i class="fas fa-inbox text-primary mr-2"></i>Input Data
+                </h6>
+                <pre class="bg-light p-3 rounded" style="max-height: 300px; overflow-y: auto;"><code>${escapeHtml(JSON.stringify(node.input_data, null, 2))}</code></pre>
+            </div>
+        `;
+    }
+    
+    $('#node-details-content').html(html);
+}
+
+function escapeHtml(text) {
+    const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+    };
+    return text.replace(/[&<>"']/g, m => map[m]);
+}
+</script>
+{% endblock %}

@@ -32,48 +32,48 @@
     <div class="collapse navbar-collapse" id="main_nav">
         
     <ul class="navbar-nav ml-auto align-items-center">
-
-        <li class="nav-item mr-2">
-                <a href="{% url 'home' %}"
-                class="btn btn-danger btn-sm my-auto"
-                title="Annotator">
-                    <i class="fas fa-pencil"></i> Annotator
-                </a>
+        <li class="nav-item">
+            <a class="nav-link" href="{% url 'conference_list' %}" title="Conferences">
+                <i class="fas fa-building mr-1"></i> Conferences
+            </a>
         </li>
         <li class="nav-item">
-                <a href="{% url 'bug_report' %}"
-                    class="btn btn-outline-light btn-sm my-auto"
-                    title="Feedback">
-                    <i class="fas fa-comments"></i> Feedback
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="{% url 'analyze' %}" style="color: white;" title="Analyze Papers">
-                    <i class="fas fa-file-pdf fa-lg"></i>
-                </a>
-            </li>
+            <a class="nav-link nav-link-annotator" href="/annotator/" title="Annotator">
+                <i class="fas fa-pencil mr-1"></i> Annotator
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" href="{% url 'bug_report' %}" title="Feedback">
+                <i class="fas fa-comments mr-1"></i> Feedback
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" href="{% url 'analyze' %}" title="Analyze Papers">
+                <i class="fas fa-file-pdf mr-1"></i> Analyze
+            </a>
+        </li>
         {% if user.is_authenticated %}
-            
             <li class="nav-item">
-                <a class="nav-link" href="{% url 'profile' %}" style="color: white;" title="Profile">
-                    <i class="fas fa-user fa-lg"></i>
+                <a class="nav-link" href="{% url 'profile' %}" title="Profile">
+                    <i class="fas fa-user mr-1"></i> Profile
                     {% if unread_analyses_count > 0 %}
-                        <span class="badge badge-danger">{{ unread_analyses_count }}</span>
+                        <span class="badge badge-pill badge-danger ml-1">{{ unread_analyses_count }}</span>
                     {% endif %}
                 </a>
             </li>
-            
             <li class="nav-item">
-                <form method="post" action="{% url 'logout' %}" style="display: inline;"title="Logout">
+                <form method="post" action="{% url 'logout' %}" style="display: inline;" title="Logout">
                     {% csrf_token %}
-                    <button type="submit" class="nav-link btn btn-link" style="color: white; ">
-                        <i class="fas fa-sign-out-alt fa-lg"></i>
+                    <button type="submit" class="nav-link btn btn-link nav-link-logout" style="padding: 0.5rem 1rem; border: none; background: none;">
+                        <i class="fas fa-sign-out-alt mr-1"></i> Logout
                     </button>
                 </form>
             </li>
         {% else %}
             <li class="nav-item">
-                <a class="nav-link" href="{% url 'login' %}">Login</a>
+                <a class="nav-link nav-link-login" href="{% url 'login' %}">
+                    <i class="fas fa-sign-in-alt mr-1"></i> Login
+                </a>
             </li>
         {% endif %}
     </ul>

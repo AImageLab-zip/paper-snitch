@@ -1,17 +1,8 @@
 """
 Management command to create and register workflow definitions.
 """
-import os
-import tempfile
 from django.core.management.base import BaseCommand
-from django.core.files import File
 from workflow_engine.models import WorkflowDefinition
-
-try:
-    import graphviz
-    HAS_GRAPHVIZ = True
-except ImportError:
-    HAS_GRAPHVIZ = False
 
 
 class Command(BaseCommand):
@@ -135,71 +126,29 @@ class Command(BaseCommand):
                 self.style.SUCCESS(f'Updated workflow: {workflow.name}')
             )
         
-        # Generate DAG diagram with graphviz
-        if HAS_GRAPHVIZ:
-            try:
-                self.stdout.write('\nGenerating DAG diagram...')
-                
-                # Create graphviz digraph
-                dot = graphviz.Digraph(
-                    comment=workflow.name,
-                    format='png',
-                    engine='dot'
-                )
-                
-                # Set graph attributes for better visualization
-                dot.attr(rankdir='TB', size='10,15')
-                dot.attr('node', shape='box', style='rounded,filled', 
-                        fillcolor='lightblue', fontname='Arial', fontsize='10')
-                dot.attr('edge', fontsize='8', color='gray40')
-                
-                # Add nodes with colors based on type
-                node_colors = {
-                    'celery': 'lightblue',
-                    'langgraph': 'lightgreen',
-                    'python': 'lightyellow'
-                }
-                
-                for node in dag_structure['nodes']:
-                    node_id = node['id']
-                    node_type = node.get('type', 'celery')
-                    description = node.get('description', '')
-                    color = node_colors.get(node_type, 'lightgray')
-                    
-                    # Create label with node ID and description
-                    label = f"{node_id}\n({node_type})\n{description}"
-                    dot.node(node_id, label=label, fillcolor=color)
-                
-                # Add edges
-                for edge in dag_structure['edges']:
-                    dot.edge(edge['from'], edge['to'])
-                
-                # Render to temporary file
-                with tempfile.TemporaryDirectory() as tmpdir:
-                    output_path = os.path.join(tmpdir, 'dag')
-                    dot.render(output_path, cleanup=True)
-                    
-                    # Save to model
-                    png_path = f'{output_path}.png'
-                    with open(png_path, 'rb') as f:
-                        workflow.dag_diagram.save(
-                            f'{workflow.name}_dag.png',
-                            File(f),
-                            save=True
-                        )
-                
+        # Generate DAG diagram using utility function
+        # Note: This should now happen automatically via post_save signal,
+        # but we keep this for explicit feedback in the command
+        try:
+            from workflow_engine.utils import generate_dag_diagram
+            
+            self.stdout.write('\nGenerating DAG diagram...')
+            success = generate_dag_diagram(workflow)
+            
+            if success:
+                # Save the workflow to persist the diagram
+                workflow.save(update_fields=['dag_diagram'])
                 self.stdout.write(
                     self.style.SUCCESS('DAG diagram generated and saved!')
                 )
-            except Exception as e:
+            else:
                 self.stdout.write(
-                    self.style.WARNING(f'Failed to generate DAG diagram: {e}')
+                    self.style.WARNING('Failed to generate DAG diagram (graphviz may not be installed)')
                 )
-        else:
+        except Exception as e:
             self.stdout.write(
-                self.style.WARNING('graphviz not installed - skipping diagram generation')
+                self.style.WARNING(f'Failed to generate DAG diagram: {e}')
             )
-            self.stdout.write('Install with: pip install graphviz')
         
         # Print workflow summary
         self.stdout.write(f'\nWorkflow ID: {workflow.id}')

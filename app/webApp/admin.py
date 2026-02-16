@@ -6,7 +6,6 @@ from .models import (
     Conference,
     Paper,
     Dataset,
-    PDFPaper,
     Analysis,
     Criterion,
     AnalysisCriterion,
@@ -32,11 +31,166 @@ class ConferenceAdmin(admin.ModelAdmin):
     readonly_fields = ["last_update"]
 
 
+class DatasetInline(admin.TabularInline):
+    model = Dataset.papers.through
+    extra = 0
+    verbose_name = "Dataset"
+    verbose_name_plural = "Datasets"
+    fields = ["dataset"]
+    readonly_fields = ["dataset"]
+    
+    def dataset(self, obj):
+        if obj.dataset:
+            return format_html(
+                '<a href="{}">{}</a><br><small>{}</small>',
+                obj.dataset.url if obj.dataset.url else "#",
+                obj.dataset.name,
+                obj.dataset.url if obj.dataset.url else "No URL"
+            )
+        return "-"
+    dataset.short_description = "Dataset"
+
+
 @admin.register(Paper)
 class PaperAdmin(admin.ModelAdmin):
     list_display = ["title", "doi", "last_update"]
     search_fields = ["title", "doi", "authors", "abstract"]
-    readonly_fields = ["last_update"]
+    readonly_fields = ["last_update", "text_preview", "reviews_preview", "author_feedback_preview", "meta_review_preview", "metadata_display"]
+    exclude = ["text", "reviews", "author_feedback", "meta_review", "metadata"]
+    inlines = [DatasetInline]
+    
+    def text_preview(self, obj):
+        if obj.text:
+            preview = obj.text[:500]
+            return format_html(
+                '<div style="max-width: 800px;">'
+                '<p>{}</p>'
+                '<a href="#" onclick="'
+                "event.preventDefault();"
+                "var fullText = document.getElementById('full-text-{}');"
+                "if (fullText.style.display === 'none') {{"
+                "fullText.style.display = 'block';"
+                "this.textContent = 'Hide full text';"
+                "}} else {{"
+                "fullText.style.display = 'none';"
+                "this.textContent = 'Show full text';"
+                "}}"
+                '">Show full text</a>'
+                '<div id="full-text-{}" style="display:none; margin-top:10px; padding:10px; background:#f5f5f5; border:1px solid #ddd; max-height:600px; overflow-y:auto; white-space:pre-wrap;">{}</div>'
+                '</div>',
+                preview + "..." if len(obj.text) > 500 else preview,
+                obj.id,
+                obj.id,
+                obj.text
+            )
+        return "No text available"
+    text_preview.short_description = "Full paper text"
+    
+    def reviews_preview(self, obj):
+        if obj.reviews:
+            preview = obj.reviews[:500]
+            return format_html(
+                '<div style="max-width: 800px;">'
+                '<p>{}</p>'
+                '<a href="#" onclick="'
+                "event.preventDefault();"
+                "var fullText = document.getElementById('reviews-{}');"
+                "if (fullText.style.display === 'none') {{"
+                "fullText.style.display = 'block';"
+                "this.textContent = 'Hide full reviews';"
+                "}} else {{"
+                "fullText.style.display = 'none';"
+                "this.textContent = 'Show full reviews';"
+                "}}"
+                '">Show full reviews</a>'
+                '<div id="reviews-{}" style="display:none; margin-top:10px; padding:10px; background:#f5f5f5; border:1px solid #ddd; max-height:600px; overflow-y:auto; white-space:pre-wrap;">{}</div>'
+                '</div>',
+                preview + "..." if len(obj.reviews) > 500 else preview,
+                obj.id,
+                obj.id,
+                obj.reviews
+            )
+        return "No reviews available"
+    reviews_preview.short_description = "All review text"
+    
+    def author_feedback_preview(self, obj):
+        if obj.author_feedback:
+            preview = obj.author_feedback[:500]
+            return format_html(
+                '<div style="max-width: 800px;">'
+                '<p>{}</p>'
+                '<a href="#" onclick="'
+                "event.preventDefault();"
+                "var fullText = document.getElementById('feedback-{}');"
+                "if (fullText.style.display === 'none') {{"
+                "fullText.style.display = 'block';"
+                "this.textContent = 'Hide full feedback';"
+                "}} else {{"
+                "fullText.style.display = 'none';"
+                "this.textContent = 'Show full feedback';"
+                "}}"
+                '">Show full feedback</a>'
+                '<div id="feedback-{}" style="display:none; margin-top:10px; padding:10px; background:#f5f5f5; border:1px solid #ddd; max-height:600px; overflow-y:auto; white-space:pre-wrap;">{}</div>'
+                '</div>',
+                preview + "..." if len(obj.author_feedback) > 500 else preview,
+                obj.id,
+                obj.id,
+                obj.author_feedback
+            )
+        return "No author feedback available"
+    author_feedback_preview.short_description = "Author feedback"
+    
+    def meta_review_preview(self, obj):
+        if obj.meta_review:
+            preview = obj.meta_review[:500]
+            return format_html(
+                '<div style="max-width: 800px;">'
+                '<p>{}</p>'
+                '<a href="#" onclick="'
+                "event.preventDefault();"
+                "var fullText = document.getElementById('meta-review-{}');"
+                "if (fullText.style.display === 'none') {{"
+                "fullText.style.display = 'block';"
+                "this.textContent = 'Hide full meta-review';"
+                "}} else {{"
+                "fullText.style.display = 'none';"
+                "this.textContent = 'Show full meta-review';"
+                "}}"
+                '">Show full meta-review</a>'
+                '<div id="meta-review-{}" style="display:none; margin-top:10px; padding:10px; background:#f5f5f5; border:1px solid #ddd; max-height:600px; overflow-y:auto; white-space:pre-wrap;">{}</div>'
+                '</div>',
+                preview + "..." if len(obj.meta_review) > 500 else preview,
+                obj.id,
+                obj.id,
+                obj.meta_review
+            )
+        return "No meta-review available"
+    meta_review_preview.short_description = "All meta review text"
+    
+    def metadata_display(self, obj):
+        if obj.metadata:
+            import json
+            formatted_json = json.dumps(obj.metadata, indent=2, ensure_ascii=False)
+            return format_html(
+                '<div style="max-width: 1000px;">'
+                '<pre style="'
+                'background: #f8f8f8;'
+                'border: 1px solid #ddd;'
+                'border-radius: 4px;'
+                'padding: 15px;'
+                'overflow-x: auto;'
+                'font-family: \"Courier New\", monospace;'
+                'font-size: 13px;'
+                'line-height: 1.5;'
+                'color: #333;'
+                'max-height: 600px;'
+                'overflow-y: auto;'
+                '">{}</pre>'
+                '</div>',
+                formatted_json
+            )
+        return format_html('<em style="color: #999;">No metadata available</em>')
+    metadata_display.short_description = "Metadata (unknown/unexpected fields)"
 
 
 @admin.register(Dataset)
@@ -44,12 +198,6 @@ class DatasetAdmin(admin.ModelAdmin):
     list_display = ["name", "url", "last_update"]
     list_filter = ["dimension"]
     search_fields = ["name"]
-    readonly_fields = ["last_update"]
-
-
-@admin.register(PDFPaper)
-class PDFPaperAdmin(admin.ModelAdmin):
-    list_display = ["paper", "last_update"]
     readonly_fields = ["last_update"]
 
 
