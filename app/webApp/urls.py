@@ -32,7 +32,11 @@ from .views import (
     ConferenceListView,
     ConferenceDetailView,
     PaperDetailView,
+    RerunWorkflowView,
+    WorkflowStatusView,
     WorkflowNodeDetailView,
+    RerunSingleNodeView,
+    RerunFromNodeView,
 )
 
 from django.contrib.auth import views as auth_views
@@ -42,7 +46,11 @@ urlpatterns = [
     path("conferences/", ConferenceListView.as_view(), name="conference_list"),
     path("conference/<int:conference_id>/", ConferenceDetailView.as_view(), name="conference_detail"),
     path("paper/<int:paper_id>/", PaperDetailView.as_view(), name="paper_detail"),
+    path("paper/<int:paper_id>/rerun-workflow/", RerunWorkflowView.as_view(), name="rerun_workflow"),
+    path("workflow/status/<uuid:workflow_run_id>/", WorkflowStatusView.as_view(), name="workflow_status"),
     path("workflow/node/<uuid:node_id>/", WorkflowNodeDetailView.as_view(), name="workflow_node_detail"),
+    path("workflow/node/<uuid:node_id>/rerun/", RerunSingleNodeView.as_view(), name="rerun_single_node"),
+    path("workflow/node/<uuid:node_id>/rerun-from/", RerunFromNodeView.as_view(), name="rerun_from_node"),
     path("accounts/", include("django.contrib.auth.urls")),
     path("accounts/login/", auth_views.LoginView.as_view(), name="login"),
     path("accounts/signup/", SignUpView.as_view(), name="signup"),

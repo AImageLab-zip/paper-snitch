@@ -842,8 +842,13 @@ async def code_reproducibility_analysis_node(
 
         # Step 3: Download and analyze repository
         logger.info(f"Downloading repository: {code_url}")
+
         await async_ops.create_node_log(
             node, "INFO", f"Downloading and analyzing repository: {code_url}"
+        )
+
+        repo_analysis = await analyze_repository_comprehensive(
+            code_url, paper, client, model, node  # Pass node for detailed logging
         )
 
         # Pass clone_path from verify_code_accessibility to avoid re-cloning
@@ -874,6 +879,7 @@ async def code_reproducibility_analysis_node(
         )
 
         # Store as artifacts
+
         await async_ops.create_node_artifact(node, "result", analysis)
         await async_ops.create_node_artifact(
             node,
@@ -884,16 +890,57 @@ async def code_reproducibility_analysis_node(
             },
         )
 
-        # Log success
+        # Store detailed LLM analysis if available
+        if repo_analysis.get("llm_analysis_text"):
+            await async_ops.create_node_artifact(
+                node,
+                "llm_analysis",
+                {
+                    "analysis_text": repo_analysis["llm_analysis_text"],
+                    "structured_data": repo_analysis.get("structured_data", {}),
+                },
+            )
+
+        # Log detailed results
         await async_ops.create_node_log(
             node,
             "INFO",
-            "Code analysis complete",
-            {
-                "code_available": True,
-                "reproducibility_score": analysis.reproducibility_score,
-            },
+            f"Analysis complete - Score: {analysis.reproducibility_score}/10",
+            {"score_breakdown": analysis.score_breakdown},
         )
+
+        # Log detailed component availability
+        components_summary = []
+        if analysis.code_components:
+            components_summary.append(
+                f"Training code: {analysis.code_components.has_training_code}"
+            )
+            components_summary.append(
+                f"Evaluation code: {analysis.code_components.has_evaluation_code}"
+            )
+            components_summary.append(
+                f"Documented commands: {analysis.code_components.has_documented_commands}"
+            )
+        if analysis.artifacts:
+            components_summary.append(
+                f"Checkpoints available: {analysis.artifacts.has_checkpoints}"
+            )
+            components_summary.append(
+                f"Dataset links: {analysis.artifacts.has_dataset_links}"
+            )
+        if analysis.documentation:
+            components_summary.append(f"README: {analysis.documentation.has_readme}")
+            components_summary.append(
+                f"Results table: {analysis.documentation.has_results_table}"
+            )
+
+        if components_summary:
+            await async_ops.create_node_log(
+                node,
+                "INFO",
+                "Component availability:\n"
+                + "\n".join(f"  • {item}" for item in components_summary),
+            )
 
         # Update node status
         await async_ops.update_node_status(
@@ -1454,6 +1501,7 @@ async def analyze_repository_comprehensive(
     client: OpenAI,
     model: str,
     clone_path: Optional[PathlibPath] = None,
+    node: "WorkflowNode" = None,  # Optional node for detailed logging
 ) -> Dict[str, Any]:
     """
     Perform comprehensive analysis of code repository.
@@ -1475,7 +1523,17 @@ async def analyze_repository_comprehensive(
     """
     logger.info(f"Starting comprehensive repository analysis for {code_url}")
 
+    if node:
+        await async_ops.create_node_log(
+            node, "INFO", "Starting comprehensive repository analysis"
+        )
+
     try:
+        # Download repository content using gitingest
+        if node:
+            await async_ops.create_node_log(
+                node, "INFO", "Downloading repository files..."
+            )
         # Download repository content using enhanced ingestion with full tree structure
         # Note: include_patterns order matters - files will be ordered in content as:
         # 1. Documentation files (*.md, *.txt) - for understanding the project
@@ -1536,6 +1594,30 @@ Generate the output ready to be transformed into a Python list of strings.
             existing_clone_path=clone_path,  # Reuse existing clone if available
             get_tree=False,  # Skip tree for second pass to save time
         )
+
+        # TODO add these node info
+        # content_size_kb = len(content) / 1024
+        # logger.info(f"Repository ingested. Content size: {len(content)} chars ({content_size_kb:.1f} KB)")
+        # if node:
+        #     # Count files in tree
+        #     file_count = tree.count('├──') + tree.count('└──')
+        #     await async_ops.create_node_log(
+        #         node,
+        #         'INFO',
+        #         f'Repository downloaded: {file_count} files, {content_size_kb:.1f} KB'
+        #     )
+
+        # # Prepare paper text (truncate if too long to avoid token limits)
+        # paper_text = paper.text or ''
+        # max_paper_chars = 10000
+        # if len(paper_text) > max_paper_chars:
+        #     paper_text = paper_text[:max_paper_chars] + "\n\n[... text truncated for brevity ...]"
+        #     if node:
+        #         await async_ops.create_node_log(
+        #             node,
+        #             'INFO',
+        #             f'Paper text truncated to {max_paper_chars} chars for analysis'
+        #         )
 
         # Use LLM to analyze repository structure and contents
         analysis_prompt = f"""You are an expert code reviewer analyzing a research code repository for reproducibility.
@@ -1599,6 +1681,11 @@ Be thorough and evidence-based in your analysis. Pay special attention to whethe
 
 NOTE: Do NOT compute a numeric score - focus on extracting factual information only."""
 
+        if node:
+            await async_ops.create_node_log(
+                node, "INFO", "Analyzing repository with LLM..."
+            )
+
         # Call LLM with structured output
         response = client.responses.create(
             model=model,
@@ -1617,6 +1704,24 @@ NOTE: Do NOT compute a numeric score - focus on extracting factual information o
         analysis_text = response.output_text
         input_tokens += response.usage.input_tokens
         output_tokens += response.usage.output_tokens
+
+        logger.info(f"LLM analysis received ({len(analysis_text)} chars)")
+        if node:
+            # Save detailed analysis text
+            await async_ops.create_node_log(
+                node,
+                "INFO",
+                f"LLM analysis complete ({len(analysis_text)} chars, {response.usage.completion_tokens} tokens)",
+            )
+            # Log a preview of the analysis
+            preview = (
+                analysis_text[:500] + "..."
+                if len(analysis_text) > 500
+                else analysis_text
+            )
+            await async_ops.create_node_log(
+                node, "DEBUG", f"Analysis preview:\n{preview}"
+            )
 
         # Use LLM again to structure the analysis into our schema
         structuring_prompt = f"""Convert this repository analysis into structured JSON with the following exact schema:
@@ -1678,6 +1783,11 @@ Analysis to convert:
 
 Output the complete JSON object with ALL fields filled in based on the analysis above."""
 
+        if node:
+            await async_ops.create_node_log(
+                node, "INFO", "Structuring analysis into schema..."
+            )
+
         structured_response = client.chat.completions.create(
             model=model,
             messages=[
@@ -1700,6 +1810,13 @@ Output the complete JSON object with ALL fields filled in based on the analysis 
         )
         input_tokens += structured_response.usage.prompt_tokens
         output_tokens += structured_response.usage.completion_tokens
+
+        if node:
+            await async_ops.create_node_log(
+                node,
+                "INFO",
+                f"Structured data extracted: {len(structured_data)} top-level fields",
+            )
 
         # Helper function to safely create Pydantic models
         def safe_model_create(model_class, data):
@@ -1744,6 +1861,11 @@ Output the complete JSON object with ALL fields filled in based on the analysis 
         )
 
         # Compute reproducibility score programmatically
+        if node:
+            await async_ops.create_node_log(
+                node, "INFO", "Computing reproducibility score..."
+            )
+
         score, breakdown, recommendations = compute_reproducibility_score(
             methodology_obj,
             structure_obj,
@@ -1755,6 +1877,23 @@ Output the complete JSON object with ALL fields filled in based on the analysis 
 
         logger.info(f"Computed reproducibility score: {score}/10")
         logger.info(f"Score breakdown: {breakdown}")
+
+        if node:
+            breakdown_text = "\n".join(f"  • {k}: {v}/10" for k, v in breakdown.items())
+            await async_ops.create_node_log(
+                node,
+                "INFO",
+                f"Reproducibility score: {score}/10\n\nBreakdown:\n{breakdown_text}",
+            )
+
+            # Log key findings
+            if recommendations:
+                rec_preview = "\n".join(f"  • {r}" for r in recommendations[:3])
+                await async_ops.create_node_log(
+                    node,
+                    "INFO",
+                    f'Top recommendations:\n{rec_preview}{"\n  ..." if len(recommendations) > 3 else ""}',
+                )
 
         result = {
             "methodology": methodology_obj,
@@ -1773,6 +1912,8 @@ Output the complete JSON object with ALL fields filled in based on the analysis 
             + structured_response.usage.prompt_tokens,
             "output_tokens": response.usage.completion_tokens
             + structured_response.usage.completion_tokens,
+            "llm_analysis_text": analysis_text,  # Store full LLM analysis
+            "structured_data": structured_data,  # Store structured JSON
         }
 
         logger.info("Comprehensive repository analysis complete")
@@ -1819,6 +1960,374 @@ def build_paper_processing_workflow() -> StateGraph:
     workflow.add_edge("code_reproducibility_analysis", END)
 
     return workflow.compile()
+
+
+async def execute_single_node_only(
+    node_uuid: str,
+    force_reprocess: bool = True,
+    openai_api_key: Optional[str] = None,
+    model: str = "gpt-4o",
+) -> Dict[str, Any]:
+    """
+    Execute a single node in isolation by re-running it within its existing workflow run.
+
+    Args:
+        node_uuid: UUID of the node to re-execute
+        force_reprocess: If True, reprocess even if already completed (default True)
+        openai_api_key: OpenAI API key (uses env var if not provided)
+        model: OpenAI model to use
+
+    Returns:
+        Dictionary with execution results
+    """
+    logger.info(f"Re-executing single node {node_uuid}")
+
+    try:
+        # Get the node
+        node = await async_ops.get_node_by_uuid(node_uuid)
+        if not node:
+            raise ValueError(f"Node {node_uuid} not found")
+
+        workflow_run = node.workflow_run
+        paper_id = workflow_run.paper.id
+
+        logger.info(
+            f"Node {node_uuid} current status: {node.status}, node_id: {node.node_id}"
+        )
+
+        # Note: Node status should already be set to 'pending' by the view
+        # The node function will update it to 'running' when it starts
+
+        # Initialize OpenAI client
+        api_key = openai_api_key or os.getenv("OPENAI_API_KEY")
+        client = OpenAI(api_key=api_key)
+
+        # Build state for this node execution
+        state: PaperProcessingState = {
+            "workflow_run_id": str(workflow_run.id),
+            "paper_id": paper_id,
+            "current_node_id": node.node_id,
+            "client": client,
+            "model": model,
+            "force_reprocess": force_reprocess,
+            "paper_type_result": None,
+            "code_reproducibility_result": None,
+            "errors": [],
+        }
+
+        logger.info(f"Loading dependencies for node {node.node_id}")
+
+        # Load previous node results if they exist
+        if node.node_id == "code_reproducibility_analysis":
+            # Need paper_type_result from previous node
+            prev_node = await async_ops.get_workflow_node(
+                str(workflow_run.id), "paper_type_classification"
+            )
+            if prev_node and prev_node.status == "completed":
+                # Get the result artifact
+                artifacts = await async_ops.get_node_artifacts(prev_node)
+                for artifact in artifacts:
+                    if artifact.name == "result":
+                        state["paper_type_result"] = PaperTypeClassification(
+                            **artifact.data
+                        )
+                        logger.info(
+                            f"Loaded paper_type_result from previous node: {state['paper_type_result'].paper_type}"
+                        )
+                        break
+
+        logger.info(f"Executing node function for {node.node_id}")
+
+        # Execute the appropriate node function
+        if node.node_id == "paper_type_classification":
+            result = await paper_type_classification_node(state)
+        elif node.node_id == "code_reproducibility_analysis":
+            result = await code_reproducibility_analysis_node(state)
+        else:
+            raise ValueError(f"Unknown node type: {node.node_id}")
+
+        logger.info(f"Node function executed, result keys: {result.keys()}")
+
+        # Check for errors
+        errors = result.get("errors", [])
+        success = len(errors) == 0
+
+        logger.info(
+            f"Single node execution completed. Success: {success}, Errors: {errors}"
+        )
+
+        # Check if all nodes in the workflow are completed to update workflow run status
+        try:
+            # Get all nodes in this workflow run
+            all_nodes = await async_ops.get_workflow_nodes(str(workflow_run.id))
+
+            # Check statuses
+            all_completed_or_failed = all(
+                n.status in ["completed", "failed"] for n in all_nodes
+            )
+            any_failed = any(n.status == "failed" for n in all_nodes)
+
+            if all_completed_or_failed:
+                # All nodes finished, update workflow run status
+                workflow_status = "failed" if any_failed else "completed"
+                await async_ops.update_workflow_run_status(
+                    workflow_run.id, workflow_status, completed_at=timezone.now()
+                )
+                logger.info(
+                    f"Workflow run {workflow_run.id} updated to status: {workflow_status}"
+                )
+        except Exception as e:
+            logger.warning(
+                f"Failed to update workflow run status after node execution: {e}"
+            )
+
+        return {
+            "success": success,
+            "node_id": node.node_id,
+            "node_uuid": str(node.id),
+            "workflow_run_id": str(workflow_run.id),
+            "errors": errors,
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to execute single node: {e}", exc_info=True)
+        # Try to update node status to failed
+        try:
+            node = await async_ops.get_node_by_uuid(node_uuid)
+            if node:
+                await async_ops.update_node_status(
+                    node, "failed", completed_at=timezone.now(), error_message=str(e)
+                )
+                await async_ops.create_node_log(
+                    node, "ERROR", f"Node execution failed: {str(e)}"
+                )
+
+                # Also check if workflow should be marked as failed
+                try:
+                    all_nodes = await async_ops.get_workflow_nodes(
+                        str(node.workflow_run.id)
+                    )
+                    all_completed_or_failed = all(
+                        n.status in ["completed", "failed"] for n in all_nodes
+                    )
+                    if all_completed_or_failed:
+                        await async_ops.update_workflow_run_status(
+                            node.workflow_run.id,
+                            "failed",
+                            completed_at=timezone.now(),
+                            error_message=str(e),
+                        )
+                        logger.info(
+                            f"Workflow run {node.workflow_run.id} updated to 'failed'"
+                        )
+                except Exception as inner_inner_e:
+                    logger.error(f"Failed to update workflow status: {inner_inner_e}")
+        except Exception as inner_e:
+            logger.error(
+                f"Failed to update node status after error: {inner_e}", exc_info=True
+            )
+
+        return {"success": False, "error": str(e)}
+
+
+async def execute_workflow_from_node(
+    node_uuid: str, openai_api_key: Optional[str] = None, model: str = "gpt-4o"
+) -> Dict[str, Any]:
+    """
+    Create a new workflow run that copies results from previous nodes and executes from the specified node onwards.
+
+    Args:
+        node_uuid: UUID of the node to start from
+        openai_api_key: OpenAI API key (uses env var if not provided)
+        model: OpenAI model to use
+
+    Returns:
+        Dictionary with workflow results
+    """
+    logger.info(f"Executing workflow from node {node_uuid}")
+
+    try:
+        # Get the original node
+        original_node = await async_ops.get_node_by_uuid(node_uuid)
+        if not original_node:
+            raise ValueError(f"Node {node_uuid} not found")
+
+        original_workflow_run = original_node.workflow_run
+        paper_id = original_workflow_run.paper.id
+
+        # Get workflow definition
+        workflow_def = original_workflow_run.workflow_definition
+
+        # Create new workflow run
+        config = {
+            "force_reprocess": True,
+            "model": model,
+            "max_retries": 3,
+            "start_from_node": original_node.node_id,
+        }
+        new_workflow_run = await async_ops.create_workflow_run_with_paper_id(
+            workflow_name=workflow_def.name, paper_id=paper_id, input_data=config
+        )
+
+        # Update workflow run status to running
+        await async_ops.update_workflow_run_status(
+            new_workflow_run.id, "running", started_at=timezone.now()
+        )
+
+        # Get all nodes from the original workflow run
+        original_nodes = await async_ops.get_workflow_nodes(
+            str(original_workflow_run.id)
+        )
+
+        # Determine which nodes come before the target node based on DAG
+        dag_structure = workflow_def.dag_structure
+        nodes_order = [n["id"] for n in dag_structure.get("nodes", [])]
+        target_node_index = (
+            nodes_order.index(original_node.node_id)
+            if original_node.node_id in nodes_order
+            else -1
+        )
+
+        # Copy results from nodes that come before the target node
+        for orig_node in original_nodes:
+            if nodes_order.index(orig_node.node_id) < target_node_index:
+                # Get new node in the new workflow run
+                new_node = await async_ops.get_workflow_node(
+                    str(new_workflow_run.id), orig_node.node_id
+                )
+
+                # Copy status and results
+                await async_ops.update_node_status(
+                    new_node,
+                    orig_node.status,
+                    started_at=orig_node.started_at,
+                    completed_at=orig_node.completed_at,
+                    output_data=orig_node.output_data,
+                )
+
+                # Copy artifacts
+                orig_artifacts = await async_ops.get_node_artifacts(orig_node)
+                for artifact in orig_artifacts:
+                    await async_ops.create_node_artifact(
+                        new_node, artifact.name, artifact.data
+                    )
+
+                # Copy logs
+                orig_logs = orig_node.logs.all().order_by("timestamp")
+                for log in orig_logs:
+                    await async_ops.create_node_log(
+                        new_node, log.level, f"[COPIED] {log.message}", log.context
+                    )
+
+        # Now execute the workflow from the target node
+        # Initialize OpenAI client
+        api_key = openai_api_key or os.getenv("OPENAI_API_KEY")
+        client = OpenAI(api_key=api_key)
+
+        # Build state with results from copied nodes
+        state: PaperProcessingState = {
+            "workflow_run_id": str(new_workflow_run.id),
+            "paper_id": paper_id,
+            "current_node_id": None,
+            "client": client,
+            "model": model,
+            "force_reprocess": True,
+            "paper_type_result": None,
+            "code_reproducibility_result": None,
+            "errors": [],
+        }
+
+        # Load paper_type_result if we're starting from code_reproducibility_analysis
+        if original_node.node_id == "code_reproducibility_analysis":
+            paper_type_node = await async_ops.get_workflow_node(
+                str(new_workflow_run.id), "paper_type_classification"
+            )
+            if paper_type_node and paper_type_node.status == "completed":
+                artifacts = await async_ops.get_node_artifacts(paper_type_node)
+                for artifact in artifacts:
+                    if artifact.name == "result":
+                        state["paper_type_result"] = PaperTypeClassification(
+                            **artifact.data
+                        )
+                        break
+
+        # Execute nodes from target node onwards
+        if original_node.node_id == "paper_type_classification":
+            # Execute both nodes
+            result1 = await paper_type_classification_node(state)
+            if "paper_type_result" in result1:
+                state["paper_type_result"] = result1["paper_type_result"]
+            if "errors" in result1:
+                state["errors"].extend(result1["errors"])
+
+            result2 = await code_reproducibility_analysis_node(state)
+            if "code_reproducibility_result" in result2:
+                state["code_reproducibility_result"] = result2[
+                    "code_reproducibility_result"
+                ]
+            if "errors" in result2:
+                state["errors"].extend(result2["errors"])
+
+        elif original_node.node_id == "code_reproducibility_analysis":
+            # Execute only code_reproducibility_analysis
+            result = await code_reproducibility_analysis_node(state)
+            if "code_reproducibility_result" in result:
+                state["code_reproducibility_result"] = result[
+                    "code_reproducibility_result"
+                ]
+            if "errors" in result:
+                state["errors"].extend(result["errors"])
+
+        # Check for errors
+        errors = state.get("errors", [])
+        success = len(errors) == 0
+
+        # Update workflow run status
+        await async_ops.update_workflow_run_status(
+            new_workflow_run.id,
+            "completed" if success else "failed",
+            completed_at=timezone.now(),
+            output_data={
+                "success": success,
+                "paper_type": (
+                    state.get("paper_type_result").model_dump()
+                    if state.get("paper_type_result")
+                    else None
+                ),
+                "code_reproducibility": (
+                    state.get("code_reproducibility_result").model_dump()
+                    if state.get("code_reproducibility_result")
+                    else None
+                ),
+            },
+            error_message="; ".join(errors) if errors else None,
+        )
+
+        return {
+            "success": success,
+            "workflow_run_id": str(new_workflow_run.id),
+            "run_number": new_workflow_run.run_number,
+            "paper_id": paper_id,
+            "started_from_node": original_node.node_id,
+            "errors": errors,
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to execute workflow from node: {e}", exc_info=True)
+
+        # Try to update workflow run status
+        try:
+            if "new_workflow_run" in locals():
+                await async_ops.update_workflow_run_status(
+                    new_workflow_run.id,
+                    "failed",
+                    completed_at=timezone.now(),
+                    error_message=str(e),
+                )
+        except:
+            pass
+
+        return {"success": False, "error": str(e)}
 
 
 async def process_paper_workflow(

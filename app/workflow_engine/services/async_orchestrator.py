@@ -109,45 +109,6 @@ class AsyncWorkflowOperations:
     @sync_to_async
     def create_workflow_run(
         self,
-        name: str,
-        dag_structure: Dict[str, Any],
-        description: str = "",
-        version: int = 1
-    ) -> WorkflowDefinition:
-        """
-        Get or create a workflow definition.
-        
-        Args:
-            name: Unique workflow name
-            dag_structure: DAG structure with nodes and edges
-            description: Workflow description
-            version: Version number
-            
-        Returns:
-            WorkflowDefinition instance
-        """
-        workflow, created = WorkflowDefinition.objects.get_or_create(
-            name=name,
-            defaults={
-                "version": version,
-                "description": description,
-                "dag_structure": dag_structure,
-                "is_active": True
-            }
-        )
-        
-        if created:
-            logger.info(f"Created new workflow definition: {name}")
-        
-        return workflow
-    
-    # ========================================================================
-    # Workflow Run Management
-    # ========================================================================
-    
-    @sync_to_async
-    def create_workflow_run(
-        self,
         workflow_name: str,
         paper,
         input_data: Dict[str, Any] = None,
@@ -189,6 +150,9 @@ class AsyncWorkflowOperations:
             status: New status (pending, running, completed, failed, cancelled)
             **kwargs: Additional fields to update (started_at, completed_at, error_message, etc.)
         """
+        from django.db import connection
+        connection.close_if_unusable_or_obsolete()
+        
         workflow_run = WorkflowRun.objects.get(id=workflow_run_id)
         workflow_run.status = status
         
@@ -214,6 +178,9 @@ class AsyncWorkflowOperations:
         Returns:
             WorkflowNode instance
         """
+        from django.db import connection
+        connection.close_if_unusable_or_obsolete()
+        
         return WorkflowNode.objects.select_related('workflow_run').get(
             workflow_run_id=workflow_run_id,
             node_id=node_id
@@ -230,17 +197,23 @@ class AsyncWorkflowOperations:
         Update workflow node status and other fields.
         
         Args:
-            node: WorkflowNode instance
+            node: WorkflowNode instance (will be refetched to ensure thread-safe DB access)
             status: New status (pending, ready, claimed, running, completed, failed, skipped)
             **kwargs: Additional fields to update (started_at, completed_at, error_message, etc.)
         """
-        node.status = status
+        # Refetch node from database to ensure we have a fresh connection
+        # This is important when called from background threads
+        from django.db import connection
+        connection.close_if_unusable_or_obsolete()
+        
+        node_fresh = WorkflowNode.objects.get(id=node.id)
+        node_fresh.status = status
         
         for key, value in kwargs.items():
-            setattr(node, key, value)
+            setattr(node_fresh, key, value)
         
-        node.save()
-        logger.info(f"Node {node.node_id} status updated to: {status}")
+        node_fresh.save()
+        logger.info(f"Node {node_fresh.node_id} status updated to: {status}")
     
     @sync_to_async
     def mark_node_running(self, node: WorkflowNode, celery_task_id: str = None):
@@ -378,6 +351,9 @@ class AsyncWorkflowOperations:
             message: Log message
             context: Additional context data
         """
+        from django.db import connection
+        connection.close_if_unusable_or_obsolete()
+        
         NodeLog.objects.create(
             node=node,
             level=level,
@@ -472,6 +448,67 @@ class AsyncWorkflowOperations:
                 total_output += token_artifact.inline_data.get('output_tokens', 0)
         
         return total_input, total_output
+    
+    @sync_to_async
+    def get_node_by_uuid(self, node_uuid: str) -> Optional[WorkflowNode]:
+        """
+        Get a workflow node by its UUID.
+        
+        Args:
+            node_uuid: UUID of the node
+            
+        Returns:
+            WorkflowNode instance or None if not found
+        """
+        from django.db import connection
+        connection.close_if_unusable_or_obsolete()
+        
+        try:
+            return WorkflowNode.objects.select_related(
+                'workflow_run__paper',
+                'workflow_run__workflow_definition'
+            ).get(id=node_uuid)
+        except WorkflowNode.DoesNotExist:
+            return None
+    
+    @sync_to_async
+    def get_workflow_nodes(self, workflow_run_id: str) -> list:
+        """
+        Get all nodes for a workflow run.
+        
+        Args:
+            workflow_run_id: UUID of workflow run
+            
+        Returns:
+            List of WorkflowNode instances
+        """
+        from django.db import connection
+        connection.close_if_unusable_or_obsolete()
+        
+        return list(WorkflowNode.objects.filter(workflow_run_id=workflow_run_id).order_by('created_at'))
+    
+    @sync_to_async
+    def get_node_artifacts(self, node: WorkflowNode) -> list:
+        """
+        Get all artifacts for a node.
+        
+        Args:
+            node: WorkflowNode instance
+            
+        Returns:
+            List of NodeArtifact instances
+        """
+        return list(node.artifacts.all())
+    
+    @sync_to_async
+    def clear_node_logs(self, node: WorkflowNode):
+        """
+        Clear all logs for a node.
+        
+        Args:
+            node: WorkflowNode instance
+        """
+        node.logs.all().delete()
 
 
 # Convenience singleton instance

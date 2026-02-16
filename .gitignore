@@ -33,6 +33,9 @@ temp_schema.dot
 staticfiles/
 media/
 
+# Logs
+scraping_logs/
+
 # --- OS & Editor ---
 # macOS
 .DS_Store
