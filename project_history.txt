@@ -227,6 +227,9 @@ Niente di utile
 13/02/2026
 niente di utile
 
+16/02/2026
+Update tree generated, improved ingested pipeline, added degub-dev-stack.sh 
+
 
 
 
