@@ -4,6 +4,8 @@
 {% block head_title %}{{ paper.title }} - Details{% endblock %}
 
 {% block extra_head %}
+<!-- Mermaid.js for DAG visualization -->
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
 <style>
     .workflow-diagram-container {
         background: white;
@@ -13,119 +15,91 @@
         margin-bottom: 30px;
     }
     
-    .workflow-diagram {
+    .mermaid-diagram {
         display: flex;
-        align-items: stretch;
-        justify-content: flex-start;
-        min-height: 200px;
-        gap: 40px;
+        justify-content: center;
+        align-items: center;
+        min-height: 300px;
     }
     
-    .workflow-level {
+    /* Mermaid node styling overrides */
+    .mermaid .node rect,
+    .mermaid .node circle {
+        stroke-width: 2px;
+    }
+    
+    .mermaid .node.completed rect {
+        fill: #1abc9c !important;
+        stroke: #0e8c82 !important;
+    }
+    
+    .mermaid .node.running rect {
+        fill: #3498db !important;
+        stroke: #2980b9 !important;
+    }
+    
+    .mermaid .node.failed rect {
+        fill: #e74c3c !important;
+        stroke: #c0392b !important;
+    }
+    
+    .mermaid .node.pending rect {
+        fill: #f4d03f !important;
+        stroke: #e2b90a !important;
+    }
+    
+    .mermaid .edgeLabel {
+        background-color: white;
+        padding: 2px 4px;
+        border-radius: 3px;
+    }
+    
+    .clickable-node {
+        cursor: pointer;
+    }
+    
+    .node-legend {
         display: flex;
-        flex-direction: column;
         justify-content: center;
         gap: 20px;
-        position: relative;
-    }
-    
-    .workflow-level-connector {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        min-width: 40px;
-        position: relative;
-    }
-    
-    .connector-line {
-        width: 100%;
-        height: 2px;
-        background: linear-gradient(90deg, var(--primary) 0%, var(--teal) 100%);
-        position: absolute;
-    }
-    
-    .connector-arrows {
-        display: flex;
-        flex-direction: column;
-        justify-content: space-around;
-        align-items: center;
-        height: 100%;
-        width: 100%;
-        position: relative;
-    }
-    
-    .connector-arrow {
-        color: var(--primary);
-        font-size: 1.2rem;
-    }
-    
-    .workflow-node {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        cursor: pointer;
-        transition: transform 0.2s;
-    }
-    
-    .workflow-node:hover {
-        transform: scale(1.08);
-    }
-    
-    .node-box {
-        width: 100px;
-        height: 80px;
+        flex-wrap: wrap;
+        margin-top: 20px;
+        padding: 15px;
+        background: #f8f9fa;
         border-radius: 8px;
+    }
+    
+    .legend-item {
         display: flex;
-        flex-direction: column;
         align-items: center;
-        justify-content: center;
-        text-align: center;
-        padding: 10px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        position: relative;
+        gap: 8px;
     }
     
-    .node-box.completed {
-        background: linear-gradient(135deg, #0e8c82 0%, #1abc9c 100%);
-        border: 2px solid #0e8c82;
-        color: white;
+    .legend-box {
+        width: 20px;
+        height: 20px;
+        border-radius: 4px;
+        border: 2px solid;
     }
     
-    .node-box.running {
-        background: linear-gradient(135deg, #3498db 0%, #5dade2 100%);
-        border: 2px solid #3498db;
-        color: white;
+    .legend-box.completed {
+        background: #1abc9c;
+        border-color: #0e8c82;
     }
     
-    .node-box.failed {
-        background: linear-gradient(135deg, #c0392b 0%, #e74c3c 100%);
-        border: 2px solid #c0392b;
-        color: white;
+    .legend-box.running {
+        background: #3498db;
+        border-color: #2980b9;
     }
     
-    .node-box.pending, .node-box.ready {
-        background: linear-gradient(135deg, #f1c40f 0%, #f4d03f 100%);
-        border: 2px solid #e2b90a;
-        color: #2e2e2e;
+    .legend-box.failed {
+        background: #e74c3c;
+        border-color: #c0392b;
     }
     
-    .node-box.skipped, .node-box.cancelled {
-        background: linear-gradient(135deg, #7d7d7d 0%, #a0a0a0 100%);
-        border: 2px solid #5a5a5a;
-        color: white;
-    }
-    
-    .node-icon {
-        font-size: 1.5rem;
-        margin-bottom: 5px;
-    }
-    
-    .node-label {
-        font-size: 0.75rem;
-        font-weight: 600;
-        word-wrap: break-word;
-        max-width: 90px;
-        line-height: 1.2;
+    .legend-box.pending {
+        background: #f4d03f;
+        border-color: #e2b90a;
     }
     
     .status-badge-large {
@@ -218,51 +192,32 @@
                     </div>
                 </div>
                 <div class="card-body workflow-diagram-container">
-                    <div class="workflow-diagram">
-                        {% for level, nodes in workflow_nodes.items %}
-                            {% if not forloop.first %}
-                            <!-- Connector between levels -->
-                            <div class="workflow-level-connector">
-                                <div class="connector-arrows">
-                                    {% for node in nodes %}
-                                    <div class="connector-arrow">
-                                        <i class="fas fa-arrow-right"></i>
-                                    </div>
-                                    {% endfor %}
-                                </div>
-                            </div>
-                            {% endif %}
-                            
-                            <!-- Nodes at this level -->
-                            <div class="workflow-level">
-                                {% for node in nodes %}
-                                <div class="workflow-node" 
-                                     data-node-id="{{ node.id }}"
-                                     data-node-name="{{ node.node_id }}"
-                                     onclick="showNodeDetails('{{ node.id }}', '{{ node.node_id }}')">
-                                    <div class="node-box {{ node.status }}">
-                                        <div class="node-icon">
-                                            {% if node.status == 'completed' %}
-                                            <i class="fas fa-check-circle"></i>
-                                            {% elif node.status == 'running' %}
-                                            <i class="fas fa-spinner fa-spin"></i>
-                                            {% elif node.status == 'failed' %}
-                                            <i class="fas fa-times-circle"></i>
-                                            {% elif node.status == 'pending' or node.status == 'ready' %}
-                                            <i class="fas fa-clock"></i>
-                                            {% else %}
-                                            <i class="fas fa-circle"></i>
-                                            {% endif %}
-                                        </div>
-                                        <div class="node-label">{{ node.node_id|title|truncatewords:2 }}</div>
-                                    </div>
-                                </div>
-                                {% endfor %}
-                            </div>
-                        {% endfor %}
+                    <!-- Mermaid DAG Diagram -->
+                    <div class="mermaid-diagram" id="workflow-mermaid">
+                        <!-- Mermaid syntax will be inserted here -->
                     </div>
+                    
+                    <div class="node-legend">
+                        <div class="legend-item">
+                            <div class="legend-box completed"></div>
+                            <span><i class="fas fa-check-circle text-success"></i> Completed</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-box running"></div>
+                            <span><i class="fas fa-spinner text-info"></i> Running</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-box failed"></div>
+                            <span><i class="fas fa-times-circle text-danger"></i> Failed</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-box pending"></div>
+                            <span><i class="fas fa-clock text-warning"></i> Pending</span>
+                        </div>
+                    </div>
+                    
                     <div class="text-muted text-center mt-3 small">
-                        <i class="fas fa-info-circle mr-1"></i> Click on any node to view execution details and logs • Parallel paths shown vertically
+                        <i class="fas fa-info-circle mr-1"></i> Click on any node to view execution details and logs
                     </div>
                 </div>
             </div>
@@ -402,6 +357,53 @@
 </div>
 
 <script>
+// Initialize Mermaid
+mermaid.initialize({
+    startOnLoad: true,
+    theme: 'default',
+    flowchart: {
+        useMaxWidth: true,
+        htmlLabels: true,
+        curve: 'basis',
+        padding: 20
+    },
+    securityLevel: 'loose'
+});
+
+// Render workflow DAG
+$(document).ready(function() {
+    const nodesData = {{ workflow_nodes_json|safe }};
+    const edges = {{ workflow_edges|safe }};
+    
+    if (Object.keys(nodesData).length > 0) {
+        // Build Mermaid graph syntax
+        let mermaidSyntax = 'graph LR\n';
+        
+        // Add nodes with styling based on status
+        for (const [nodeId, nodeData] of Object.entries(nodesData)) {
+            const statusIcon = nodeData.status === 'completed' ? '✓' : 
+                             nodeData.status === 'running' ? '⟳' :
+                             nodeData.status === 'failed' ? '✗' : '○';
+            const label = `${statusIcon} ${nodeData.display_name}`;
+            mermaidSyntax += `    ${nodeId}["${label}"]:::${nodeData.status}\n`;
+        }
+        
+        // Add edges
+        edges.forEach(edge => {
+            mermaidSyntax += `    ${edge.from} --> ${edge.to}\n`;
+        });
+        
+        // Add click events
+        for (const [nodeId, nodeData] of Object.entries(nodesData)) {
+            mermaidSyntax += `    click ${nodeId} call showNodeDetails('${nodeData.id}', '${nodeData.display_name}')\n`;
+        }
+        
+        // Render the diagram
+        $('#workflow-mermaid').html('<div class="mermaid">' + mermaidSyntax + '</div>');
+        mermaid.init(undefined, '.mermaid');
+    }
+});
+
 function showNodeDetails(nodeId, nodeName) {
     $('#nodeDetailsModal').modal('show');
     $('#nodeDetailsModalLabel').html('<i class="fas fa-code mr-2"></i>Node: ' + nodeName);

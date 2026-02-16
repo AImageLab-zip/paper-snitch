@@ -648,69 +648,41 @@ class PaperDetailView(View):
         
         # Get latest workflow run
         latest_workflow = workflow_runs.first()
-        workflow_nodes = {}
+        workflow_nodes_json = {}
         workflow_edges = []
         
         if latest_workflow:
-            # Get nodes for the latest workflow in the correct order
-            # We need to get the DAG structure from the workflow definition
+            # Get the DAG structure from the workflow definition
             dag_structure = latest_workflow.workflow_definition.dag_structure
-            edges = dag_structure.get('edges', [])
+            workflow_edges = dag_structure.get('edges', [])
             
             # Get all nodes for this workflow run
-            nodes_dict = {
-                node.node_id: node 
-                for node in WorkflowNode.objects.filter(workflow_run=latest_workflow)
-            }
+            nodes = WorkflowNode.objects.filter(workflow_run=latest_workflow)
             
-            # Calculate node levels (depth from root) for proper layout
-            def calculate_node_levels(nodes, edges):
-                from collections import defaultdict, deque
+            # Build nodes dictionary for Mermaid
+            for node in nodes:
+                # Get display name from DAG structure
+                node_def = next(
+                    (n for n in dag_structure.get('nodes', []) if n['id'] == node.node_id),
+                    None
+                )
+                display_name = node_def['name'] if node_def and 'name' in node_def else node.node_id.replace('_', ' ').title()
                 
-                # Build adjacency lists
-                children = defaultdict(list)
-                parents = defaultdict(set)
-                
-                all_node_ids = [n['id'] for n in nodes]
-                for edge in edges:
-                    children[edge['from']].append(edge['to'])
-                    parents[edge['to']].add(edge['from'])
-                
-                # Find root nodes (no parents)
-                roots = [nid for nid in all_node_ids if not parents[nid]]
-                
-                # BFS to calculate levels
-                levels = {}
-                queue = deque([(root, 0) for root in roots])
-                
-                while queue:
-                    node_id, level = queue.popleft()
-                    if node_id not in levels:
-                        levels[node_id] = level
-                        for child in children[node_id]:
-                            queue.append((child, level + 1))
-                
-                # Group nodes by level
-                nodes_by_level = defaultdict(list)
-                for node_id, level in levels.items():
-                    if node_id in nodes_dict:
-                        nodes_by_level[level].append(nodes_dict[node_id])
-                
-                return dict(sorted(nodes_by_level.items()))
-            
-            workflow_nodes_by_level = calculate_node_levels(
-                dag_structure.get('nodes', []),
-                edges
-            )
-            workflow_nodes = workflow_nodes_by_level
-            workflow_edges = edges
+                workflow_nodes_json[node.node_id] = {
+                    'id': str(node.id),
+                    'node_id': node.node_id,
+                    'display_name': display_name,
+                    'status': node.status,
+                    'node_type': node.node_type,
+                }
         
+        import json
         context = {
             'paper': paper,
             'workflow_runs': workflow_runs,
             'latest_workflow': latest_workflow,
-            'workflow_nodes': workflow_nodes,
-            'workflow_edges': workflow_edges,
+            'workflow_nodes_json': json.dumps(workflow_nodes_json),
+            'workflow_edges': json.dumps(workflow_edges),
         }
         
         return render(request, self.template_name, context)
