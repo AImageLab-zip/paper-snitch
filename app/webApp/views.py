@@ -1,6 +1,6 @@
 import tempfile
 import os
-from django.shortcuts import render
+from django.shortcuts import render, get_object_or_404
 from django.contrib.auth.views import LoginView
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.forms import UserCreationForm
@@ -8,7 +8,9 @@ from django.contrib.auth import login
 from django.contrib import messages
 from django.http import JsonResponse
 from django.views import View
-from webApp.models import Operations, Analysis, BugReport, Paper
+from django.core.paginator import Paginator
+from django.db.models import Q, Count, Max, Prefetch
+from webApp.models import Operations, Analysis, BugReport, Paper, Conference
 
 from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
@@ -23,6 +25,9 @@ from .tasks import (
     cleanup_task,
     get_available_models,
 )
+
+# Import workflow models
+from workflow_engine.models import WorkflowRun, WorkflowNode
 
 
 class PaperSnitchLoginView(LoginView):
@@ -527,3 +532,176 @@ class AnnotatePaperView(LoginRequiredMixin, View):
 
         # Redirect to the annotator view
         return redirect("annotate_document", pk=document.pk)
+
+
+class ConferenceListView(View):
+    """View for listing all conferences (public, no auth required)."""
+
+    template_name = "webApp/conference_list.html"
+
+    def get(self, request):
+        """Display conferences with search and pagination."""
+        search_query = request.GET.get('q', '').strip()
+        
+        # Start with all conferences
+        conferences = Conference.objects.all()
+        
+        # Annotate with paper count
+        conferences = conferences.annotate(paper_count=Count('papers'))
+        
+        # Apply search filter
+        if search_query:
+            conferences = conferences.filter(
+                Q(name__icontains=search_query) | 
+                Q(year__icontains=search_query)
+            )
+        
+        # Order by name
+        conferences = conferences.order_by('name', '-year')
+        
+        # Pagination
+        paginator = Paginator(conferences, 20)  # 20 conferences per page
+        page_number = request.GET.get('page', 1)
+        page_obj = paginator.get_page(page_number)
+        
+        context = {
+            'conferences': page_obj,
+            'page_obj': page_obj,
+            'search_query': search_query,
+        }
+        
+        return render(request, self.template_name, context)
+
+
+class ConferenceDetailView(View):
+    """View for conference details with papers list (public, no auth required)."""
+
+    template_name = "webApp/conference_detail.html"
+
+    def get(self, request, conference_id):
+        """Display conference with its papers, search, and pagination."""
+        conference = get_object_or_404(Conference, id=conference_id)
+        search_query = request.GET.get('q', '').strip()
+        
+        # Get papers for this conference
+        papers = Paper.objects.filter(conference=conference)
+        
+        # Apply search filter
+        if search_query:
+            papers = papers.filter(
+                Q(title__icontains=search_query) |
+                Q(doi__icontains=search_query) |
+                Q(authors__icontains=search_query)
+            )
+        
+        # Order by title
+        papers = papers.order_by('title')
+        
+        # Annotate each paper with workflow statistics
+        papers_with_stats = []
+        for paper in papers:
+            # Get workflow stats - only workflows, not legacy Analysis
+            workflow_runs = WorkflowRun.objects.filter(paper=paper)
+            total_workflows = workflow_runs.count()
+            
+            latest_workflow = workflow_runs.order_by('-created_at').first()
+            latest_status = latest_workflow.status if latest_workflow else None
+            
+            paper.workflow_stats = {
+                'total': total_workflows,
+                'latest_status': latest_status,
+            }
+            papers_with_stats.append(paper)
+        
+        # Pagination
+        paginator = Paginator(papers_with_stats, 25)  # 25 papers per page
+        page_number = request.GET.get('page', 1)
+        page_obj = paginator.get_page(page_number)
+        
+        context = {
+            'conference': conference,
+            'papers': page_obj,
+            'page_obj': page_obj,
+            'search_query': search_query,
+        }
+        
+        return render(request, self.template_name, context)
+
+
+class PaperDetailView(View):
+    """View for paper details with workflow visualization (public, no auth required)."""
+
+    template_name = "webApp/paper_detail.html"
+
+    def get(self, request, paper_id):
+        """Display paper with workflow diagram and run history."""
+        paper = get_object_or_404(Paper, id=paper_id)
+        
+        # Get all workflow runs for this paper
+        workflow_runs = WorkflowRun.objects.filter(paper=paper).select_related(
+            'workflow_definition', 'created_by'
+        ).order_by('-created_at')
+        
+        # Add progress to each run
+        for run in workflow_runs:
+            run.progress = run.get_progress()
+        
+        # Get latest workflow run
+        latest_workflow = workflow_runs.first()
+        workflow_nodes = []
+        
+        if latest_workflow:
+            # Get nodes for the latest workflow in the correct order
+            # We need to get the DAG structure from the workflow definition
+            dag_structure = latest_workflow.workflow_definition.dag_structure
+            node_order = [node['id'] for node in dag_structure.get('nodes', [])]
+            
+            # Get all nodes for this workflow run
+            nodes_dict = {
+                node.node_id: node 
+                for node in WorkflowNode.objects.filter(workflow_run=latest_workflow)
+            }
+            
+            # Order nodes according to DAG structure
+            workflow_nodes = [nodes_dict[node_id] for node_id in node_order if node_id in nodes_dict]
+        
+        context = {
+            'paper': paper,
+            'workflow_runs': workflow_runs,
+            'latest_workflow': latest_workflow,
+            'workflow_nodes': workflow_nodes,
+        }
+        
+        return render(request, self.template_name, context)
+
+
+class WorkflowNodeDetailView(View):
+    """API view for getting workflow node details (public, no auth required)."""
+
+    def get(self, request, node_id):
+        """Get node execution details as JSON."""
+        try:
+            node = WorkflowNode.objects.get(id=node_id)
+        except WorkflowNode.DoesNotExist:
+            return JsonResponse({'error': 'Node not found'}, status=404)
+        
+        data = {
+            'id': str(node.id),
+            'node_id': node.node_id,
+            'node_type': node.node_type,
+            'handler': node.handler,
+            'status': node.status,
+            'attempt_count': node.attempt_count,
+            'max_retries': node.max_retries,
+            'input_data': node.input_data,
+            'output_data': node.output_data,
+            'error_message': node.error_message,
+            'error_traceback': node.error_traceback,
+            'celery_task_id': node.celery_task_id,
+            'started_at': node.started_at.isoformat() if node.started_at else None,
+            'completed_at': node.completed_at.isoformat() if node.completed_at else None,
+            'duration': node.duration,
+        }
+        
+        return JsonResponse(data)
+

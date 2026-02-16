@@ -21,6 +21,13 @@ class Conference(models.Model):
     name = models.CharField(max_length=300, verbose_name="Conference name")
     year = models.IntegerField(verbose_name="Year", blank=True, null=True)
     url = models.URLField(verbose_name="Website", blank=True, max_length=500)
+    logo = models.ImageField(
+        upload_to="conference_logos/",
+        blank=True,
+        null=True,
+        verbose_name="Conference Logo",
+        help_text="Upload conference logo or icon"
+    )
     last_update = models.DateTimeField(auto_now=True, verbose_name="Last update")
 
     class Meta:
