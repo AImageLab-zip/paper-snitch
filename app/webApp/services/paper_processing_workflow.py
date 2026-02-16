@@ -1908,10 +1908,8 @@ Output the complete JSON object with ALL fields filled in based on the analysis 
                 "overall_assessment", "Analysis completed"
             ),
             "recommendations": recommendations,  # Programmatically generated
-            "input_tokens": response.usage.prompt_tokens
-            + structured_response.usage.prompt_tokens,
-            "output_tokens": response.usage.completion_tokens
-            + structured_response.usage.completion_tokens,
+            "input_tokens": input_tokens,  # concatenated previously since the number of llm calls increased
+            "output_tokens": output_tokens,  # concatenated previously since the number of llm calls increased
             "llm_analysis_text": analysis_text,  # Store full LLM analysis
             "structured_data": structured_data,  # Store structured JSON
         }
