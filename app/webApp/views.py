@@ -882,6 +882,22 @@ class WorkflowNodeDetailView(View):
                 for log in logs
             ]
             
+            # Get node artifacts
+            artifacts = node.artifacts.all()
+            artifacts_data = {}
+            for artifact in artifacts:
+                if artifact.artifact_type == 'inline':
+                    artifacts_data[artifact.name] = artifact.inline_data
+                else:
+                    artifacts_data[artifact.name] = {
+                        'type': artifact.artifact_type,
+                        'file_path': artifact.file_path,
+                        'url': artifact.url,
+                        'mime_type': artifact.mime_type,
+                        'size_bytes': artifact.size_bytes,
+                        'metadata': artifact.metadata
+                    }
+            
             data = {
                 'id': str(node.id),
                 'node_id': node.node_id,
@@ -892,6 +908,7 @@ class WorkflowNodeDetailView(View):
                 'max_retries': node.max_retries,
                 'input_data': node.input_data,
                 'output_data': node.output_data,
+                'artifacts': artifacts_data,
                 'error_message': node.error_message,
                 'error_traceback': node.error_traceback,
                 'celery_task_id': node.celery_task_id,

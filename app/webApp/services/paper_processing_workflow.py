@@ -51,7 +51,7 @@ class PaperTypeClassification(BaseModel):
     model_config = ConfigDict(extra='forbid')
     
     paper_type: str = Field(
-        description="Type of contribution: 'dataset', 'method', 'both', or 'unknown'"
+        description="Type of contribution: 'dataset', 'method', 'both', 'theoretical', or 'unknown'"
     )
     confidence: float = Field(
         description="Confidence score between 0 and 1",
@@ -277,7 +277,7 @@ def compute_reproducibility_score(
         - recommendations: List of improvement suggestions
     """
     breakdown = {
-        "code_completeness": 0.0,      # 2.5-3.0 points (adaptive)
+        "code_completeness": 0.0,       # 2.5-3.0 points (adaptive)
         "dependencies": 0.0,            # 1.0 points
         "artifacts": 0.0,               # 0-2.5 points (adaptive)
         "dataset_splits": 0.0,          # 0-2.0 points (adaptive)
@@ -436,8 +436,28 @@ def compute_reproducibility_score(
     else:
         recommendations.append("Add comprehensive documentation with results and reproduction steps")
     
-    # Compute total score
-    total_score = sum(breakdown.values())
+    # Calculate maximum achievable score for this paper type (for normalization)
+    max_possible_score = 0.0
+    max_possible_score += max_code_points  # 2.5 or 3.0
+    max_possible_score += 1.0  # dependencies (always)
+    
+    if requires_datasets or requires_training:
+        max_possible_score += 2.5  # artifacts
+    else:
+        max_possible_score += 2.0  # baseline for complete code
+    
+    if requires_splits:
+        max_possible_score += 2.0  # dataset_splits
+    else:
+        max_possible_score += 1.5  # best case for non-split papers (documented seeds)
+    
+    max_possible_score += 2.0  # documentation (always)
+    
+    # Compute raw total score
+    raw_score = sum(breakdown.values())
+    
+    # Normalize to 10-point scale
+    total_score = (raw_score / max_possible_score) * 10.0 if max_possible_score > 0 else 0.0
     
     # Round to 1 decimal place
     total_score = round(total_score, 1)
@@ -507,17 +527,20 @@ Your task is to classify papers into one of these categories:
 1. "dataset" - Papers primarily presenting a new dataset
 2. "method" - Papers presenting a new method, model, algorithm, methodology, or benchmark
 3. "both" - Papers presenting both a new dataset AND a new method
-4. "unknown" - Cannot determine from available information
+4. "theoretical" - Papers with purely theoretical contributions (proofs, mathematical frameworks, surveys, position papers) where executable code is not expected
+5. "unknown" - Cannot determine from available information
 
 Guidelines:
 - Focus on the PRIMARY contribution of the paper
 - A paper introducing a dataset to support a new method should be classified as "both"
 - A paper using existing datasets to present a new method is "method"
 - A paper collecting and presenting a dataset without a novel method is "dataset"
+- Classify as "theoretical" only if: mathematical proofs, theoretical analysis, survey/review, or position papers with NO empirical experiments or implementations
+- Papers with empirical validation (even simple experiments) should be "method", not "theoretical"
 - Be confident in your assessment - use "unknown" sparingly
 
 Provide:
-1. Classification (dataset/method/both/unknown)
+1. Classification (dataset/method/both/theoretical/unknown)
 2. Confidence score (0.0 to 1.0)
 3. Clear reasoning
 4. Key evidence quotes from the paper"""
@@ -646,8 +669,39 @@ async def code_reproducibility_analysis_node(state: PaperProcessingState) -> Dic
         client = state['client']
         model = state['model']
         
-        # Check paper type from Node A - dataset-only papers don't need code analysis
+        # Check paper type from Node A - theoretical papers don't need code analysis
         paper_type_result = state.get('paper_type_result')
+        if paper_type_result and paper_type_result.paper_type == 'theoretical':
+            logger.info("Paper classified as theoretical - code analysis not applicable")
+            
+            # Theoretical papers don't require executable code
+            analysis = CodeReproducibilityAnalysis(
+                analysis_timestamp=datetime.utcnow().isoformat(),
+                code_availability=CodeAvailabilityCheck(
+                    code_available=False,
+                    code_url=None,
+                    found_online=False,
+                    availability_notes="Theoretical paper - code analysis not applicable. This paper presents theoretical contributions where executable code is not expected."
+                ),
+                research_methodology=ResearchMethodologyAnalysis(
+                    methodology_type="theoretical",
+                    requires_training=False,
+                    requires_datasets=False,
+                    requires_splits=False,
+                    methodology_notes=paper_type_result.reasoning
+                ),
+                reproducibility_score=10.0,  # Perfect score - no code needed for theoretical work
+                score_breakdown={},
+                overall_assessment=f"Code reproducibility analysis not applicable. This is a theoretical paper where executable code is not expected. {paper_type_result.reasoning}",
+                recommendations=[]
+            )
+            
+            await async_ops.create_node_artifact(node, 'result', analysis)
+            await async_ops.create_node_log(node, 'INFO', 'Theoretical paper - code analysis skipped')
+            await async_ops.update_node_status(node, 'completed', completed_at=timezone.now())
+            
+            return {"code_reproducibility_result": analysis}
+        
         if paper_type_result and paper_type_result.paper_type == 'dataset':
             logger.info("Paper classified as dataset-only - code analysis not applicable")
             

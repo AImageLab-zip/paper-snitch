@@ -1057,12 +1057,279 @@ function renderNodeDetails(node) {
         </div>
     `;
     
-    // Output Data
+    // Artifacts (show detailed analysis results)
+    if (node.artifacts && Object.keys(node.artifacts).length > 0) {
+        html += `
+            <div class="mb-4">
+                <h6 class="border-bottom pb-2">
+                    <i class="fas fa-archive text-primary mr-2"></i>Analysis Results
+                </h6>
+        `;
+        
+        // Display 'result' artifact specially if it exists (full analysis)
+        if (node.artifacts.result) {
+            const result = node.artifacts.result;
+            
+            // Check if it's a code reproducibility analysis
+            if (result.reproducibility_score !== undefined) {
+                html += `
+                    <div class="card mb-3">
+                        <div class="card-header bg-primary text-white">
+                            <h6 class="mb-0">
+                                <i class="fas fa-chart-bar mr-2"></i>
+                                Code Reproducibility Analysis
+                                <span class="badge badge-light text-primary float-right">
+                                    Score: ${result.reproducibility_score}/10
+                                </span>
+                            </h6>
+                        </div>
+                        <div class="card-body">
+                `;
+                
+                // Research Methodology (show type and what's applicable)
+                if (result.research_methodology) {
+                    const methodology = result.research_methodology;
+                    const typeLabel = methodology.methodology_type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                    html += `
+                        <div class="mb-3">
+                            <h6><i class="fas fa-flask text-info mr-2"></i>Research Methodology</h6>
+                            <p>
+                                <strong>Type:</strong> <span class="badge badge-info">${typeLabel}</span><br>
+                                ${methodology.methodology_notes ? `<small class="text-muted">${escapeHtml(methodology.methodology_notes)}</small>` : ''}
+                            </p>
+                        </div>
+                    `;
+                }
+                
+                // Overall Assessment
+                if (result.overall_assessment) {
+                    html += `
+                        <div class="mb-3">
+                            <h6><i class="fas fa-clipboard-check text-info mr-2"></i>Overall Assessment</h6>
+                            <p>${escapeHtml(result.overall_assessment)}</p>
+                        </div>
+                    `;
+                }
+                
+                // Score Breakdown
+                if (result.score_breakdown && Object.keys(result.score_breakdown).length > 0) {
+                    // Determine which components are applicable based on methodology
+                    const methodology = result.research_methodology || {};
+                    const requiresTraining = methodology.requires_training !== false; // default true
+                    const requiresDatasets = methodology.requires_datasets !== false; // default true
+                    const requiresSplits = methodology.requires_splits !== false; // default true
+                    
+                    // Define which components are N/A based on methodology
+                    const componentApplicability = {
+                        'code_completeness': true, // Always applicable
+                        'dependencies': true, // Always applicable
+                        'artifacts': requiresTraining || requiresDatasets, // N/A for theoretical papers
+                        'dataset_splits': requiresSplits, // N/A for non-ML papers
+                        'documentation': true // Always applicable
+                    };
+                    
+                    html += `
+                        <div class="mb-3">
+                            <h6><i class="fas fa-tasks text-success mr-2"></i>Score Breakdown</h6>
+                            <table class="table table-sm table-bordered">
+                                <thead class="thead-light">
+                                    <tr>
+                                        <th>Component</th>
+                                        <th style="width: 120px;">Score</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                    `;
+                    for (const [key, value] of Object.entries(result.score_breakdown)) {
+                        const isApplicable = componentApplicability[key] !== false;
+                        const componentName = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                        
+                        if (!isApplicable) {
+                            // Show N/A components with gray styling
+                            html += `
+                                <tr class="table-secondary">
+                                    <td style="vertical-align: middle;">${componentName}</td>
+                                    <td class="text-center" style="vertical-align: middle;">
+                                        <span class="badge badge-secondary">N/A</span>
+                                    </td>
+                                </tr>
+                            `;
+                        } else {
+                            // Show applicable components with progress bars
+                            const percentage = (value / 10 * 100).toFixed(0);
+                            const maxScore = key === 'code_completeness' ? (requiresTraining ? 3.0 : 2.5) : 
+                                           key === 'artifacts' ? 2.5 :
+                                           key === 'dataset_splits' ? 2.0 :
+                                           key === 'dependencies' ? 1.0 : 2.0;
+                            const relativePercentage = (value / maxScore * 100).toFixed(0);
+                            const scoreText = `${value.toFixed(1)}/${maxScore.toFixed(1)}`;
+                            
+                            html += `
+                                <tr>
+                                    <td style="vertical-align: middle;">${componentName}</td>
+                                    <td style="position: relative; vertical-align: middle; padding: 0.5rem;">
+                                        <div class="progress" style="height: 20px;">
+                                            <div class="progress-bar ${value >= maxScore * 0.7 ? 'bg-success' : value >= maxScore * 0.4 ? 'bg-warning' : 'bg-danger'}" 
+                                                 role="progressbar" 
+                                                 style="width: ${Math.max(relativePercentage, 5)}%"
+                                                 aria-valuenow="${value}" 
+                                                 aria-valuemin="0" 
+                                                 aria-valuemax="${maxScore}">
+                                            </div>
+                                        </div>
+                                        <span style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-weight: 500; font-family: monospace; color: ${relativePercentage > 50 ? '#fff' : '#333'};">
+                                            ${scoreText}
+                                        </span>
+                                    </td>
+                                </tr>
+                            `;
+                        }
+                    }
+                    html += `
+                                </tbody>
+                            </table>
+                        </div>
+                    `;
+                }
+                
+                // Recommendations
+                if (result.recommendations && result.recommendations.length > 0) {
+                    html += `
+                        <div class="mb-3">
+                            <h6><i class="fas fa-lightbulb text-warning mr-2"></i>Recommendations</h6>
+                            <ul class="mb-0">
+                    `;
+                    result.recommendations.forEach(rec => {
+                        html += `<li>${escapeHtml(rec)}</li>`;
+                    });
+                    html += `
+                            </ul>
+                        </div>
+                    `;
+                }
+                
+                // Code Availability
+                if (result.code_availability) {
+                    html += `
+                        <div class="mb-3">
+                            <h6><i class="fas fa-code text-primary mr-2"></i>Code Availability</h6>
+                            <table class="table table-sm">
+                                <tr>
+                                    <td><strong>Code Available:</strong></td>
+                                    <td>${result.code_availability.code_available ? '<span class="badge badge-success">Yes</span>' : '<span class="badge badge-danger">No</span>'}</td>
+                                </tr>
+                    `;
+                    if (result.code_availability.code_url) {
+                        html += `
+                                <tr>
+                                    <td><strong>Repository URL:</strong></td>
+                                    <td><a href="${escapeHtml(result.code_availability.code_url)}" target="_blank">${escapeHtml(result.code_availability.code_url)}</a></td>
+                                </tr>
+                        `;
+                    }
+                    if (result.code_availability.availability_notes) {
+                        html += `
+                                <tr>
+                                    <td><strong>Notes:</strong></td>
+                                    <td>${escapeHtml(result.code_availability.availability_notes)}</td>
+                                </tr>
+                        `;
+                    }
+                    html += `
+                            </table>
+                        </div>
+                    `;
+                }
+                
+                // Show full JSON in a collapsible section
+                html += `
+                            <div class="mt-3">
+                                <a class="btn btn-sm btn-outline-secondary" data-toggle="collapse" href="#fullResultJson" role="button">
+                                    <i class="fas fa-code mr-1"></i> View Full JSON
+                                </a>
+                                <div class="collapse mt-2" id="fullResultJson">
+                                    <pre class="bg-light p-3 rounded" style="max-height: 400px; overflow-y: auto;"><code>${escapeHtml(JSON.stringify(result, null, 2))}</code></pre>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            } else if (result.paper_type !== undefined) {
+                // Paper type classification result
+                // Normalize paper_type value
+                const paperType = result.paper_type || 'unknown';
+                
+                const typeColors = {
+                    'method': 'primary',
+                    'dataset': 'success',
+                    'both': 'warning',
+                    'theoretical': 'info',
+                    'unknown': 'secondary'
+                };
+                const badgeColor = typeColors[paperType] || 'secondary';
+                
+                html += `
+                    <div class="card mb-3">
+                        <div class="card-header bg-info text-white">
+                            <h6 class="mb-0">
+                                <i class="fas fa-tag mr-2"></i>
+                                Paper Type Classification
+                                <span class="badge badge-${badgeColor} float-right" style="font-size: 0.9rem;">
+                                    ${escapeHtml(paperType).toUpperCase()}
+                                </span>
+                            </h6>
+                        </div>
+                        <div class="card-body">
+                            <p><strong>Confidence:</strong> ${(result.confidence * 100).toFixed(1)}%</p>
+                            <p><strong>Reasoning:</strong> ${escapeHtml(result.reasoning)}</p>
+                            ${result.key_evidence && result.key_evidence.length > 0 ? `
+                                <h6>Key Evidence:</h6>
+                                <ul>
+                                    ${result.key_evidence.map(e => `<li>${escapeHtml(e)}</li>`).join('')}
+                                </ul>
+                            ` : ''}
+                            <div class="mt-3">
+                                <a class="btn btn-sm btn-outline-secondary" data-toggle="collapse" href="#fullResultJson" role="button">
+                                    <i class="fas fa-code mr-1"></i> View Full JSON
+                                </a>
+                                <div class="collapse mt-2" id="fullResultJson">
+                                    <pre class="bg-light p-3 rounded" style="max-height: 400px; overflow-y: auto;"><code>${escapeHtml(JSON.stringify(result, null, 2))}</code></pre>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            } else {
+                // Generic result artifact
+                html += `
+                    <pre class="bg-light p-3 rounded" style="max-height: 300px; overflow-y: auto;"><code>${escapeHtml(JSON.stringify(result, null, 2))}</code></pre>
+                `;
+            }
+        }
+        
+        // Show other artifacts
+        for (const [name, artifact] of Object.entries(node.artifacts)) {
+            if (name !== 'result' && name !== 'token_usage') {
+                html += `
+                    <div class="mb-2">
+                        <h6 class="text-muted">${name}</h6>
+                        <pre class="bg-light p-2 rounded" style="max-height: 200px; overflow-y: auto;"><code>${escapeHtml(JSON.stringify(artifact, null, 2))}</code></pre>
+                    </div>
+                `;
+            }
+        }
+        
+        html += `
+            </div>
+        `;
+    }
+    
+    // Output Data (minimal technical data)
     if (node.output_data && Object.keys(node.output_data).length > 0) {
         html += `
             <div class="mb-3">
                 <h6 class="border-bottom pb-2">
-                    <i class="fas fa-database text-primary mr-2"></i>Output Data
+                    <i class="fas fa-database text-secondary mr-2"></i>Output Data (Technical)
                 </h6>
                 <pre class="bg-light p-3 rounded" style="max-height: 300px; overflow-y: auto;"><code>${escapeHtml(JSON.stringify(node.output_data, null, 2))}</code></pre>
             </div>
