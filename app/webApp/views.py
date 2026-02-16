@@ -648,13 +648,14 @@ class PaperDetailView(View):
         
         # Get latest workflow run
         latest_workflow = workflow_runs.first()
-        workflow_nodes = []
+        workflow_nodes = {}
+        workflow_edges = []
         
         if latest_workflow:
             # Get nodes for the latest workflow in the correct order
             # We need to get the DAG structure from the workflow definition
             dag_structure = latest_workflow.workflow_definition.dag_structure
-            node_order = [node['id'] for node in dag_structure.get('nodes', [])]
+            edges = dag_structure.get('edges', [])
             
             # Get all nodes for this workflow run
             nodes_dict = {
@@ -662,14 +663,54 @@ class PaperDetailView(View):
                 for node in WorkflowNode.objects.filter(workflow_run=latest_workflow)
             }
             
-            # Order nodes according to DAG structure
-            workflow_nodes = [nodes_dict[node_id] for node_id in node_order if node_id in nodes_dict]
+            # Calculate node levels (depth from root) for proper layout
+            def calculate_node_levels(nodes, edges):
+                from collections import defaultdict, deque
+                
+                # Build adjacency lists
+                children = defaultdict(list)
+                parents = defaultdict(set)
+                
+                all_node_ids = [n['id'] for n in nodes]
+                for edge in edges:
+                    children[edge['from']].append(edge['to'])
+                    parents[edge['to']].add(edge['from'])
+                
+                # Find root nodes (no parents)
+                roots = [nid for nid in all_node_ids if not parents[nid]]
+                
+                # BFS to calculate levels
+                levels = {}
+                queue = deque([(root, 0) for root in roots])
+                
+                while queue:
+                    node_id, level = queue.popleft()
+                    if node_id not in levels:
+                        levels[node_id] = level
+                        for child in children[node_id]:
+                            queue.append((child, level + 1))
+                
+                # Group nodes by level
+                nodes_by_level = defaultdict(list)
+                for node_id, level in levels.items():
+                    if node_id in nodes_dict:
+                        nodes_by_level[level].append(nodes_dict[node_id])
+                
+                return dict(sorted(nodes_by_level.items()))
+            
+            workflow_nodes_by_level = calculate_node_levels(
+                dag_structure.get('nodes', []),
+                edges
+            )
+            workflow_nodes = workflow_nodes_by_level
+            workflow_edges = edges
         
         context = {
             'paper': paper,
             'workflow_runs': workflow_runs,
             'latest_workflow': latest_workflow,
             'workflow_nodes': workflow_nodes,
+            'workflow_edges': workflow_edges,
         }
         
         return render(request, self.template_name, context)

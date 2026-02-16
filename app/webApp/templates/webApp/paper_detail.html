@@ -7,7 +7,7 @@
 <style>
     .workflow-diagram-container {
         background: white;
-        padding: 20px;
+        padding: 30px;
         border-radius: 8px;
         overflow-x: auto;
         margin-bottom: 30px;
@@ -15,24 +15,60 @@
     
     .workflow-diagram {
         display: flex;
-        align-items: center;
+        align-items: stretch;
         justify-content: flex-start;
-        min-height: 150px;
-        gap: 10px;
-        flex-wrap: nowrap;
+        min-height: 200px;
+        gap: 40px;
+    }
+    
+    .workflow-level {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 20px;
+        position: relative;
+    }
+    
+    .workflow-level-connector {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 40px;
+        position: relative;
+    }
+    
+    .connector-line {
+        width: 100%;
+        height: 2px;
+        background: linear-gradient(90deg, var(--primary) 0%, var(--teal) 100%);
+        position: absolute;
+    }
+    
+    .connector-arrows {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-around;
+        align-items: center;
+        height: 100%;
+        width: 100%;
+        position: relative;
+    }
+    
+    .connector-arrow {
+        color: var(--primary);
+        font-size: 1.2rem;
     }
     
     .workflow-node {
         display: flex;
         flex-direction: column;
         align-items: center;
-        min-width: 120px;
         cursor: pointer;
         transition: transform 0.2s;
     }
     
     .workflow-node:hover {
-        transform: scale(1.05);
+        transform: scale(1.08);
     }
     
     .node-box {
@@ -89,12 +125,7 @@
         font-weight: 600;
         word-wrap: break-word;
         max-width: 90px;
-    }
-    
-    .node-arrow {
-        color: var(--primary);
-        font-size: 1.5rem;
-        margin: 0 5px;
+        line-height: 1.2;
     }
     
     .status-badge-large {
@@ -188,37 +219,50 @@
                 </div>
                 <div class="card-body workflow-diagram-container">
                     <div class="workflow-diagram">
-                        {% for node in workflow_nodes %}
+                        {% for level, nodes in workflow_nodes.items %}
                             {% if not forloop.first %}
-                            <div class="node-arrow">
-                                <i class="fas fa-arrow-right"></i>
+                            <!-- Connector between levels -->
+                            <div class="workflow-level-connector">
+                                <div class="connector-arrows">
+                                    {% for node in nodes %}
+                                    <div class="connector-arrow">
+                                        <i class="fas fa-arrow-right"></i>
+                                    </div>
+                                    {% endfor %}
+                                </div>
                             </div>
                             {% endif %}
-                            <div class="workflow-node" 
-                                 data-node-id="{{ node.id }}"
-                                 data-node-name="{{ node.node_id }}"
-                                 onclick="showNodeDetails('{{ node.id }}', '{{ node.node_id }}')">
-                                <div class="node-box {{ node.status }}">
-                                    <div class="node-icon">
-                                        {% if node.status == 'completed' %}
-                                        <i class="fas fa-check-circle"></i>
-                                        {% elif node.status == 'running' %}
-                                        <i class="fas fa-spinner fa-spin"></i>
-                                        {% elif node.status == 'failed' %}
-                                        <i class="fas fa-times-circle"></i>
-                                        {% elif node.status == 'pending' or node.status == 'ready' %}
-                                        <i class="fas fa-clock"></i>
-                                        {% else %}
-                                        <i class="fas fa-circle"></i>
-                                        {% endif %}
+                            
+                            <!-- Nodes at this level -->
+                            <div class="workflow-level">
+                                {% for node in nodes %}
+                                <div class="workflow-node" 
+                                     data-node-id="{{ node.id }}"
+                                     data-node-name="{{ node.node_id }}"
+                                     onclick="showNodeDetails('{{ node.id }}', '{{ node.node_id }}')">
+                                    <div class="node-box {{ node.status }}">
+                                        <div class="node-icon">
+                                            {% if node.status == 'completed' %}
+                                            <i class="fas fa-check-circle"></i>
+                                            {% elif node.status == 'running' %}
+                                            <i class="fas fa-spinner fa-spin"></i>
+                                            {% elif node.status == 'failed' %}
+                                            <i class="fas fa-times-circle"></i>
+                                            {% elif node.status == 'pending' or node.status == 'ready' %}
+                                            <i class="fas fa-clock"></i>
+                                            {% else %}
+                                            <i class="fas fa-circle"></i>
+                                            {% endif %}
+                                        </div>
+                                        <div class="node-label">{{ node.node_id|title|truncatewords:2 }}</div>
                                     </div>
-                                    <div class="node-label">{{ node.node_id|title }}</div>
                                 </div>
+                                {% endfor %}
                             </div>
                         {% endfor %}
                     </div>
                     <div class="text-muted text-center mt-3 small">
-                        <i class="fas fa-info-circle mr-1"></i> Click on any node to view execution details and logs
+                        <i class="fas fa-info-circle mr-1"></i> Click on any node to view execution details and logs • Parallel paths shown vertically
                     </div>
                 </div>
             </div>
