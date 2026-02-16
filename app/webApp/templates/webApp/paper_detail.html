@@ -122,6 +122,17 @@
         cursor: pointer;
     }
     
+    /* Hide edge labels completely - not needed for this workflow visualization */
+    .mermaid g.edgeLabels,
+    .mermaid .edgeLabels {
+        display: none !important;
+    }
+    
+    /* Style arrowheads properly */
+    .mermaid marker path {
+        fill: #5d6d7e !important;
+    }
+    
     /* Add SVG gradients for nodes */
     .mermaid svg defs {
         display: block;
