@@ -697,24 +697,29 @@ class WorkflowNodeDetailView(View):
             node = WorkflowNode.objects.get(id=node_id)
         except WorkflowNode.DoesNotExist:
             return JsonResponse({'error': 'Node not found'}, status=404)
+        except Exception as e:
+            return JsonResponse({'error': f'Server error: {str(e)}'}, status=500)
         
-        data = {
-            'id': str(node.id),
-            'node_id': node.node_id,
-            'node_type': node.node_type,
-            'handler': node.handler,
-            'status': node.status,
-            'attempt_count': node.attempt_count,
-            'max_retries': node.max_retries,
-            'input_data': node.input_data,
-            'output_data': node.output_data,
-            'error_message': node.error_message,
-            'error_traceback': node.error_traceback,
-            'celery_task_id': node.celery_task_id,
-            'started_at': node.started_at.isoformat() if node.started_at else None,
-            'completed_at': node.completed_at.isoformat() if node.completed_at else None,
-            'duration': node.duration,
-        }
-        
-        return JsonResponse(data)
+        try:
+            data = {
+                'id': str(node.id),
+                'node_id': node.node_id,
+                'node_type': node.node_type,
+                'handler': node.handler,
+                'status': node.status,
+                'attempt_count': node.attempt_count,
+                'max_retries': node.max_retries,
+                'input_data': node.input_data,
+                'output_data': node.output_data,
+                'error_message': node.error_message,
+                'error_traceback': node.error_traceback,
+                'celery_task_id': node.celery_task_id,
+                'started_at': node.started_at.isoformat() if node.started_at else None,
+                'completed_at': node.completed_at.isoformat() if node.completed_at else None,
+                'duration': node.duration,
+            }
+            
+            return JsonResponse(data)
+        except Exception as e:
+            return JsonResponse({'error': f'Error serializing data: {str(e)}'}, status=500)
 

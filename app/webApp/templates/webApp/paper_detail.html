@@ -13,13 +13,26 @@
         border-radius: 8px;
         overflow-x: auto;
         margin-bottom: 30px;
+        min-height: 500px;
     }
     
     .mermaid-diagram {
         display: flex;
         justify-content: center;
         align-items: center;
-        min-height: 300px;
+        min-height: 450px;
+        width: 100%;
+    }
+    
+    .mermaid-diagram .mermaid {
+        width: 100%;
+        min-height: 450px;
+    }
+    
+    .mermaid-diagram svg {
+        max-width: 100%;
+        height: auto;
+        min-height: 450px;
     }
     
     /* Mermaid node styling overrides */
@@ -359,15 +372,20 @@
 <script>
 // Initialize Mermaid
 mermaid.initialize({
-    startOnLoad: true,
+    startOnLoad: false,
     theme: 'default',
     flowchart: {
-        useMaxWidth: true,
+        useMaxWidth: false,
         htmlLabels: true,
         curve: 'basis',
-        padding: 20
+        padding: 15,
+        nodeSpacing: 120,
+        rankSpacing: 100,
+        width: '100%'
     },
-    securityLevel: 'loose'
+    securityLevel: 'loose',
+    fontFamily: 'Arial, sans-serif',
+    fontSize: 16
 });
 
 // Render workflow DAG
@@ -395,18 +413,49 @@ $(document).ready(function() {
         
         // Add click events
         for (const [nodeId, nodeData] of Object.entries(nodesData)) {
-            mermaidSyntax += `    click ${nodeId} call showNodeDetails('${nodeData.id}', '${nodeData.display_name}')\n`;
+            mermaidSyntax += `    click ${nodeId} clickNode\n`;
         }
         
         // Render the diagram
-        $('#workflow-mermaid').html('<div class="mermaid">' + mermaidSyntax + '</div>');
-        mermaid.init(undefined, '.mermaid');
+        const mermaidDiv = document.createElement('div');
+        mermaidDiv.className = 'mermaid';
+        mermaidDiv.textContent = mermaidSyntax;
+        $('#workflow-mermaid').html(mermaidDiv);
+        
+        // Render with callback
+        mermaid.init(undefined, mermaidDiv).then(() => {
+            console.log('Mermaid diagram rendered successfully');
+        }).catch(err => {
+            console.error('Mermaid rendering error:', err);
+        });
+        
+        // Setup click handler
+        window.clickNode = function(nodeId) {
+            console.log('Node clicked:', nodeId);
+            console.log('All nodes:', nodesData);
+            const nodeData = Object.values(nodesData).find(n => n.node_id === nodeId);
+            console.log('Found node data:', nodeData);
+            if (nodeData) {
+                showNodeDetails(nodeData.id, nodeData.display_name);
+            } else {
+                console.error('Node data not found for:', nodeId);
+            }
+        };
     }
 });
 
 function showNodeDetails(nodeId, nodeName) {
+    console.log('showNodeDetails called with:', nodeId, nodeName);
     $('#nodeDetailsModal').modal('show');
     $('#nodeDetailsModalLabel').html('<i class="fas fa-code mr-2"></i>Node: ' + nodeName);
+    
+    // Show loading state
+    $('#node-details-content').html(
+        '<div class="text-center py-4">' +
+        '<i class="fas fa-spinner fa-spin fa-2x text-primary mb-3"></i>' +
+        '<p>Loading node details...</p>' +
+        '</div>'
+    );
     
     // Load node details via AJAX
     $.ajax({
@@ -415,11 +464,15 @@ function showNodeDetails(nodeId, nodeName) {
         success: function(data) {
             renderNodeDetails(data);
         },
-        error: function() {
+        error: function(xhr, status, error) {
+            console.error('AJAX Error:', status, error);
+            console.error('Response:', xhr.responseText);
+            console.error('Node ID:', nodeId);
             $('#node-details-content').html(
                 '<div class="alert alert-danger">' +
                 '<i class="fas fa-exclamation-triangle mr-2"></i>' +
-                'Failed to load node details.' +
+                'Failed to load node details.<br>' +
+                '<small class="text-muted">Error: ' + error + ' (Status: ' + xhr.status + ')</small>' +
                 '</div>'
             );
         }
