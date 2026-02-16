@@ -38,42 +38,99 @@
     /* Mermaid node styling overrides */
     .mermaid .node rect,
     .mermaid .node circle {
-        stroke-width: 2px;
+        stroke-width: 3px;
+        filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1));
+        transition: all 0.3s ease;
+    }
+    
+    .mermaid .node:hover rect,
+    .mermaid .node:hover circle {
+        filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.15));
+        transform: translateY(-2px);
     }
     
     .mermaid .node.completed rect {
-        fill: #1abc9c !important;
-        stroke: #0e8c82 !important;
+        fill: url(#gradient-completed) !important;
+        stroke: #0a7a6e !important;
     }
     
     .mermaid .node.running rect {
-        fill: #3498db !important;
-        stroke: #2980b9 !important;
+        fill: url(#gradient-running) !important;
+        stroke: #2471a3 !important;
+        animation: pulse-running 1.5s ease-in-out infinite, glow-running 2s ease-in-out infinite;
     }
     
     .mermaid .node.failed rect {
-        fill: #e74c3c !important;
-        stroke: #c0392b !important;
+        fill: url(#gradient-failed) !important;
+        stroke: #a93226 !important;
     }
     
     .mermaid .node.pending rect {
-        fill: #f4d03f !important;
-        stroke: #e2b90a !important;
+        fill: url(#gradient-pending) !important;
+        stroke: #d4ac0d !important;
+    }
+    
+    /* Node text styling */
+    .mermaid .nodeLabel {
+        color: white !important;
+        font-weight: 600 !important;
+        font-size: 17px !important;
+        text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.2);
+    }
+    
+    /* Edge styling */
+    .mermaid .edgePath path {
+        stroke: #5d6d7e !important;
+        stroke-width: 2.5px !important;
+        filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.1));
+    }
+    
+    .mermaid .arrowheadPath {
+        fill: #5d6d7e !important;
+        stroke: #5d6d7e !important;
     }
     
     .mermaid .edgeLabel {
         background-color: white;
-        padding: 2px 4px;
-        border-radius: 3px;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 13px;
+        font-weight: 500;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+    
+    /* Animations for running nodes */
+    @keyframes pulse-running {
+        0%, 100% {
+            opacity: 1;
+        }
+        50% {
+            opacity: 0.85;
+        }
+    }
+    
+    @keyframes glow-running {
+        0%, 100% {
+            filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1)) drop-shadow(0 0 0 rgba(52, 152, 219, 0));
+        }
+        50% {
+            filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.15)) drop-shadow(0 0 20px rgba(52, 152, 219, 0.6));
+        }
     }
     
     .clickable-node {
         cursor: pointer;
     }
     
+    /* Add SVG gradients for nodes */
+    .mermaid svg defs {
+        display: block;
+    }
+    
     .node-legend {
         display: flex;
-        justify-content: center;
+        justify-content: space-between;
+        align-items: center;
         gap: 20px;
         flex-wrap: wrap;
         margin-top: 20px;
@@ -82,37 +139,56 @@
         border-radius: 8px;
     }
     
+    .legend-items {
+        display: flex;
+        gap: 20px;
+        flex-wrap: wrap;
+    }
+    
+    .legend-help {
+        white-space: nowrap;
+    }
+    
     .legend-item {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: 10px;
+        font-size: 14px;
+        font-weight: 500;
+        color: #34495e;
+    }
+    
+    .legend-item i {
+        font-size: 16px;
     }
     
     .legend-box {
-        width: 20px;
-        height: 20px;
-        border-radius: 4px;
+        width: 24px;
+        height: 24px;
+        border-radius: 6px;
         border: 2px solid;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     }
     
     .legend-box.completed {
-        background: #1abc9c;
-        border-color: #0e8c82;
+        background: linear-gradient(135deg, #16a085 0%, #1abc9c 100%);
+        border-color: #0a7a6e;
     }
     
     .legend-box.running {
-        background: #3498db;
-        border-color: #2980b9;
+        background: linear-gradient(135deg, #2874a6 0%, #3498db 100%);
+        border-color: #2471a3;
+        animation: pulse-running 2s ease-in-out infinite;
     }
     
     .legend-box.failed {
-        background: #e74c3c;
-        border-color: #c0392b;
+        background: linear-gradient(135deg, #c0392b 0%, #e74c3c 100%);
+        border-color: #a93226;
     }
     
     .legend-box.pending {
-        background: #f4d03f;
-        border-color: #e2b90a;
+        background: linear-gradient(135deg, #d4ac0d 0%, #f4d03f 100%);
+        border-color: #d4ac0d;
     }
     
     .status-badge-large {
@@ -204,33 +280,34 @@
                         </div>
                     </div>
                 </div>
-                <div class="card-body workflow-diagram-container">
+                <div class="card-body workflow-diagram-container mb-0">
                     <!-- Mermaid DAG Diagram -->
                     <div class="mermaid-diagram" id="workflow-mermaid">
                         <!-- Mermaid syntax will be inserted here -->
                     </div>
                     
                     <div class="node-legend">
-                        <div class="legend-item">
-                            <div class="legend-box completed"></div>
-                            <span><i class="fas fa-check-circle text-success"></i> Completed</span>
+                        <div class="legend-items">
+                            <div class="legend-item">
+                                <div class="legend-box completed"></div>
+                                <span><i class="fas fa-check-circle text-success"></i> Completed</span>
+                            </div>
+                            <div class="legend-item">
+                                <div class="legend-box running"></div>
+                                <span><i class="fas fa-spinner text-info"></i> Running</span>
+                            </div>
+                            <div class="legend-item">
+                                <div class="legend-box failed"></div>
+                                <span><i class="fas fa-times-circle text-danger"></i> Failed</span>
+                            </div>
+                            <div class="legend-item">
+                                <div class="legend-box pending"></div>
+                                <span><i class="fas fa-clock text-warning"></i> Pending</span>
+                            </div>
                         </div>
-                        <div class="legend-item">
-                            <div class="legend-box running"></div>
-                            <span><i class="fas fa-spinner text-info"></i> Running</span>
+                        <div class="legend-help text-muted small">
+                            <i class="fas fa-info-circle mr-1"></i> Click on any node to view execution details and logs
                         </div>
-                        <div class="legend-item">
-                            <div class="legend-box failed"></div>
-                            <span><i class="fas fa-times-circle text-danger"></i> Failed</span>
-                        </div>
-                        <div class="legend-item">
-                            <div class="legend-box pending"></div>
-                            <span><i class="fas fa-clock text-warning"></i> Pending</span>
-                        </div>
-                    </div>
-                    
-                    <div class="text-muted text-center mt-3 small">
-                        <i class="fas fa-info-circle mr-1"></i> Click on any node to view execution details and logs
                     </div>
                 </div>
             </div>
@@ -385,7 +462,7 @@ mermaid.initialize({
     },
     securityLevel: 'loose',
     fontFamily: 'Arial, sans-serif',
-    fontSize: 16
+    fontSize: 18
 });
 
 // Render workflow DAG
@@ -399,10 +476,17 @@ $(document).ready(function() {
         
         // Add nodes with styling based on status
         for (const [nodeId, nodeData] of Object.entries(nodesData)) {
-            const statusIcon = nodeData.status === 'completed' ? '✓' : 
-                             nodeData.status === 'running' ? '⟳' :
-                             nodeData.status === 'failed' ? '✗' : '○';
-            const label = `${statusIcon} ${nodeData.display_name}`;
+            let statusIcon = '';
+            if (nodeData.status === 'completed') {
+                statusIcon = '✓';
+            } else if (nodeData.status === 'running') {
+                statusIcon = '⟳';
+            } else if (nodeData.status === 'failed') {
+                statusIcon = '✗';
+            } else {
+                statusIcon = '○';
+            }
+            const label = `${statusIcon}  ${nodeData.display_name}`;
             mermaidSyntax += `    ${nodeId}["${label}"]:::${nodeData.status}\n`;
         }
         
@@ -425,6 +509,73 @@ $(document).ready(function() {
         // Render with callback
         mermaid.init(undefined, mermaidDiv).then(() => {
             console.log('Mermaid diagram rendered successfully');
+            
+            // Add SVG gradients for beautiful node fills
+            const svg = $('#workflow-mermaid svg')[0];
+            if (svg) {
+                const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+                
+                // Completed gradient (green)
+                const gradCompleted = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
+                gradCompleted.setAttribute('id', 'gradient-completed');
+                gradCompleted.setAttribute('x1', '0%');
+                gradCompleted.setAttribute('y1', '0%');
+                gradCompleted.setAttribute('x2', '100%');
+                gradCompleted.setAttribute('y2', '100%');
+                gradCompleted.innerHTML = `
+                    <stop offset="0%" style="stop-color:#16a085;stop-opacity:1" />
+                    <stop offset="100%" style="stop-color:#1abc9c;stop-opacity:1" />
+                `;
+                
+                // Running gradient (blue with animation)
+                const gradRunning = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
+                gradRunning.setAttribute('id', 'gradient-running');
+                gradRunning.setAttribute('x1', '0%');
+                gradRunning.setAttribute('y1', '0%');
+                gradRunning.setAttribute('x2', '100%');
+                gradRunning.setAttribute('y2', '100%');
+                gradRunning.innerHTML = `
+                    <stop offset="0%" style="stop-color:#2874a6;stop-opacity:1" />
+                    <stop offset="100%" style="stop-color:#3498db;stop-opacity:1" />
+                `;
+                
+                // Failed gradient (red)
+                const gradFailed = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
+                gradFailed.setAttribute('id', 'gradient-failed');
+                gradFailed.setAttribute('x1', '0%');
+                gradFailed.setAttribute('y1', '0%');
+                gradFailed.setAttribute('x2', '100%');
+                gradFailed.setAttribute('y2', '100%');
+                gradFailed.innerHTML = `
+                    <stop offset="0%" style="stop-color:#c0392b;stop-opacity:1" />
+                    <stop offset="100%" style="stop-color:#e74c3c;stop-opacity:1" />
+                `;
+                
+                // Pending gradient (yellow/gold)
+                const gradPending = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
+                gradPending.setAttribute('id', 'gradient-pending');
+                gradPending.setAttribute('x1', '0%');
+                gradPending.setAttribute('y1', '0%');
+                gradPending.setAttribute('x2', '100%');
+                gradPending.setAttribute('y2', '100%');
+                gradPending.innerHTML = `
+                    <stop offset="0%" style="stop-color:#d4ac0d;stop-opacity:1" />
+                    <stop offset="100%" style="stop-color:#f4d03f;stop-opacity:1" />
+                `;
+                
+                defs.appendChild(gradCompleted);
+                defs.appendChild(gradRunning);
+                defs.appendChild(gradFailed);
+                defs.appendChild(gradPending);
+                
+                svg.insertBefore(defs, svg.firstChild);
+                
+                // Round rectangle corners for nodes
+                svg.querySelectorAll('.node rect').forEach(rect => {
+                    rect.setAttribute('rx', '8');
+                    rect.setAttribute('ry', '8');
+                });
+            }
         }).catch(err => {
             console.error('Mermaid rendering error:', err);
         });
