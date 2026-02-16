@@ -299,6 +299,11 @@
                                 Run #{{ selected_workflow.run_number }} • 
                                 {{ selected_workflow.created_at|date:"M d, Y H:i" }}
                             </small>
+                            {% if selected_workflow.status == 'running' or selected_workflow.status == 'pending' %}
+                            <span class="badge badge-light ml-3 border" id="auto-update-indicator">
+                                <i class="fas fa-sync-alt fa-spin"></i> Auto-updating
+                            </span>
+                            {% endif %}
                         </div>
                     </div>
                 </div>
@@ -503,120 +508,19 @@ mermaid.initialize({
     fontSize: 18
 });
 
+// Global variables
+let nodesData = {{ workflow_nodes_json|safe }};
+const edges = {{ workflow_edges|safe }};
+const workflowRunId = {% if selected_workflow %}'{{ selected_workflow.id }}'{% else %}null{% endif %};
+const workflowStatus = {% if selected_workflow %}'{{ selected_workflow.status }}'{% else %}null{% endif %};
+let pollingInterval = null;
+
 // Render workflow DAG
 $(document).ready(function() {
-    const nodesData = {{ workflow_nodes_json|safe }};
-    const edges = {{ workflow_edges|safe }};
     
     if (Object.keys(nodesData).length > 0) {
-        // Build Mermaid graph syntax
-        let mermaidSyntax = 'graph LR\n';
-        
-        // Add nodes with styling based on status
-        for (const [nodeId, nodeData] of Object.entries(nodesData)) {
-            let statusIcon = '';
-            if (nodeData.status === 'completed') {
-                statusIcon = '✓';
-            } else if (nodeData.status === 'running') {
-                statusIcon = '⟳';
-            } else if (nodeData.status === 'failed') {
-                statusIcon = '✗';
-            } else {
-                statusIcon = '○';
-            }
-            const label = `${statusIcon}  ${nodeData.display_name}`;
-            mermaidSyntax += `    ${nodeId}["${label}"]:::${nodeData.status}\n`;
-        }
-        
-        // Add edges
-        edges.forEach(edge => {
-            mermaidSyntax += `    ${edge.from} --> ${edge.to}\n`;
-        });
-        
-        // Add click events
-        for (const [nodeId, nodeData] of Object.entries(nodesData)) {
-            mermaidSyntax += `    click ${nodeId} clickNode\n`;
-        }
-        
-        // Render the diagram
-        const mermaidDiv = document.createElement('div');
-        mermaidDiv.className = 'mermaid';
-        mermaidDiv.textContent = mermaidSyntax;
-        $('#workflow-mermaid').html(mermaidDiv);
-        
-        // Render with callback
-        mermaid.init(undefined, mermaidDiv).then(() => {
-            console.log('Mermaid diagram rendered successfully');
-            
-            // Add SVG gradients for beautiful node fills
-            const svg = $('#workflow-mermaid svg')[0];
-            if (svg) {
-                const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-                
-                // Completed gradient (green)
-                const gradCompleted = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
-                gradCompleted.setAttribute('id', 'gradient-completed');
-                gradCompleted.setAttribute('x1', '0%');
-                gradCompleted.setAttribute('y1', '0%');
-                gradCompleted.setAttribute('x2', '100%');
-                gradCompleted.setAttribute('y2', '100%');
-                gradCompleted.innerHTML = `
-                    <stop offset="0%" style="stop-color:#16a085;stop-opacity:1" />
-                    <stop offset="100%" style="stop-color:#1abc9c;stop-opacity:1" />
-                `;
-                
-                // Running gradient (blue with animation)
-                const gradRunning = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
-                gradRunning.setAttribute('id', 'gradient-running');
-                gradRunning.setAttribute('x1', '0%');
-                gradRunning.setAttribute('y1', '0%');
-                gradRunning.setAttribute('x2', '100%');
-                gradRunning.setAttribute('y2', '100%');
-                gradRunning.innerHTML = `
-                    <stop offset="0%" style="stop-color:#2874a6;stop-opacity:1" />
-                    <stop offset="100%" style="stop-color:#3498db;stop-opacity:1" />
-                `;
-                
-                // Failed gradient (red)
-                const gradFailed = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
-                gradFailed.setAttribute('id', 'gradient-failed');
-                gradFailed.setAttribute('x1', '0%');
-                gradFailed.setAttribute('y1', '0%');
-                gradFailed.setAttribute('x2', '100%');
-                gradFailed.setAttribute('y2', '100%');
-                gradFailed.innerHTML = `
-                    <stop offset="0%" style="stop-color:#c0392b;stop-opacity:1" />
-                    <stop offset="100%" style="stop-color:#e74c3c;stop-opacity:1" />
-                `;
-                
-                // Pending gradient (yellow/gold)
-                const gradPending = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
-                gradPending.setAttribute('id', 'gradient-pending');
-                gradPending.setAttribute('x1', '0%');
-                gradPending.setAttribute('y1', '0%');
-                gradPending.setAttribute('x2', '100%');
-                gradPending.setAttribute('y2', '100%');
-                gradPending.innerHTML = `
-                    <stop offset="0%" style="stop-color:#d4ac0d;stop-opacity:1" />
-                    <stop offset="100%" style="stop-color:#f4d03f;stop-opacity:1" />
-                `;
-                
-                defs.appendChild(gradCompleted);
-                defs.appendChild(gradRunning);
-                defs.appendChild(gradFailed);
-                defs.appendChild(gradPending);
-                
-                svg.insertBefore(defs, svg.firstChild);
-                
-                // Round rectangle corners for nodes
-                svg.querySelectorAll('.node rect').forEach(rect => {
-                    rect.setAttribute('rx', '8');
-                    rect.setAttribute('ry', '8');
-                });
-            }
-        }).catch(err => {
-            console.error('Mermaid rendering error:', err);
-        });
+        // Initial render
+        renderWorkflowDiagram(nodesData);
         
         // Setup click handler
         window.clickNode = function(nodeId) {
@@ -868,5 +772,187 @@ function escapeHtml(text) {
     };
     return text.replace(/[&<>"']/g, m => map[m]);
 }
+
+// Function to render/update the Mermaid diagram
+function renderWorkflowDiagram(nodes) {
+    if (Object.keys(nodes).length === 0) return;
+    
+    // Build Mermaid graph syntax
+    let mermaidSyntax = 'graph LR\n';
+    
+    // Add nodes with styling based on status
+    for (const [nodeId, nodeData] of Object.entries(nodes)) {
+        let statusIcon = '';
+        if (nodeData.status === 'completed') {
+            statusIcon = '✓';
+        } else if (nodeData.status === 'running') {
+            statusIcon = '⟳';
+        } else if (nodeData.status === 'failed') {
+            statusIcon = '✗';
+        } else {
+            statusIcon = '○';
+        }
+        const label = `${statusIcon}  ${nodeData.display_name}`;
+        mermaidSyntax += `    ${nodeId}["${label}"]:::${nodeData.status}\n`;
+    }
+    
+    // Add edges
+    edges.forEach(edge => {
+        mermaidSyntax += `    ${edge.from} --> ${edge.to}\n`;
+    });
+    
+    // Add click events
+    for (const [nodeId] of Object.entries(nodes)) {
+        mermaidSyntax += `    click ${nodeId} clickNode\n`;
+    }
+    
+    // Clear and render
+    const mermaidDiv = document.createElement('div');
+    mermaidDiv.className = 'mermaid';
+    mermaidDiv.textContent = mermaidSyntax;
+    $('#workflow-mermaid').html(mermaidDiv);
+    
+    // Render with callback
+    mermaid.init(undefined, mermaidDiv).then(() => {
+        // Add SVG gradients
+        const svg = $('#workflow-mermaid svg')[0];
+        if (svg && !svg.querySelector('#gradient-completed')) {
+            const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+            
+            // Completed gradient (green)
+            const gradCompleted = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
+            gradCompleted.setAttribute('id', 'gradient-completed');
+            gradCompleted.setAttribute('x1', '0%');
+            gradCompleted.setAttribute('y1', '0%');
+            gradCompleted.setAttribute('x2', '100%');
+            gradCompleted.setAttribute('y2', '100%');
+            gradCompleted.innerHTML = `
+                <stop offset="0%" style="stop-color:#16a085;stop-opacity:1" />
+                <stop offset="100%" style="stop-color:#1abc9c;stop-opacity:1" />
+            `;
+            
+            // Running gradient (blue)
+            const gradRunning = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
+            gradRunning.setAttribute('id', 'gradient-running');
+            gradRunning.setAttribute('x1', '0%');
+            gradRunning.setAttribute('y1', '0%');
+            gradRunning.setAttribute('x2', '100%');
+            gradRunning.setAttribute('y2', '100%');
+            gradRunning.innerHTML = `
+                <stop offset="0%" style="stop-color:#2874a6;stop-opacity:1" />
+                <stop offset="100%" style="stop-color:#3498db;stop-opacity:1" />
+            `;
+            
+            // Failed gradient (red)
+            const gradFailed = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
+            gradFailed.setAttribute('id', 'gradient-failed');
+            gradFailed.setAttribute('x1', '0%');
+            gradFailed.setAttribute('y1', '0%');
+            gradFailed.setAttribute('x2', '100%');
+            gradFailed.setAttribute('y2', '100%');
+            gradFailed.innerHTML = `
+                <stop offset="0%" style="stop-color:#c0392b;stop-opacity:1" />
+                <stop offset="100%" style="stop-color:#e74c3c;stop-opacity:1" />
+            `;
+            
+            // Pending gradient (yellow/gold)
+            const gradPending = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
+            gradPending.setAttribute('id', 'gradient-pending');
+            gradPending.setAttribute('x1', '0%');
+            gradPending.setAttribute('y1', '0%');
+            gradPending.setAttribute('x2', '100%');
+            gradPending.setAttribute('y2', '100%');
+            gradPending.innerHTML = `
+                <stop offset="0%" style="stop-color:#d4ac0d;stop-opacity:1" />
+                <stop offset="100%" style="stop-color:#f4d03f;stop-opacity:1" />
+            `;
+            
+            defs.appendChild(gradCompleted);
+            defs.appendChild(gradRunning);
+            defs.appendChild(gradFailed);
+            defs.appendChild(gradPending);
+            
+            svg.insertBefore(defs, svg.firstChild);
+            
+            // Round rectangle corners
+            svg.querySelectorAll('.node rect').forEach(rect => {
+                rect.setAttribute('rx', '8');
+                rect.setAttribute('ry', '8');
+            });
+        }
+    }).catch(err => {
+        console.error('Mermaid rendering error:', err);
+    });
+}
+
+// Function to poll for workflow status updates
+function pollWorkflowStatus() {
+    if (!workflowRunId) return;
+    
+    $.ajax({
+        url: '/workflow/status/' + workflowRunId + '/',
+        method: 'GET',
+        success: function(data) {
+            console.log('Workflow status update:', data);
+            
+            // Check if nodes have changed
+            let hasChanges = false;
+            for (const [nodeId, nodeData] of Object.entries(data.nodes)) {
+                if (!nodesData[nodeId] || nodesData[nodeId].status !== nodeData.status) {
+                    hasChanges = true;
+                    break;
+                }
+            }
+            
+            // Update nodes and re-render if changes detected
+            if (hasChanges) {
+                console.log('Node status changes detected, re-rendering diagram');
+                nodesData = data.nodes;
+                renderWorkflowDiagram(nodesData);
+            }
+            
+            // Stop polling if workflow is no longer running/pending
+            if (data.status !== 'running' && data.status !== 'pending') {
+                console.log('Workflow completed, stopping auto-update');
+                stopPolling();
+                
+                // Reload page to update workflow run history and status badge
+                setTimeout(function() {
+                    location.reload();
+                }, 2000);
+            }
+        },
+        error: function(xhr, status, error) {
+            console.error('Polling error:', error);
+            // Don't stop polling on temporary errors
+        }
+    });
+}
+
+// Function to start polling
+function startPolling() {
+    if (pollingInterval) return; // Already polling
+    
+    console.log('Starting auto-update polling');
+    pollingInterval = setInterval(pollWorkflowStatus, 3000); // Poll every 3 seconds
+}
+
+// Function to stop polling
+function stopPolling() {
+    if (pollingInterval) {
+        console.log('Stopping auto-update polling');
+        clearInterval(pollingInterval);
+        pollingInterval = null;
+        $('#auto-update-indicator').fadeOut();
+    }
+}
+
+// Start polling if workflow is running or pending
+$(document).ready(function() {
+    if (workflowStatus === 'running' || workflowStatus === 'pending') {
+        startPolling();
+    }
+});
 </script>
 {% endblock %}
+

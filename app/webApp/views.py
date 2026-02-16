@@ -700,6 +700,45 @@ class PaperDetailView(View):
         return render(request, self.template_name, context)
 
 
+class WorkflowStatusView(View):
+    """API view for getting workflow run status (for polling)."""
+
+    def get(self, request, workflow_run_id):
+        """Get workflow run status and nodes as JSON."""
+        try:
+            workflow_run = WorkflowRun.objects.get(id=workflow_run_id)
+        except WorkflowRun.DoesNotExist:
+            return JsonResponse({'error': 'Workflow run not found'}, status=404)
+        
+        # Get DAG structure
+        dag_structure = workflow_run.workflow_definition.dag_structure
+        
+        # Get all nodes
+        nodes = WorkflowNode.objects.filter(workflow_run=workflow_run)
+        nodes_data = {}
+        
+        for node in nodes:
+            node_def = next(
+                (n for n in dag_structure.get('nodes', []) if n['id'] == node.node_id),
+                None
+            )
+            display_name = node_def['name'] if node_def and 'name' in node_def else node.node_id.replace('_', ' ').title()
+            
+            nodes_data[node.node_id] = {
+                'id': str(node.id),
+                'node_id': node.node_id,
+                'display_name': display_name,
+                'status': node.status,
+                'node_type': node.node_type,
+            }
+        
+        return JsonResponse({
+            'status': workflow_run.status,
+            'nodes': nodes_data,
+            'updated_at': workflow_run.updated_at.isoformat(),
+        })
+
+
 class WorkflowNodeDetailView(View):
     """API view for getting workflow node details (public, no auth required)."""
 

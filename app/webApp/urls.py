@@ -32,6 +32,7 @@ from .views import (
     ConferenceListView,
     ConferenceDetailView,
     PaperDetailView,
+    WorkflowStatusView,
     WorkflowNodeDetailView,
 )
 
@@ -42,6 +43,7 @@ urlpatterns = [
     path("conferences/", ConferenceListView.as_view(), name="conference_list"),
     path("conference/<int:conference_id>/", ConferenceDetailView.as_view(), name="conference_detail"),
     path("paper/<int:paper_id>/", PaperDetailView.as_view(), name="paper_detail"),
+    path("workflow/status/<uuid:workflow_run_id>/", WorkflowStatusView.as_view(), name="workflow_status"),
     path("workflow/node/<uuid:node_id>/", WorkflowNodeDetailView.as_view(), name="workflow_node_detail"),
     path("accounts/", include("django.contrib.auth.urls")),
     path("accounts/login/", auth_views.LoginView.as_view(), name="login"),
