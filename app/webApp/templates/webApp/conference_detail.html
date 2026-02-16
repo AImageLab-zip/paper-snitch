@@ -1,0 +1,349 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block head_title %}{{ conference.name }} - Papers{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4 px-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-11">
+            <!-- Conference Header -->
+            <div class="card shadow mb-4">
+                <div class="card-header bg-primary text-white">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h4 class="mb-1">
+                                <i class="fas fa-building mr-2"></i>{{ conference.name }}
+                            </h4>
+                            <div class="small">
+                                {% if conference.year %}
+                                <span class="mr-3"><i class="fas fa-calendar mr-1"></i>{{ conference.year }}</span>
+                                {% endif %}
+                                <span><i class="fas fa-file-pdf mr-1"></i>{{ conference.papers.count }} paper{{ conference.papers.count|pluralize }}</span>
+                            </div>
+                        </div>
+                        <div>
+                            <a href="{% url 'conference_list' %}" class="btn btn-light btn-sm">
+                                <i class="fas fa-arrow-left mr-1"></i> Back to Conferences
+                            </a>
+                            {% if conference.url %}
+                            <a href="{{ conference.url }}" target="_blank" class="btn btn-outline-light btn-sm">
+                                <i class="fas fa-external-link-alt mr-1"></i> Website
+                            </a>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Papers List -->
+            <div class="card shadow">
+                <div class="card-body">
+                    <!-- Filter Bar -->
+                    <div class="mb-4">
+                        <div class="input-group w-100">
+                            <div class="input-group-prepend">
+                                <span class="input-group-text bg-white">
+                                    <i class="fas fa-filter text-muted"></i>
+                                </span>
+                            </div>
+                            <input type="text" 
+                                   class="form-control" 
+                                   id="filter-input" 
+                                   placeholder="Filter papers by title, DOI, or authors..." 
+                                   value="{{ search_query|default:'' }}"
+                                   autocomplete="off">
+                            <div class="input-group-append">
+                                <button class="btn btn-outline-secondary" id="clear-filters" {% if not search_query %}style="display:none;"{% endif %}>
+                                    <i class="fas fa-times"></i> Clear Filters
+                                </button>
+                            </div>
+                        </div>
+                        <small class="text-muted mt-1 d-block">
+                            <i class="fas fa-info-circle"></i> Filters apply automatically as you type
+                        </small>
+                    </div>
+
+                    {% if search_query %}
+                    <div class="alert alert-info" id="filter-info">
+                        <i class="fas fa-filter mr-2"></i>
+                        Filtered by "<strong>{{ search_query }}</strong>" 
+                        ({{ page_obj.paginator.count }} paper{{ page_obj.paginator.count|pluralize }} found)
+                    </div>
+                    {% endif %}
+
+                    <!-- Papers Table -->
+                    <div id="papers-container">
+                    {% if papers %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th style="width: 45%;">Title</th>
+                                    <th style="width: 15%;">Authors</th>
+                                    <th style="width: 20%;" class="text-center">Analysis Status</th>
+                                    <th style="width: 10%;" class="text-center">Workflows</th>
+                                    <th style="width: 10%;" class="text-center">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for paper in papers %}
+                                <tr>
+                                    <td>
+                                        <div>
+                                            <strong>{{ paper.title }}</strong>
+                                            {% if paper.doi %}
+                                            <br>
+                                            <small class="text-muted">
+                                                <i class="fas fa-fingerprint mr-1"></i>{{ paper.doi }}
+                                            </small>
+                                            {% endif %}
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <small class="text-muted">
+                                            {% if paper.authors %}
+                                                {{ paper.authors|truncatewords:3 }}
+                                            {% else %}
+                                                <em>No authors</em>
+                                            {% endif %}
+                                        </small>
+                                    </td>
+                                    <td class="text-center">
+                                        {% if paper.workflow_stats.total > 0 %}
+                                        <div class="d-flex justify-content-center align-items-center">
+                                            {% if paper.workflow_stats.latest_status == 'completed' %}
+                                            <span class="badge badge-success">
+                                                <i class="fas fa-check-circle"></i> Completed
+                                            </span>
+                                            {% elif paper.workflow_stats.latest_status == 'running' %}
+                                            <span class="badge badge-info">
+                                                <i class="fas fa-spinner fa-spin"></i> Running
+                                            </span>
+                                            {% elif paper.workflow_stats.latest_status == 'failed' %}
+                                            <span class="badge badge-danger">
+                                                <i class="fas fa-times-circle"></i> Failed
+                                            </span>
+                                            {% elif paper.workflow_stats.latest_status == 'pending' %}
+                                            <span class="badge badge-warning">
+                                                <i class="fas fa-clock"></i> Pending
+                                            </span>
+                                            {% else %}
+                                            <span class="badge badge-secondary">
+                                                <i class="fas fa-minus-circle"></i> {{ paper.workflow_stats.latest_status|title }}
+                                            </span>
+                                            {% endif %}
+                                        </div>
+                                        {% else %}
+                                        <span class="text-muted">
+                                            <i class="fas fa-minus"></i> Not analyzed
+                                        </span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-center">
+                                        {% if paper.workflow_stats.total > 0 %}
+                                        <span class="badge badge-primary" style="font-size: 1rem;">
+                                            {{ paper.workflow_stats.total }}
+                                        </span>
+                                        {% else %}
+                                        <span class="text-muted">0</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-center">
+                                        <a href="{% url 'paper_detail' paper.id %}" 
+                                           class="btn btn-sm btn-outline-primary"
+                                           title="View paper details">
+                                            <i class="fas fa-eye"></i>
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    </div>
+
+                    <!-- Pagination -->
+                    <div id="pagination-container">
+                    {% if page_obj.has_other_pages %}
+                    <nav aria-label="Paper pagination" class="mt-4">
+                        <ul class="pagination justify-content-center">
+                            {% if page_obj.has_previous %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page=1{% if search_query %}&q={{ search_query }}{% endif %}">
+                                    <i class="fas fa-angle-double-left"></i>
+                                </a>
+                            </li>
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if search_query %}&q={{ search_query }}{% endif %}">
+                                    <i class="fas fa-angle-left"></i>
+                                </a>
+                            </li>
+                            {% endif %}
+
+                            {% for num in page_obj.paginator.page_range %}
+                                {% if page_obj.number == num %}
+                                <li class="page-item active">
+                                    <span class="page-link">{{ num }}</span>
+                                </li>
+                                {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+                                <li class="page-item">
+                                    <a class="page-link" href="?page={{ num }}{% if search_query %}&q={{ search_query }}{% endif %}">
+                                        {{ num }}
+                                    </a>
+                                </li>
+                                {% endif %}
+                            {% endfor %}
+
+                            {% if page_obj.has_next %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if search_query %}&q={{ search_query }}{% endif %}">
+                                    <i class="fas fa-angle-right"></i>
+                                </a>
+                            </li>
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}{% if search_query %}&q={{ search_query }}{% endif %}">
+                                    <i class="fas fa-angle-double-right"></i>
+                                </a>
+                            </li>
+                            {% endif %}
+                        </ul>
+                    </nav>
+                    {% endif %}
+                    </div>
+
+                    {% else %}
+                    <div id="papers-container">
+                    <div class="text-center py-5">
+                        <i class="fas fa-file-pdf fa-4x text-muted mb-3"></i>
+                        <h5 class="text-muted">
+                            {% if search_query %}
+                            No papers found matching "{{ search_query }}"
+                            {% else %}
+                            No papers available for this conference
+                            {% endif %}
+                        </h5>
+                    </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+$(document).ready(function() {
+    let filterTimeout;
+    const $filterInput = $('#filter-input');
+    const $clearButton = $('#clear-filters');
+    const $papersContainer = $('#papers-container');
+    const $paginationContainer = $('#pagination-container');
+    const conferenceId = {{ conference.id }};
+    
+    // Auto-filter on input with debouncing
+    $filterInput.on('input', function() {
+        clearTimeout(filterTimeout);
+        const query = $(this).val().trim();
+        
+        // Show/hide clear button
+        if (query.length > 0) {
+            $clearButton.show();
+        } else {
+            $clearButton.hide();
+        }
+        
+        // Debounce: wait 400ms after user stops typing
+        filterTimeout = setTimeout(function() {
+            applyFilter(query);
+        }, 400);
+    });
+    
+    // Clear filters button
+    $clearButton.on('click', function() {
+        $filterInput.val('');
+        $(this).hide();
+        applyFilter('');
+    });
+    
+    // Apply filter via AJAX
+    function applyFilter(query) {
+        const url = '{% url "conference_detail" conference.id %}';
+        
+        $.ajax({
+            url: url,
+            data: { q: query },
+            type: 'GET',
+            beforeSend: function() {
+                $papersContainer.css('opacity', '0.5');
+            },
+            success: function(response) {
+                const $response = $(response);
+                const $newContainer = $response.find('#papers-container');
+                const $newPagination = $response.find('#pagination-container');
+                const $newFilterInfo = $response.find('#filter-info');
+                
+                // Update containers
+                $papersContainer.html($newContainer.html());
+                $paginationContainer.html($newPagination.html());
+                
+                // Update filter info
+                if ($newFilterInfo.length) {
+                    if ($('#filter-info').length) {
+                        $('#filter-info').replaceWith($newFilterInfo);
+                    } else {
+                        $papersContainer.before($newFilterInfo);
+                    }
+                } else {
+                    $('#filter-info').remove();
+                }
+                
+                $papersContainer.css('opacity', '1');
+                
+                // Update URL without page reload
+                const newUrl = query ? `${url}?q=${encodeURIComponent(query)}` : url;
+                window.history.pushState({}, '', newUrl);
+            },
+            error: function() {
+                $papersContainer.css('opacity', '1');
+                alert('Error applying filter. Please try again.');
+            }
+        });
+    }
+    
+    // Handle pagination clicks
+    $(document).on('click', '#pagination-container .page-link', function(e) {
+        e.preventDefault();
+        const url = $(this).attr('href');
+        
+        $.ajax({
+            url: url,
+            type: 'GET',
+            beforeSend: function() {
+                $papersContainer.css('opacity', '0.5');
+            },
+            success: function(response) {
+                const $response = $(response);
+                const $newContainer = $response.find('#papers-container');
+                const $newPagination = $response.find('#pagination-container');
+                
+                $papersContainer.html($newContainer.html());
+                $paginationContainer.html($newPagination.html());
+                $papersContainer.css('opacity', '1');
+                
+                // Update URL
+                window.history.pushState({}, '', url);
+                
+                // Scroll to top of table
+                $('html, body').animate({
+                    scrollTop: $('#papers-container').offset().top - 100
+                }, 300);
+            },
+            error: function() {
+                $papersContainer.css('opacity', '1');
+            }
+        });
+    });
+});
+</script>
+{% endblock %}

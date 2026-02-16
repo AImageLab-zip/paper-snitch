@@ -9,15 +9,17 @@ import logging
 import concurrent.futures
 import time
 import json
+import asyncio
 
 from django.contrib.auth.models import User
 from annotator.models import AnnotationCategory
-from .models import AnalysisTask, Paper, Prompt, Criterion, LLMModelConfig, Analysis
+from .models import AnalysisTask, Paper, Prompt, Criterion, LLMModelConfig, Analysis, Conference
 from .services.llm_analysis import (
     llm_analysis,
     pdf_analysis,
     _save_analysis_to_db,
 )
+from .services.conference_scraper import ConferenceScraper
 from webApp.functions import analyze_code
 
 logger = logging.getLogger(__name__)
@@ -660,4 +662,76 @@ def run_old_celery_task(self, task_id):
 
     except Exception as e:
         logger.exception(f"Error in analysis task {task_id}: {str(e)}")
+
+
+@shared_task(bind=True)
+def scrape_conference_task(self, conference_name: str, conference_url: str, year: Optional[int] = None, limit: Optional[int] = None):
+    """
+    Celery task to scrape a conference website and save papers to database.
+    
+    Args:
+        conference_name: Name of the conference (e.g., "MICCAI")
+        conference_url: URL of the conference papers page
+        year: Conference year (optional)
+        limit: Maximum number of papers to scrape (for testing)
+    
+    Returns:
+        Dictionary with scraping results
+    """
+    try:
+        # Update task state
+        self.update_state(
+            state='PROGRESS',
+            meta={'current': 0, 'total': 0, 'status': 'Initializing scraper...'}
+        )
+        
+        logger.info(f"Starting conference scrape task: {conference_name} ({conference_url})")
+        
+        # Create scraper instance
+        scraper = ConferenceScraper(
+            conference_name=conference_name,
+            conference_url=conference_url,
+            year=year
+        )
+        
+        # Progress callback for updates
+        def progress_callback(current, total, message):
+            self.update_state(
+                state='PROGRESS',
+                meta={
+                    'current': current,
+                    'total': total,
+                    'status': message
+                }
+            )
+            logger.info(f"Progress: {current}/{total} - {message}")
+        
+        # Run the async scraper
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            result = loop.run_until_complete(
+                scraper.scrape_conference(
+                    limit=limit,
+                    progress_callback=progress_callback
+                )
+            )
+        finally:
+            loop.close()
+        
+        logger.info(f"Conference scrape completed: {result}")
+        
+        return {
+            'status': 'completed',
+            'result': result
+        }
+        
+    except Exception as e:
+        logger.exception(f"Error in conference scraping task: {str(e)}")
+        self.update_state(
+            state='FAILURE',
+            meta={'error': str(e)}
+        )
+        raise
+
         AnalysisTask.objects.filter(id=task_id).update(status="error", error=str(e))

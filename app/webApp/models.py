@@ -21,6 +21,13 @@ class Conference(models.Model):
     name = models.CharField(max_length=300, verbose_name="Conference name")
     year = models.IntegerField(verbose_name="Year", blank=True, null=True)
     url = models.URLField(verbose_name="Website", blank=True, max_length=500)
+    logo = models.ImageField(
+        upload_to="conference_logos/",
+        blank=True,
+        null=True,
+        verbose_name="Conference Logo",
+        help_text="Upload conference logo or icon"
+    )
     last_update = models.DateTimeField(auto_now=True, verbose_name="Last update")
 
     class Meta:
@@ -92,6 +99,13 @@ class Paper(models.Model):
     meta_review = models.TextField(
         verbose_name="All Meta-reviews text", blank=True, null=True
     )
+    metadata = models.JSONField(
+        verbose_name="Metadata (unknown/unexpected fields)",
+        blank=True,
+        null=True,
+        default=dict,
+        help_text="Stores unexpected fields extracted during scraping"
+    )
     last_update = models.DateTimeField(
         auto_now=True, verbose_name="Last update", blank=True, null=True
     )
@@ -130,29 +144,6 @@ class Dataset(models.Model):
 
     def __str__(self):
         return self.name
-
-
-class PDFPaper(models.Model):
-
-    paper = models.ForeignKey(
-        Paper, on_delete=models.CASCADE, related_name="pdf_papers"
-    )
-    abstract = models.TextField(verbose_name="Abstract")
-    supp_materials = models.TextField(
-        verbose_name="Supplementary materials", blank=True, null=True
-    )
-    code_url = models.URLField(verbose_name="code URL", blank=True, max_length=500)
-    text = models.TextField(verbose_name="Full paper text", blank=True, null=True)
-    last_update = models.DateTimeField(
-        auto_now=True, verbose_name="Last update", blank=True, null=True
-    )
-
-    class Meta:
-        verbose_name = "PDF Paper"
-        verbose_name_plural = "PDF Papers"
-
-    def __str__(self):
-        return self.title
 
 
 class Criterion(models.Model):
