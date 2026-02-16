@@ -1259,6 +1259,16 @@ function renderNodeDetails(node) {
                 // Normalize paper_type value
                 const paperType = result.paper_type || 'unknown';
                 
+                // Display name mapping
+                const typeDisplayNames = {
+                    'method': 'method',
+                    'dataset': 'dataset',
+                    'both': 'Dataset&Method',
+                    'theoretical': 'theoretical',
+                    'unknown': 'unknown'
+                };
+                const displayName = typeDisplayNames[paperType] || paperType;
+                
                 const typeColors = {
                     'method': 'primary',
                     'dataset': 'success',
@@ -1275,7 +1285,7 @@ function renderNodeDetails(node) {
                                 <i class="fas fa-tag mr-2"></i>
                                 Paper Type Classification
                                 <span class="badge badge-${badgeColor} float-right" style="font-size: 0.9rem;">
-                                    ${escapeHtml(paperType).toUpperCase()}
+                                    ${escapeHtml(displayName).toUpperCase()}
                                 </span>
                             </h6>
                         </div>
