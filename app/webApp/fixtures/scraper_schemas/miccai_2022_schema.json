@@ -1,0 +1,17 @@
+{
+  "name": "MICCAI 2022 Paper Listings",
+  "baseSelector": ".posts-list-item",
+  "fields": [
+    {
+      "name": "title",
+      "selector": ".posts-list-item-name a",
+      "type": "text"
+    },
+    {
+      "name": "link",
+      "selector": ".posts-list-item-name a",
+      "type": "attribute",
+      "attribute": "href"
+    }
+  ]
+}
