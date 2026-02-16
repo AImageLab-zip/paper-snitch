@@ -646,18 +646,29 @@ class PaperDetailView(View):
         for run in workflow_runs:
             run.progress = run.get_progress()
         
-        # Get latest workflow run
+        # Get the workflow run to display (from URL parameter or latest)
+        workflow_run_id = request.GET.get('workflow_run')
+        if workflow_run_id:
+            try:
+                selected_workflow = WorkflowRun.objects.get(id=workflow_run_id, paper=paper)
+            except WorkflowRun.DoesNotExist:
+                # If invalid ID, fall back to latest
+                selected_workflow = workflow_runs.first()
+        else:
+            selected_workflow = workflow_runs.first()
+        
+        # Get latest workflow run for comparison for comparison
         latest_workflow = workflow_runs.first()
         workflow_nodes_json = {}
         workflow_edges = []
         
-        if latest_workflow:
+        if selected_workflow:
             # Get the DAG structure from the workflow definition
-            dag_structure = latest_workflow.workflow_definition.dag_structure
+            dag_structure = selected_workflow.workflow_definition.dag_structure
             workflow_edges = dag_structure.get('edges', [])
             
             # Get all nodes for this workflow run
-            nodes = WorkflowNode.objects.filter(workflow_run=latest_workflow)
+            nodes = WorkflowNode.objects.filter(workflow_run=selected_workflow)
             
             # Build nodes dictionary for Mermaid
             for node in nodes:
@@ -681,6 +692,7 @@ class PaperDetailView(View):
             'paper': paper,
             'workflow_runs': workflow_runs,
             'latest_workflow': latest_workflow,
+            'selected_workflow': selected_workflow,
             'workflow_nodes_json': json.dumps(workflow_nodes_json),
             'workflow_edges': json.dumps(workflow_edges),
         }

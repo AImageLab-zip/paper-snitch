@@ -138,6 +138,12 @@
         display: block;
     }
     
+    /* Workflow run row hover effect */
+    .workflow-run-row:hover {
+        background-color: rgba(0, 123, 255, 0.1) !important;
+        transition: background-color 0.2s ease;
+    }
+    
     .node-legend {
         display: flex;
         justify-content: space-between;
@@ -263,34 +269,50 @@
             </div>
 
             <!-- Latest Workflow Diagram -->
-            {% if latest_workflow %}
+            {% if selected_workflow %}
             <div class="card shadow mb-4">
                 <div class="card-header bg-light">
                     <div class="d-flex justify-content-between align-items-center">
                         <h5 class="mb-0">
-                            <i class="fas fa-project-diagram mr-2"></i>Latest Workflow Analysis
+                            <i class="fas fa-project-diagram mr-2"></i>
+                            {% if selected_workflow.id == latest_workflow.id %}
+                            Latest Workflow Analysis
+                            {% else %}
+                            Workflow Analysis (Run #{{ selected_workflow.run_number }})
+                            {% endif %}
                         </h5>
                         <div>
-                            <span class="badge badge-{{ latest_workflow.status|lower }}">
-                                {% if latest_workflow.status == 'completed' %}
+                            <span class="badge badge-{{ selected_workflow.status|lower }}">
+                                {% if selected_workflow.status == 'completed' %}
                                 <i class="fas fa-check-circle"></i> Completed
-                                {% elif latest_workflow.status == 'running' %}
+                                {% elif selected_workflow.status == 'running' %}
                                 <i class="fas fa-spinner fa-spin"></i> Running
-                                {% elif latest_workflow.status == 'failed' %}
+                                {% elif selected_workflow.status == 'failed' %}
                                 <i class="fas fa-times-circle"></i> Failed
-                                {% elif latest_workflow.status == 'pending' %}
+                                {% elif selected_workflow.status == 'pending' %}
                                 <i class="fas fa-clock"></i> Pending
                                 {% else %}
-                                {{ latest_workflow.status|title }}
+                                {{ selected_workflow.status|title }}
                                 {% endif %}
                             </span>
                             <small class="text-muted ml-2">
-                                Run #{{ latest_workflow.run_number }} • 
-                                {{ latest_workflow.created_at|date:"M d, Y H:i" }}
+                                Run #{{ selected_workflow.run_number }} • 
+                                {{ selected_workflow.created_at|date:"M d, Y H:i" }}
                             </small>
                         </div>
                     </div>
                 </div>
+                {% if selected_workflow.id != latest_workflow.id %}
+                <div class="card-body py-2 bg-light border-bottom">
+                    <div class="alert alert-info mb-0 py-2">
+                        <i class="fas fa-info-circle mr-2"></i>
+                        You are viewing an older workflow run. 
+                        <a href="?" class="btn btn-sm btn-primary ml-3">
+                            <i class="fas fa-arrow-left mr-1"></i>Back to Latest
+                        </a>
+                    </div>
+                </div>
+                {% endif %}
                 <div class="card-body workflow-diagram-container mb-0">
                     <!-- Mermaid DAG Diagram -->
                     <div class="mermaid-diagram" id="workflow-mermaid">
@@ -349,11 +371,16 @@
                             </thead>
                             <tbody>
                                 {% for run in workflow_runs %}
-                                <tr class="{% if run.id == latest_workflow.id %}table-active{% endif %}">
+                                <tr class="workflow-run-row {% if run.id == selected_workflow.id %}table-primary{% elif run.id == latest_workflow.id %}table-active{% endif %}" 
+                                    onclick="window.location.href='?workflow_run={{ run.id }}'" 
+                                    style="cursor: pointer;">
                                     <td>
                                         <strong>#{{ run.run_number }}</strong>
                                         {% if run.id == latest_workflow.id %}
                                         <span class="badge badge-info ml-1">Latest</span>
+                                        {% endif %}
+                                        {% if run.id == selected_workflow.id %}
+                                        <span class="badge badge-primary ml-1">Viewing</span>
                                         {% endif %}
                                     </td>
                                     <td>
