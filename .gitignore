@@ -5,6 +5,9 @@ media_*/
 certbot/
 nginx/
 
+# directory used by create-dev-stack.sh to save PORT variables
+.stacks/
+
 # --- Python & Django ---
 # Bytecode e cache
 __pycache__/

@@ -216,11 +216,26 @@ Iniziata implementazione evidence locators
 10/02/2026
 Ultimata l'implementazione di evidence locator (manca da visualizzare l'analisi quando si clicca sull'occhio)
 
+11/02/2026
+Niente di utile
+
+
+12/02/2026
+Niente di utile
+
+
+13/02/2026
+niente di utile
+
+16/02/2026
+Update tree generated, improved ingested pipeline, added degub-dev-stack.sh 
+
+
 
 
 TODO:
 Short term:
-
+- Creare langgraph per gestire la parte di codice con LLM
 - Categorie annotazioni ordine alfabetico
 - rimozione conferma conversione documento in html
 

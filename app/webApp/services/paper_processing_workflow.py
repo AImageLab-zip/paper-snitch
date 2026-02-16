@@ -7,7 +7,7 @@ This module implements a two-node workflow for analyzing papers:
 
 Properly integrated with the workflow_engine models for:
 - History tracking
-- Versioning  
+- Versioning
 - Artifact storage
 - Progress monitoring
 """
@@ -28,6 +28,15 @@ from langgraph.graph import StateGraph, END
 from openai import OpenAI
 from pydantic import BaseModel, Field, ConfigDict
 from gitingest import ingest_async
+from gitingest.clone import clone_repo
+from gitingest.query_parser import parse_remote_repo
+from gitingest.utils.auth import resolve_token
+from gitingest.utils.pattern_utils import process_patterns
+from gitingest.utils.ingestion_utils import _should_exclude, _should_include
+import tempfile
+import shutil
+import subprocess
+from pathlib import Path as PathlibPath
 
 from webApp.models import Paper
 from workflow_engine.models import (
@@ -35,7 +44,7 @@ from workflow_engine.models import (
     WorkflowRun,
     WorkflowNode,
     NodeArtifact,
-    NodeLog
+    NodeLog,
 )
 from workflow_engine.services.async_orchestrator import async_ops
 
@@ -46,17 +55,17 @@ logger = logging.getLogger(__name__)
 # Pydantic Models for Structured Outputs
 # ============================================================================
 
+
 class PaperTypeClassification(BaseModel):
     """Structured output for paper type classification."""
-    model_config = ConfigDict(extra='forbid')
-    
+
+    model_config = ConfigDict(extra="forbid")
+
     paper_type: str = Field(
         description="Type of contribution: 'dataset', 'method', 'both', 'theoretical', or 'unknown'"
     )
     confidence: float = Field(
-        description="Confidence score between 0 and 1",
-        ge=0.0,
-        le=1.0
+        description="Confidence score between 0 and 1", ge=0.0, le=1.0
     )
     reasoning: str = Field(
         description="Detailed reasoning for the classification decision"
@@ -68,8 +77,9 @@ class PaperTypeClassification(BaseModel):
 
 class CodeAvailabilityCheck(BaseModel):
     """Structured output for code availability verification."""
-    model_config = ConfigDict(extra='forbid')
-    
+
+    model_config = ConfigDict(extra="forbid")
+
     code_available: bool = Field(description="Whether actual code is available")
     code_url: Optional[str] = Field(description="URL to the code repository if found")
     found_online: bool = Field(
@@ -82,8 +92,9 @@ class CodeAvailabilityCheck(BaseModel):
 
 class ResearchMethodologyAnalysis(BaseModel):
     """Analysis of research methodology type for context-aware scoring."""
-    model_config = ConfigDict(extra='forbid')
-    
+
+    model_config = ConfigDict(extra="forbid")
+
     methodology_type: str = Field(
         description="Type: 'deep_learning', 'machine_learning', 'algorithm', 'simulation', 'data_analysis', 'theoretical', 'other'"
     )
@@ -96,15 +107,14 @@ class ResearchMethodologyAnalysis(BaseModel):
     requires_splits: bool = Field(
         description="Whether this research requires dataset splits"
     )
-    methodology_notes: str = Field(
-        description="Notes about the research methodology"
-    )
+    methodology_notes: str = Field(description="Notes about the research methodology")
 
 
 class RepositoryStructureAnalysis(BaseModel):
     """Analysis of repository structure and dependencies."""
-    model_config = ConfigDict(extra='forbid')
-    
+
+    model_config = ConfigDict(extra="forbid")
+
     is_standalone: bool = Field(
         description="Whether repository is standalone or built on another repo"
     )
@@ -122,12 +132,11 @@ class RepositoryStructureAnalysis(BaseModel):
 
 class CodeAvailabilityAnalysis(BaseModel):
     """Analysis of what code components are available."""
-    model_config = ConfigDict(extra='forbid')
-    
+
+    model_config = ConfigDict(extra="forbid")
+
     has_training_code: bool = Field(description="Training code available")
-    training_code_paths: List[str] = Field(
-        description="Paths to training code files"
-    )
+    training_code_paths: List[str] = Field(description="Paths to training code files")
     has_evaluation_code: bool = Field(description="Evaluation/inference code available")
     evaluation_code_paths: List[str] = Field(
         description="Paths to evaluation code files"
@@ -142,12 +151,11 @@ class CodeAvailabilityAnalysis(BaseModel):
 
 class ArtifactsAnalysis(BaseModel):
     """Analysis of checkpoints and dataset availability."""
-    model_config = ConfigDict(extra='forbid')
-    
+
+    model_config = ConfigDict(extra="forbid")
+
     has_checkpoints: bool = Field(description="Model checkpoints are released")
-    checkpoint_locations: List[str] = Field(
-        description="URLs or paths to checkpoints"
-    )
+    checkpoint_locations: List[str] = Field(description="URLs or paths to checkpoints")
     has_dataset_links: bool = Field(description="Dataset download links available")
     dataset_coverage: str = Field(
         description="'full', 'partial', or 'none' - coverage of dataset links"
@@ -159,8 +167,9 @@ class ArtifactsAnalysis(BaseModel):
 
 class DatasetSplitsAnalysis(BaseModel):
     """Analysis of dataset splits and experiment replicability."""
-    model_config = ConfigDict(extra='forbid')
-    
+
+    model_config = ConfigDict(extra="forbid")
+
     splits_specified: bool = Field(
         description="Dataset splits (train/val/test) are specified"
     )
@@ -177,24 +186,22 @@ class DatasetSplitsAnalysis(BaseModel):
 
 class ReproducibilityDocumentation(BaseModel):
     """Analysis of reproducibility documentation."""
-    model_config = ConfigDict(extra='forbid')
-    
+
+    model_config = ConfigDict(extra="forbid")
+
     has_readme: bool = Field(description="README file exists")
-    has_results_table: bool = Field(
-        description="README includes results table"
-    )
+    has_results_table: bool = Field(description="README includes results table")
     has_reproduction_commands: bool = Field(
         description="README includes precise commands to reproduce results"
     )
-    documentation_notes: str = Field(
-        description="Notes about documentation quality"
-    )
+    documentation_notes: str = Field(description="Notes about documentation quality")
 
 
 class CodeReproducibilityAnalysis(BaseModel):
     """Complete code reproducibility analysis artifact."""
-    model_config = ConfigDict(extra='forbid')
-    
+
+    model_config = ConfigDict(extra="forbid")
+
     analysis_timestamp: str = Field(description="ISO timestamp of analysis")
     code_availability: CodeAvailabilityCheck
     research_methodology: Optional[ResearchMethodologyAnalysis] = None
@@ -204,9 +211,7 @@ class CodeReproducibilityAnalysis(BaseModel):
     dataset_splits: Optional[DatasetSplitsAnalysis] = None
     documentation: Optional[ReproducibilityDocumentation] = None
     reproducibility_score: float = Field(
-        description="Computed reproducibility score (0-10)",
-        ge=0.0,
-        le=10.0
+        description="Computed reproducibility score (0-10)", ge=0.0, le=10.0
     )
     score_breakdown: Dict[str, float] = Field(
         description="Breakdown of score by component"
@@ -219,31 +224,41 @@ class CodeReproducibilityAnalysis(BaseModel):
     )
 
 
+class PatternExtraction(BaseModel):
+    """Schema to extract inclusion and exclusion patterns."""
+
+    included_patterns: List[str] = Field(
+        default_factory=list,
+        description="List of string patterns to include. Return an empty list if no inclusion patterns are found.",
+    )
+
+
 # ============================================================================
 # Workflow State
 # ============================================================================
 
+
 class PaperProcessingState(TypedDict):
     """State passed between workflow nodes."""
-    
+
     # Workflow engine models
     workflow_run_id: str
     paper_id: int
-    
+
     # Current node being executed
     current_node_id: Optional[str]
-    
-    # OpenAI client    
+
+    # OpenAI client
     client: OpenAI
     model: str
-    
+
     # Configuration
     force_reprocess: bool
-    
+
     # Node outputs (stored as artifacts)
     paper_type_result: Optional[PaperTypeClassification]
     code_reproducibility_result: Optional[CodeReproducibilityAnalysis]
-    
+
     # Errors
     errors: List[str]
 
@@ -252,24 +267,25 @@ class PaperProcessingState(TypedDict):
 # Reproducibility Scoring Function
 # ============================================================================
 
+
 def compute_reproducibility_score(
     methodology: Optional[ResearchMethodologyAnalysis],
     structure: Optional[RepositoryStructureAnalysis],
     components: Optional[CodeAvailabilityAnalysis],
     artifacts: Optional[ArtifactsAnalysis],
     dataset_splits: Optional[DatasetSplitsAnalysis],
-    documentation: Optional[ReproducibilityDocumentation]
+    documentation: Optional[ReproducibilityDocumentation],
 ) -> tuple[float, Dict[str, float], List[str]]:
     """
     Compute reproducibility score programmatically from extracted facts.
-    
+
     Adapts scoring weights based on research methodology type:
     - deep_learning/machine_learning: Full weights on training, checkpoints, splits
     - algorithm: Focus on code completeness and examples
     - simulation: Focus on parameters and seeds
     - data_analysis: Focus on data and scripts
     - theoretical: Focus on proofs/derivations (if applicable)
-    
+
     Returns:
         (score, breakdown, recommendations)
         - score: 0-10 overall reproducibility score
@@ -284,7 +300,7 @@ def compute_reproducibility_score(
         "documentation": 0.0            # 2.0 points
     }
     recommendations = []
-    
+
     # Determine methodology-specific weights
     if methodology:
         requires_training = methodology.requires_training
@@ -297,13 +313,13 @@ def compute_reproducibility_score(
         requires_datasets = True
         requires_splits = True
         method_type = "unknown"
-    
+
     # 1. Code Completeness (2.5-3.0 points, adaptive)
     max_code_points = 3.0 if requires_training else 2.5
-    
+
     if components:
         score = 0.0
-        
+
         if requires_training:
             # ML/DL: Needs both training and evaluation
             if components.has_training_code and components.has_evaluation_code:
@@ -311,7 +327,9 @@ def compute_reproducibility_score(
             elif components.has_evaluation_code or components.has_training_code:
                 score = 1.5
                 if not components.has_training_code:
-                    recommendations.append("Add training code to enable full reproducibility")
+                    recommendations.append(
+                        "Add training code to enable full reproducibility"
+                    )
                 if not components.has_evaluation_code:
                     recommendations.append("Add evaluation/inference code")
             else:
@@ -325,18 +343,20 @@ def compute_reproducibility_score(
                 score = 2.0
             else:
                 score = 0.5
-                recommendations.append(f"Provide implementation code for the {method_type} method")
-        
+                recommendations.append(
+                    f"Provide implementation code for the {method_type} method"
+                )
+
         # Bonus for documented commands (always valuable)
         if components.has_documented_commands:
             score += 0.5
         else:
             recommendations.append("Document precise commands to run the code")
-        
+
         breakdown["code_completeness"] = min(score, max_code_points)
     else:
         recommendations.append("Provide complete code implementation")
-    
+
     # 2. Dependencies (1.0 point - always important)
     if structure:
         if structure.has_requirements:
@@ -344,12 +364,16 @@ def compute_reproducibility_score(
                 breakdown["dependencies"] = 1.0
             elif structure.requirements_match_imports is False:
                 breakdown["dependencies"] = 0.5
-                recommendations.append("Fix dependencies file - some imports are missing")
+                recommendations.append(
+                    "Fix dependencies file - some imports are missing"
+                )
             else:
                 breakdown["dependencies"] = 0.7
         else:
-            recommendations.append("Add requirements/dependencies file with all necessary packages and versions")
-    
+            recommendations.append(
+                "Add requirements/dependencies file with all necessary packages and versions"
+            )
+
     # 3. Artifacts (0-2.5 points, adaptive)
     if requires_datasets or requires_training:
         if artifacts:
@@ -358,8 +382,10 @@ def compute_reproducibility_score(
                 if artifacts.has_checkpoints:
                     breakdown["artifacts"] += 1.0
                 else:
-                    recommendations.append("Release model checkpoints to enable result verification without retraining")
-            
+                    recommendations.append(
+                        "Release model checkpoints to enable result verification without retraining"
+                    )
+
             # Dataset links: 0-1.5 points (weighted by coverage)
             if requires_datasets:
                 if artifacts.has_dataset_links:
@@ -367,7 +393,9 @@ def compute_reproducibility_score(
                         breakdown["artifacts"] += 1.5
                     elif artifacts.dataset_coverage == "partial":
                         breakdown["artifacts"] += 0.8
-                        recommendations.append("Provide download links for ALL datasets used")
+                        recommendations.append(
+                            "Provide download links for ALL datasets used"
+                        )
                     else:
                         breakdown["artifacts"] += 0.3
                 else:
@@ -382,9 +410,11 @@ def compute_reproducibility_score(
                 recommendations.append("Provide dataset download links")
     else:
         # Non-data research: Award full artifacts points if code is complete
-        if components and (components.has_evaluation_code or components.has_training_code):
+        if components and (
+            components.has_evaluation_code or components.has_training_code
+        ):
             breakdown["artifacts"] = 2.0  # Full credit for complete implementation
-    
+
     # 4. Dataset Splits (0-2.0 points, adaptive) - CRITICAL for ML, less for others
     if requires_splits:
         if dataset_splits:
@@ -392,43 +422,53 @@ def compute_reproducibility_score(
             if dataset_splits.splits_specified:
                 score += 0.7
             else:
-                recommendations.append("Specify which dataset splits (train/val/test) were used")
-            
+                recommendations.append(
+                    "Specify which dataset splits (train/val/test) were used"
+                )
+
             if dataset_splits.splits_provided:
                 score += 0.7
             else:
                 recommendations.append("Provide split files or explicit split logic")
-            
+
             if dataset_splits.random_seeds_documented:
                 score += 0.6
             else:
-                recommendations.append("Document random seeds for reproducible data partitioning")
-            
+                recommendations.append(
+                    "Document random seeds for reproducible data partitioning"
+                )
+
             breakdown["dataset_splits"] = score
         else:
-            recommendations.append("Document dataset splits and random seeds for experiment replicability")
+            recommendations.append(
+                "Document dataset splits and random seeds for experiment replicability"
+            )
     else:
         # Non-ML: Award points if seeds/parameters are documented
         if dataset_splits and dataset_splits.random_seeds_documented:
             breakdown["dataset_splits"] = 1.5  # Reward for documenting randomness
             recommendations.append("Continue documenting all sources of randomness")
         else:
-            breakdown["dataset_splits"] = 0.5  # Partial credit for deterministic methods
+            breakdown["dataset_splits"] = (
+                0.5  # Partial credit for deterministic methods
+            )
             if method_type in ["simulation", "algorithm"]:
-                recommendations.append("Document random seeds and parameters for reproducible results")
-    
+                recommendations.append(
+                    "Document random seeds and parameters for reproducible results"
+                )
+
     # 5. Documentation (2.0 points - always critical)
     if documentation:
         if documentation.has_readme:
             breakdown["documentation"] += 0.5
         else:
             recommendations.append("Create comprehensive README file")
-        
+
         if documentation.has_results_table:
             breakdown["documentation"] += 0.75
         else:
             recommendations.append("Include results table in README for comparison")
-        
+
         if documentation.has_reproduction_commands:
             breakdown["documentation"] += 0.75
         else:
@@ -462,7 +502,7 @@ def compute_reproducibility_score(
     # Round to 1 decimal place
     total_score = round(total_score, 1)
     breakdown = {k: round(v, 2) for k, v in breakdown.items()}
-    
+
     return total_score, breakdown, recommendations
 
 
@@ -470,56 +510,69 @@ def compute_reproducibility_score(
 # Node A: Paper Type Classification
 # ============================================================================
 
+
 async def paper_type_classification_node(state: PaperProcessingState) -> Dict[str, Any]:
     """
     Node A: Classify paper type (dataset, method, both).
-    
+
     Uses LLM to analyze paper title, abstract, and text to determine
     the type of contribution. Stores result as NodeArtifact.
-    
+
     Strategy: For efficiency, we use only title + abstract for initial classification.
     This provides good accuracy while minimizing token usage. Full text is used
     only if abstract is not available.
     """
     node_id = "paper_type_classification"
-    logger.info(f"Node A: Starting paper type classification for paper {state['paper_id']}")
-    
+    logger.info(
+        f"Node A: Starting paper type classification for paper {state['paper_id']}"
+    )
+
     # Get workflow node
-    node = await async_ops.get_workflow_node(state['workflow_run_id'], node_id)
-    
+    node = await async_ops.get_workflow_node(state["workflow_run_id"], node_id)
+
     # Update node status to running
-    await async_ops.update_node_status(node, 'running', started_at=timezone.now())
-    await async_ops.create_node_log(node, 'INFO', 'Starting paper type classification')
-    
+    await async_ops.update_node_status(node, "running", started_at=timezone.now())
+    await async_ops.create_node_log(node, "INFO", "Starting paper type classification")
+
     try:
         # Check for force_reprocess flag
-        force_reprocess = state.get('force_reprocess', False)
-        
+        force_reprocess = state.get("force_reprocess", False)
+
         # Check if already classified
         if not force_reprocess:
-            previous = await async_ops.check_previous_analysis(state['paper_id'], node_id)
+            previous = await async_ops.check_previous_analysis(
+                state["paper_id"], node_id
+            )
             if previous:
                 logger.info(f"Found previous analysis from {previous['completed_at']}")
-                await async_ops.create_node_log(node, 'INFO', f"Using cached result from run {previous['run_id']}")
-                
-                result = PaperTypeClassification(**previous['result'])
-                await async_ops.create_node_artifact(node, 'result', result)
-                await async_ops.update_node_status(node, 'completed', completed_at=timezone.now())
-                
+                await async_ops.create_node_log(
+                    node, "INFO", f"Using cached result from run {previous['run_id']}"
+                )
+
+                result = PaperTypeClassification(**previous["result"])
+                await async_ops.create_node_artifact(node, "result", result)
+                await async_ops.update_node_status(
+                    node, "completed", completed_at=timezone.now()
+                )
+
                 return {"paper_type_result": result}
-        
+
         # Get paper from database
-        paper = await async_ops.get_paper(state['paper_id'])
-        
+        paper = await async_ops.get_paper(state["paper_id"])
+
         # Use title + abstract for efficiency (or full text if abstract unavailable)
         if paper.abstract:
             paper_content = f"Title: {paper.title}\n\nAbstract: {paper.abstract}"
         elif paper.text:
             # Use first 3000 characters of full text if no abstract
-            paper_content = f"Title: {paper.title}\n\nText excerpt:\n{paper.text[:3000]}"
+            paper_content = (
+                f"Title: {paper.title}\n\nText excerpt:\n{paper.text[:3000]}"
+            )
         else:
-            paper_content = f"Title: {paper.title}\n\n(No abstract or full text available)"
-        
+            paper_content = (
+                f"Title: {paper.title}\n\n(No abstract or full text available)"
+            )
+
         # Construct LLM prompt
         system_prompt = """You are an expert scientific paper analyzer specializing in identifying paper contributions.
 
@@ -546,123 +599,157 @@ Provide:
 4. Key evidence quotes from the paper"""
 
         user_content = f"Classify this paper:\n\n{paper_content}"
-        
+
         # Log the analysis attempt
-        await async_ops.create_node_log(node, 'INFO', f'Analyzing paper with {state["model"]}', {
-            'paper_id': state['paper_id'],
-            'has_abstract': bool(paper.abstract),
-            'content_length': len(paper_content)
-        })
-        
+        await async_ops.create_node_log(
+            node,
+            "INFO",
+            f'Analyzing paper with {state["model"]}',
+            {
+                "paper_id": state["paper_id"],
+                "has_abstract": bool(paper.abstract),
+                "content_length": len(paper_content),
+            },
+        )
+
         # Call OpenAI API
-        response = state['client'].chat.completions.create(
-            model=state['model'],
+        response = state["client"].chat.completions.create(
+            model=state["model"],
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_content}
+                {"role": "user", "content": user_content},
             ],
-            response_format={"type": "json_schema", "json_schema": {
-                "name": "paper_type_classification",
-                "strict": True,
-                "schema": PaperTypeClassification.model_json_schema()
-            }},
-            temperature=0.3
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "paper_type_classification",
+                    "strict": True,
+                    "schema": PaperTypeClassification.model_json_schema(),
+                },
+            },
+            temperature=0.3,
         )
-        
+
         # Parse response
         result_dict = json.loads(response.choices[0].message.content)
         result = PaperTypeClassification(**result_dict)
-        
+
         # Track tokens
         input_tokens = response.usage.prompt_tokens
         output_tokens = response.usage.completion_tokens
-        
-        logger.info(f"Classification result: {result.paper_type} (confidence: {result.confidence})")
+
+        logger.info(
+            f"Classification result: {result.paper_type} (confidence: {result.confidence})"
+        )
         logger.info(f"Reasoning: {result.reasoning}")
-        
+
         # Store result as artifact
-        await async_ops.create_node_artifact(node, 'result', result)
-        await async_ops.create_node_artifact(node, 'token_usage', {
-            'input_tokens': input_tokens,
-            'output_tokens': output_tokens,
-            'total_tokens': input_tokens + output_tokens
-        })
-        
+        await async_ops.create_node_artifact(node, "result", result)
+        await async_ops.create_node_artifact(
+            node,
+            "token_usage",
+            {
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "total_tokens": input_tokens + output_tokens,
+            },
+        )
+
         # Log success
-        await async_ops.create_node_log(node, 'INFO', f'Classification successful: {result.paper_type}', {
-            'confidence': result.confidence,
-            'tokens_used': input_tokens + output_tokens
-        })
-        
+        await async_ops.create_node_log(
+            node,
+            "INFO",
+            f"Classification successful: {result.paper_type}",
+            {
+                "confidence": result.confidence,
+                "tokens_used": input_tokens + output_tokens,
+            },
+        )
+
         # Update node status
         await async_ops.update_node_status(
             node,
-            'completed',
+            "completed",
             completed_at=timezone.now(),
-            output_data={'paper_type': result.paper_type, 'confidence': result.confidence}
+            output_data={
+                "paper_type": result.paper_type,
+                "confidence": result.confidence,
+            },
         )
-        
+
         return {"paper_type_result": result}
-        
+
     except Exception as e:
         logger.error(f"Error in paper type classification: {e}", exc_info=True)
-        
+
         # Log error
-        await async_ops.create_node_log(node, 'ERROR', str(e), {'traceback': str(e.__traceback__)})
-        
+        await async_ops.create_node_log(
+            node, "ERROR", str(e), {"traceback": str(e.__traceback__)}
+        )
+
         # Update node status to failed
         await async_ops.update_node_status(
-            node,
-            'failed',
-            completed_at=timezone.now(),
-            error_message=str(e)
+            node, "failed", completed_at=timezone.now(), error_message=str(e)
         )
-        
-        return {
-            "errors": state.get('errors', []) + [f"Node A error: {str(e)}"]
-        }
+
+        return {"errors": state.get("errors", []) + [f"Node A error: {str(e)}"]}
 
 
 # ============================================================================
 # Node B: Code Reproducibility Analysis (Agentic)
 # ============================================================================
 
-async def code_reproducibility_analysis_node(state: PaperProcessingState) -> Dict[str, Any]:
+
+async def code_reproducibility_analysis_node(
+    state: PaperProcessingState,
+) -> Dict[str, Any]:
     """
     Node B: Agentic code reproducibility analysis.
-    
+
     This node performs comprehensive analysis of code availability and reproducibility.
     It works in multiple steps:
     1. Check if code links exist in paper
     2. If not, search online for code
     3. Download and analyze repository
     4. Evaluate reproducibility components
-    
+
     Results are stored as NodeArtifacts.
     """
     node_id = "code_reproducibility_analysis"
-    logger.info(f"Node B: Starting code reproducibility analysis for paper {state['paper_id']}")
-    
+    logger.info(
+        f"Node B: Starting code reproducibility analysis for paper {state['paper_id']}"
+    )
+
     # Get workflow node
-    node = await async_ops.get_workflow_node(state['workflow_run_id'], node_id)
-    
+    node = await async_ops.get_workflow_node(state["workflow_run_id"], node_id)
+
     # Update node status to running
-    await async_ops.update_node_status(node, 'running', started_at=timezone.now())
-    await async_ops.create_node_log(node, 'INFO', 'Starting code reproducibility analysis')
-    
+    await async_ops.update_node_status(node, "running", started_at=timezone.now())
+    await async_ops.create_node_log(
+        node, "INFO", "Starting code reproducibility analysis"
+    )
+
     try:
         # Check for previous analysis
-        force_reprocess = state.get('force_reprocess', False)
+        force_reprocess = state.get("force_reprocess", False)
         if not force_reprocess:
-            previous = await async_ops.check_previous_analysis(state['paper_id'], node_id)
+            previous = await async_ops.check_previous_analysis(
+                state["paper_id"], node_id
+            )
             if previous:
-                logger.info(f"Found previous code analysis from {previous['completed_at']}")
-                await async_ops.create_node_log(node, 'INFO', f"Using cached result from run {previous['run_id']}")
-                
-                result = CodeReproducibilityAnalysis(**previous['result'])
-                await async_ops.create_node_artifact(node, 'result', result)
-                await async_ops.update_node_status(node, 'completed', completed_at=timezone.now())
-                
+                logger.info(
+                    f"Found previous code analysis from {previous['completed_at']}"
+                )
+                await async_ops.create_node_log(
+                    node, "INFO", f"Using cached result from run {previous['run_id']}"
+                )
+
+                result = CodeReproducibilityAnalysis(**previous["result"])
+                await async_ops.create_node_artifact(node, "result", result)
+                await async_ops.update_node_status(
+                    node, "completed", completed_at=timezone.now()
+                )
+
                 return {"code_reproducibility_result": result}
         
         paper = await async_ops.get_paper(state['paper_id'])
@@ -712,14 +799,14 @@ async def code_reproducibility_analysis_node(state: PaperProcessingState) -> Dic
                     code_available=False,
                     code_url=None,
                     found_online=False,
-                    availability_notes="Dataset paper - code analysis not applicable. Dataset papers should be evaluated on dataset availability, documentation, and ethical considerations."
+                    availability_notes="Dataset paper - code analysis not applicable. Dataset papers should be evaluated on dataset availability, documentation, and ethical considerations.",
                 ),
                 research_methodology=ResearchMethodologyAnalysis(
                     methodology_type="data_analysis",
                     requires_training=False,
                     requires_datasets=True,
                     requires_splits=False,
-                    methodology_notes="Dataset paper - focus on data availability, documentation quality, and reproducibility of data collection/preprocessing rather than code."
+                    methodology_notes="Dataset paper - focus on data availability, documentation quality, and reproducibility of data collection/preprocessing rather than code.",
                 ),
                 reproducibility_score=0.0,
                 score_breakdown={},
@@ -729,20 +816,24 @@ async def code_reproducibility_analysis_node(state: PaperProcessingState) -> Dic
                     "Provide comprehensive dataset documentation (format, statistics, collection methodology)",
                     "Document any preprocessing or filtering steps with reproducible scripts",
                     "Include ethical considerations and usage guidelines",
-                    "Provide dataset versioning and persistent identifiers (e.g., DOI)"
-                ]
+                    "Provide dataset versioning and persistent identifiers (e.g., DOI)",
+                ],
             )
-            
-            await async_ops.create_node_artifact(node, 'result', analysis)
-            await async_ops.create_node_log(node, 'INFO', 'Dataset paper - code analysis skipped')
-            await async_ops.update_node_status(node, 'completed', completed_at=timezone.now())
-            
+
+            await async_ops.create_node_artifact(node, "result", analysis)
+            await async_ops.create_node_log(
+                node, "INFO", "Dataset paper - code analysis skipped"
+            )
+            await async_ops.update_node_status(
+                node, "completed", completed_at=timezone.now()
+            )
+
             return {"code_reproducibility_result": analysis}
-        
+
         # Step 1: Check for code links
-        await async_ops.create_node_log(node, 'INFO', 'Checking for code links')
+        await async_ops.create_node_log(node, "INFO", "Checking for code links")
         code_url = await check_code_availability(paper, client, model)
-        
+
         if not code_url:
             # No code found - finalize analysis
             analysis = CodeReproducibilityAnalysis(
@@ -751,146 +842,183 @@ async def code_reproducibility_analysis_node(state: PaperProcessingState) -> Dic
                     code_available=False,
                     code_url=None,
                     found_online=False,
-                    availability_notes="No code repository found in paper or online"
+                    availability_notes="No code repository found in paper or online",
                 ),
                 reproducibility_score=0.0,
                 score_breakdown={},
                 overall_assessment="Code not available - reproducibility cannot be assessed",
                 recommendations=[
                     "Authors should release code to enable reproducibility",
-                    "Consider reaching out to authors for code access"
-                ]
+                    "Consider reaching out to authors for code access",
+                ],
             )
-            
-            await async_ops.create_node_artifact(node, 'result', analysis)
-            await async_ops.create_node_log(node, 'WARNING', 'No code repository found')
-            await async_ops.update_node_status(node, 'completed', completed_at=timezone.now())
-            
+
+            await async_ops.create_node_artifact(node, "result", analysis)
+            await async_ops.create_node_log(node, "WARNING", "No code repository found")
+            await async_ops.update_node_status(
+                node, "completed", completed_at=timezone.now()
+            )
+
             return {"code_reproducibility_result": analysis}
-        
+
         # Step 2: Verify code is actually available (not empty/unreachable)
-        await async_ops.create_node_log(node, 'INFO', f'Verifying code accessibility: {code_url}')
+        await async_ops.create_node_log(
+            node, "INFO", f"Verifying code accessibility: {code_url}"
+        )
         code_check_result = await verify_code_accessibility(code_url, client, model)
-        
-        if not code_check_result['accessible']:
+
+        if not code_check_result["accessible"]:
             analysis = CodeReproducibilityAnalysis(
                 analysis_timestamp=datetime.utcnow().isoformat(),
                 code_availability=CodeAvailabilityCheck(
                     code_available=False,
                     code_url=code_url,
-                    found_online=code_check_result.get('found_online', False),
-                    availability_notes=code_check_result['notes']
+                    found_online=code_check_result.get("found_online", False),
+                    availability_notes=code_check_result["notes"],
                 ),
                 reproducibility_score=0.0,
                 score_breakdown={},
                 overall_assessment=f"Code repository exists but is not accessible: {code_check_result['notes']}",
-                recommendations=["Verify repository permissions and accessibility"]
+                recommendations=["Verify repository permissions and accessibility"],
             )
-            
-            await async_ops.create_node_artifact(node, 'result', analysis)
-            await async_ops.create_node_log(node, 'WARNING', code_check_result['notes'])
-            await async_ops.update_node_status(node, 'completed', completed_at=timezone.now())
-            
+
+            await async_ops.create_node_artifact(node, "result", analysis)
+            await async_ops.create_node_log(node, "WARNING", code_check_result["notes"])
+            await async_ops.update_node_status(
+                node, "completed", completed_at=timezone.now()
+            )
+
             return {"code_reproducibility_result": analysis}
-        
+
         # Step 3: Download and analyze repository
         logger.info(f"Downloading repository: {code_url}")
-        await async_ops.create_node_log(node, 'INFO', f'Downloading and analyzing repository: {code_url}')
-        
-        repo_analysis = await analyze_repository_comprehensive(
-            code_url, 
-            paper,
-            client, 
-            model,
-            node  # Pass node for detailed logging
+
+        await async_ops.create_node_log(
+            node, "INFO", f"Downloading and analyzing repository: {code_url}"
         )
-        
+
+        repo_analysis = await analyze_repository_comprehensive(
+            code_url, paper, client, model, node  # Pass node for detailed logging
+        )
+
+        # Pass clone_path from verify_code_accessibility to avoid re-cloning
+        clone_path = code_check_result.get("clone_path")
+        repo_analysis = await analyze_repository_comprehensive(
+            code_url, paper, client, model, clone_path=clone_path
+        )
+
         # Step 4: Compile complete analysis
         analysis = CodeReproducibilityAnalysis(
             analysis_timestamp=datetime.utcnow().isoformat(),
             code_availability=CodeAvailabilityCheck(
                 code_available=True,
                 code_url=code_url,
-                found_online=code_check_result.get('found_online', False),
-                availability_notes="Code repository accessible and contains actual code"
+                found_online=code_check_result.get("found_online", False),
+                availability_notes="Code repository accessible and contains actual code",
             ),
-            research_methodology=repo_analysis.get('methodology'),
-            repository_structure=repo_analysis.get('structure'),
-            code_components=repo_analysis.get('components'),
-            artifacts=repo_analysis.get('artifacts'),
-            dataset_splits=repo_analysis.get('dataset_splits'),
-            documentation=repo_analysis.get('documentation'),
-            reproducibility_score=repo_analysis.get('reproducibility_score', 0.0),
-            score_breakdown=repo_analysis.get('score_breakdown', {}),
-            overall_assessment=repo_analysis.get('overall_assessment', ''),
-            recommendations=repo_analysis.get('recommendations', [])
+            research_methodology=repo_analysis.get("methodology"),
+            repository_structure=repo_analysis.get("structure"),
+            code_components=repo_analysis.get("components"),
+            artifacts=repo_analysis.get("artifacts"),
+            dataset_splits=repo_analysis.get("dataset_splits"),
+            documentation=repo_analysis.get("documentation"),
+            reproducibility_score=repo_analysis.get("reproducibility_score", 0.0),
+            score_breakdown=repo_analysis.get("score_breakdown", {}),
+            overall_assessment=repo_analysis.get("overall_assessment", ""),
+            recommendations=repo_analysis.get("recommendations", []),
         )
-        
+
         # Store as artifacts
-        await async_ops.create_node_artifact(node, 'result', analysis)
-        await async_ops.create_node_artifact(node, 'token_usage', {
-            'input_tokens': repo_analysis.get('input_tokens', 0),
-            'output_tokens': repo_analysis.get('output_tokens', 0)
-        })
-        
+
+        await async_ops.create_node_artifact(node, "result", analysis)
+        await async_ops.create_node_artifact(
+            node,
+            "token_usage",
+            {
+                "input_tokens": repo_analysis.get("input_tokens", 0),
+                "output_tokens": repo_analysis.get("output_tokens", 0),
+            },
+        )
+
         # Store detailed LLM analysis if available
-        if repo_analysis.get('llm_analysis_text'):
-            await async_ops.create_node_artifact(node, 'llm_analysis', {
-                'analysis_text': repo_analysis['llm_analysis_text'],
-                'structured_data': repo_analysis.get('structured_data', {})
-            })
-        
+        if repo_analysis.get("llm_analysis_text"):
+            await async_ops.create_node_artifact(
+                node,
+                "llm_analysis",
+                {
+                    "analysis_text": repo_analysis["llm_analysis_text"],
+                    "structured_data": repo_analysis.get("structured_data", {}),
+                },
+            )
+
         # Log detailed results
         await async_ops.create_node_log(
-            node, 
-            'INFO', 
-            f'Analysis complete - Score: {analysis.reproducibility_score}/10',
-            {'score_breakdown': analysis.score_breakdown}
+            node,
+            "INFO",
+            f"Analysis complete - Score: {analysis.reproducibility_score}/10",
+            {"score_breakdown": analysis.score_breakdown},
         )
-        
+
         # Log detailed component availability
         components_summary = []
         if analysis.code_components:
-            components_summary.append(f"Training code: {analysis.code_components.has_training_code}")
-            components_summary.append(f"Evaluation code: {analysis.code_components.has_evaluation_code}")
-            components_summary.append(f"Documented commands: {analysis.code_components.has_documented_commands}")
+            components_summary.append(
+                f"Training code: {analysis.code_components.has_training_code}"
+            )
+            components_summary.append(
+                f"Evaluation code: {analysis.code_components.has_evaluation_code}"
+            )
+            components_summary.append(
+                f"Documented commands: {analysis.code_components.has_documented_commands}"
+            )
         if analysis.artifacts:
-            components_summary.append(f"Checkpoints available: {analysis.artifacts.has_checkpoints}")
-            components_summary.append(f"Dataset links: {analysis.artifacts.has_dataset_links}")
+            components_summary.append(
+                f"Checkpoints available: {analysis.artifacts.has_checkpoints}"
+            )
+            components_summary.append(
+                f"Dataset links: {analysis.artifacts.has_dataset_links}"
+            )
         if analysis.documentation:
             components_summary.append(f"README: {analysis.documentation.has_readme}")
-            components_summary.append(f"Results table: {analysis.documentation.has_results_table}")
-            
+            components_summary.append(
+                f"Results table: {analysis.documentation.has_results_table}"
+            )
+
         if components_summary:
-            await async_ops.create_node_log(node, 'INFO', 'Component availability:\n' + '\n'.join(f'  • {item}' for item in components_summary))
-        
+            await async_ops.create_node_log(
+                node,
+                "INFO",
+                "Component availability:\n"
+                + "\n".join(f"  • {item}" for item in components_summary),
+            )
+
         # Update node status
         await async_ops.update_node_status(
             node,
-            'completed',
+            "completed",
             completed_at=timezone.now(),
-            output_data={'code_available': True, 'code_url': code_url}
+            output_data={"code_available": True, "code_url": code_url},
         )
-        
+
         return {"code_reproducibility_result": analysis}
-        
+
     except Exception as e:
         logger.error(f"Error in code reproducibility analysis: {e}", exc_info=True)
-        return {
-            "errors": state['errors'] + [f"Node B error: {str(e)}"]
-        }
+        return {"errors": state["errors"] + [f"Node B error: {str(e)}"]}
 
 
-async def check_code_availability(paper: Paper, client: OpenAI, model: str) -> Optional[str]:
+async def check_code_availability(
+    paper: Paper, client: OpenAI, model: str
+) -> Optional[str]:
     """
     Check if paper has code links in database or search online.
-    
+
     Supports multiple git hosting platforms:
     - GitHub
     - GitLab
     - Bitbucket
     - And other common git hosting services
-    
+
     Returns:
         Code URL if found, None otherwise
     """
@@ -898,19 +1026,19 @@ async def check_code_availability(paper: Paper, client: OpenAI, model: str) -> O
     if paper.code_url:
         logger.info(f"Found code URL in database: {paper.code_url}")
         return paper.code_url
-    
+
     # Search in paper text for git repository links (GitHub, GitLab, Bitbucket, etc.)
     if paper.text:
         # Pattern matches: github.com, gitlab.com, bitbucket.org, and other git hosting services
-        url_pattern = r'https?://(?:github\.com|gitlab\.com|bitbucket\.org|gitee\.com|codeberg\.org)/[\w\-]+/[\w\-]+'
+        url_pattern = r"https?://(?:github\.com|gitlab\.com|bitbucket\.org|gitee\.com|codeberg\.org)/[\w\-]+/[\w\-]+"
         matches = re.findall(url_pattern, paper.text)
         if matches:
             logger.info(f"Found code URL in paper text: {matches[0]}")
             return matches[0]
-    
+
     # Use LLM to search online (simulated - in production use search API)
     logger.info("No code URL found in database or paper. Attempting online search...")
-    
+
     # In production, you would use actual search API here
     # For now, we'll use LLM to suggest likely repository URL
     try:
@@ -926,108 +1054,494 @@ Respond with ONLY the repository URL or 'null' (no quotes, no explanation)."""
         response = client.chat.completions.create(
             model=model,
             messages=[
-                {"role": "system", "content": "You are a research code finder. Respond only with repository URLs or 'null'."},
-                {"role": "user", "content": search_prompt}
+                {
+                    "role": "system",
+                    "content": "You are a research code finder. Respond only with repository URLs or 'null'.",
+                },
+                {"role": "user", "content": search_prompt},
             ],
             temperature=0.0,
-            max_tokens=100
+            max_tokens=100,
         )
-        
+
         result = response.choices[0].message.content.strip()
-        
+
         # Accept any git hosting platform URL
-        git_platforms = ['github.com', 'gitlab.com', 'bitbucket.org', 'gitee.com', 'codeberg.org']
-        if result and result.lower() != 'null' and any(platform in result for platform in git_platforms):
+        git_platforms = [
+            "github.com",
+            "gitlab.com",
+            "bitbucket.org",
+            "gitee.com",
+            "codeberg.org",
+        ]
+        if (
+            result
+            and result.lower() != "null"
+            and any(platform in result for platform in git_platforms)
+        ):
             logger.info(f"LLM suggested repository: {result}")
             return result
-            
+
     except Exception as e:
         logger.warning(f"Error in online search: {e}")
-    
+
     return None
 
 
-async def verify_code_accessibility(code_url: str, client: OpenAI, model: str) -> Dict[str, Any]:
+async def ingest_with_steroids(
+    source: str,
+    *,
+    max_file_size: int = 100000,
+    include_patterns: Optional[List[str]] = None,
+    exclude_patterns: Optional[List[str]] = None,
+    token: str | None = None,
+    cleanup: bool = True,
+    existing_clone_path: Optional[PathlibPath] = None,
+    get_tree: bool = True,
+) -> tuple[str, str, str, Optional[PathlibPath]]:
+    """
+    Enhanced repository ingestion function that:
+    1. Clones the full repository locally (or reuses existing clone)
+    2. Generates a complete tree structure using the 'tree' command
+    3. Organizes file content based on include_pattern order
+
+    Parameters
+    ----------
+    source : str
+        Repository URL or local path
+    max_file_size : int
+        Maximum file size to include (default: 100000 bytes)
+    include_patterns : Optional[List[str]]
+        List of patterns to include (e.g., ["*.md", "*.py"])
+        Files will be ordered in content based on this list order
+    exclude_patterns : Optional[List[str]]
+        List of patterns to exclude
+    token : str | None
+        Authentication token for private repositories
+    cleanup : bool
+        Whether to delete the cloned repository after processing (default: True)
+    existing_clone_path : Optional[PathlibPath]
+        Path to existing cloned repository to reuse (skips cloning step)
+
+    Returns
+    -------
+    tuple[str, str, str, Optional[PathlibPath]]
+        (summary, tree, content, clone_path) where:
+        - summary: Repository metadata and statistics
+        - tree: Full directory tree structure
+        - content: Concatenated file contents ordered by include_patterns
+        - clone_path: Path to cloned repository (None if cleanup=True)
+    """
+    logger.info(f"Starting enhanced ingestion for: {source}")
+
+    # Resolve authentication token
+    token = resolve_token(token)
+
+    # Create temporary directory for cloning
+    temp_dir = None
+    clone_path = existing_clone_path
+    query = None
+
+    try:
+        if existing_clone_path:
+            logger.info(f"Reusing existing clone at: {existing_clone_path}")
+            # Still need to parse for repo info
+            query = await parse_remote_repo(source, token=token)
+        else:
+            # Parse the repository URL
+            query = await parse_remote_repo(source, token=token)
+
+            temp_dir = tempfile.mkdtemp(prefix="gitingest_steroids_")
+            clone_path = PathlibPath(temp_dir) / query.slug
+
+            # Update query with our clone path
+            query.local_path = clone_path
+
+            # Clone the full repository (not sparse)
+            clone_config = query.extract_clone_config()
+            logger.info(f"Cloning repository to: {clone_path}")
+            await clone_repo(clone_config, token=token)
+
+        # Generate full tree structure using tree command
+        tree_output = ""
+        if get_tree:
+            logger.info("Generating full repository tree structure")
+            try:
+                tree_result = subprocess.run(
+                    ["tree", "--gitignore", "-a", "-L", "10", str(clone_path)],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+                tree_output = tree_result.stdout
+                if tree_result.returncode != 0:
+                    logger.warning(f"Tree command warning: {tree_result.stderr}")
+                    # Fallback to basic tree without --gitignore
+                    tree_result = subprocess.run(
+                        ["tree", "-a", "-L", "10", str(clone_path)],
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
+                    )
+                    tree_output = tree_result.stdout
+            except subprocess.TimeoutExpired:
+                logger.warning("Tree command timed out, using fallback")
+                tree_output = f"Repository tree (timeout): {query.slug}\n"
+            except FileNotFoundError:
+                logger.warning("'tree' command not found, generating basic structure")
+                tree_output = _generate_basic_tree(clone_path)
+
+        # Collect files based on include_patterns order
+        logger.info("Collecting file contents based on patterns")
+        content_parts = []
+        total_files = 0
+        total_size = 0
+
+        # Process patterns using gitingest's pattern processor
+        ignore_patterns, include_patterns_processed = process_patterns(
+            exclude_patterns=exclude_patterns,
+            include_patterns=include_patterns,
+        )
+
+        # Collect all files, then organize them by pattern order
+        if include_patterns:
+            # Dictionary to group files by which pattern they match
+            files_by_pattern = {pattern: [] for pattern in include_patterns}
+            unmatched_files = []
+
+            # Walk through all files in the repository
+            for file_path in clone_path.rglob("*"):
+                if not file_path.is_file():
+                    continue
+
+                # Skip if excluded by ignore patterns
+                if ignore_patterns and _should_exclude(
+                    file_path, clone_path, ignore_patterns
+                ):
+                    continue
+
+                # Skip if not included by include patterns
+                if include_patterns_processed and not _should_include(
+                    file_path, clone_path, include_patterns_processed
+                ):
+                    continue
+
+                # Check file size
+                file_size = file_path.stat().st_size
+                if file_size > max_file_size:
+                    logger.debug(
+                        f"Skipping large file: {file_path.name} ({file_size} bytes)"
+                    )
+                    continue
+
+                # Determine which pattern this file matches (use first matching pattern)
+                matched = False
+                for pattern in include_patterns:
+                    # Simple pattern matching for ordering
+                    if pattern.startswith("*") and file_path.name.endswith(pattern[1:]):
+                        files_by_pattern[pattern].append(file_path)
+                        matched = True
+                        break
+                    elif pattern.endswith("*") and file_path.name.startswith(
+                        pattern[:-1]
+                    ):
+                        files_by_pattern[pattern].append(file_path)
+                        matched = True
+                        break
+                    elif pattern in file_path.name or pattern.strip("/") in str(
+                        file_path
+                    ):
+                        files_by_pattern[pattern].append(file_path)
+                        matched = True
+                        break
+
+                if not matched:
+                    unmatched_files.append(file_path)
+
+            # Process files in pattern order
+            for pattern in include_patterns:
+                for file_path in sorted(files_by_pattern[pattern]):
+                    try:
+                        relative_path = file_path.relative_to(clone_path)
+                        content_parts.append(f"\n{'='*80}\n")
+                        content_parts.append(f"File: {relative_path}\n")
+                        content_parts.append(f"{'='*80}\n\n")
+
+                        with open(
+                            file_path, "r", encoding="utf-8", errors="ignore"
+                        ) as f:
+                            file_content = f.read()
+                            content_parts.append(file_content)
+                            content_parts.append("\n\n")
+
+                        total_files += 1
+                        total_size += file_path.stat().st_size
+
+                    except Exception as e:
+                        logger.warning(f"Error reading file {file_path}: {e}")
+                        continue
+
+            # Add unmatched files at the end (if any were included)
+            for file_path in sorted(unmatched_files):
+                try:
+                    relative_path = file_path.relative_to(clone_path)
+                    content_parts.append(f"\n{'='*80}\n")
+                    content_parts.append(f"File: {relative_path}\n")
+                    content_parts.append(f"{'='*80}\n\n")
+
+                    with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                        file_content = f.read()
+                        content_parts.append(file_content)
+                        content_parts.append("\n\n")
+
+                    total_files += 1
+                    total_size += file_path.stat().st_size
+
+                except Exception as e:
+                    logger.warning(f"Error reading file {file_path}: {e}")
+                    continue
+        else:
+            # No patterns specified, collect all text files
+            for file_path in clone_path.rglob("*"):
+                if not file_path.is_file():
+                    continue
+
+                # Skip if excluded
+                if ignore_patterns and _should_exclude(
+                    file_path, clone_path, ignore_patterns
+                ):
+                    continue
+
+                file_size = file_path.stat().st_size
+                if file_size > max_file_size:
+                    continue
+
+                try:
+                    relative_path = file_path.relative_to(clone_path)
+                    content_parts.append(f"\n{'='*80}\n")
+                    content_parts.append(f"File: {relative_path}\n")
+                    content_parts.append(f"{'='*80}\n\n")
+
+                    with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                        file_content = f.read()
+                        content_parts.append(file_content)
+                        content_parts.append("\n\n")
+
+                    total_files += 1
+                    total_size += file_size
+
+                except Exception as e:
+                    continue
+
+        content = "".join(content_parts)
+
+        # Generate summary
+        summary = f"""Repository: {query.repo_name}
+Owner: {query.user_name}
+URL: {query.url}
+Branch: {query.branch or 'default'}
+Commit: {query.commit or 'latest'}
+Total Files Processed: {total_files}
+Total Size: {total_size} bytes
+"""
+
+        logger.info(f"Ingestion complete: {total_files} files, {total_size} bytes")
+
+        # Return clone path if cleanup is False, otherwise None
+        return_clone_path = clone_path if not cleanup else None
+
+        return (summary, tree_output, content, return_clone_path)
+
+    except Exception as e:
+        logger.error(f"Error during enhanced ingestion: {e}", exc_info=True)
+        raise
+    finally:
+        # Cleanup temporary directory only if cleanup=True
+        if cleanup and temp_dir and PathlibPath(temp_dir).exists():
+            try:
+                shutil.rmtree(temp_dir)
+                logger.debug(f"Cleaned up temporary directory: {temp_dir}")
+            except Exception as e:
+                logger.warning(f"Error cleaning up temp directory: {e}")
+
+
+def _generate_basic_tree(
+    path: PathlibPath, prefix: str = "", max_depth: int = 5, current_depth: int = 0
+) -> str:
+    """
+    Fallback method
+    Generate a basic tree structure when 'tree' command is not available.
+
+    Parameters
+    ----------
+    path : PathlibPath
+        Directory path to generate tree from
+    prefix : str
+        Prefix for tree formatting
+    max_depth : int
+        Maximum depth to traverse
+    current_depth : int
+        Current traversal depth
+
+    Returns
+    -------
+    str
+        Tree structure as string
+    """
+    if current_depth >= max_depth:
+        return ""
+
+    tree_lines = []
+
+    # Directories to exclude from tree
+    excluded_dirs = {"static", "staticfiles", "media", "node_modules", "__pycache__"}
+
+    try:
+        items = sorted(path.iterdir(), key=lambda x: (not x.is_dir(), x.name))
+
+        # Filter out items starting with '.' (hidden files/directories) and excluded directories
+        items = [
+            item
+            for item in items
+            if not item.name.startswith(".") and item.name not in excluded_dirs
+        ]
+
+        for i, item in enumerate(items):
+            current_prefix = "    "
+            child_prefix = "    "
+
+            # For files, add estimated token count
+            if item.is_file():
+                try:
+                    # Get file size in bytes
+                    file_size = item.stat().st_size
+                    # Estimate tokens (1 token ≈ 4 characters/bytes)
+                    estimated_tokens = file_size // 4
+                    tree_lines.append(
+                        f"{prefix}{current_prefix}{item.name} - {estimated_tokens}\n"
+                    )
+                except Exception:
+                    # If we can't read file size, just show the name
+                    tree_lines.append(f"{prefix}{current_prefix}{item.name}\n")
+            else:
+                tree_lines.append(f"{prefix}{current_prefix}{item.name}\n")
+
+            if item.is_dir() and not item.is_symlink():
+                subtree = _generate_basic_tree(
+                    item, prefix + child_prefix, max_depth, current_depth + 1
+                )
+                tree_lines.append(subtree)
+    except PermissionError:
+        pass
+
+    return "".join(tree_lines)
+
+
+async def verify_code_accessibility(
+    code_url: str, client: OpenAI, model: str
+) -> Dict[str, Any]:
     """
     Verify that code repository is accessible and contains actual code.
-    
+
     Returns:
         Dict with 'accessible' bool, 'notes' str, and token counts
     """
     try:
         # Try to fetch repository info
         logger.info(f"Verifying accessibility of {code_url}")
-        
+
         # Check if URL is reachable
         response = requests.head(code_url, timeout=10, allow_redirects=True)
-        
+
         if response.status_code == 404:
             return {
-                'accessible': False,
-                'notes': 'Repository not found (404)',
-                'found_online': False
+                "accessible": False,
+                "notes": "Repository not found (404)",
+                "found_online": False,
             }
         elif response.status_code >= 400:
             return {
-                'accessible': False,
-                'notes': f'Repository not accessible (HTTP {response.status_code})',
-                'found_online': False
+                "accessible": False,
+                "notes": f"Repository not accessible (HTTP {response.status_code})",
+                "found_online": False,
             }
-        
+
         # Try to ingest a small sample to verify it contains code
+        # Keep the cloned repo for later use by analyze_repository_comprehensive
         try:
-            summary, tree, content = await ingest_async(
+            summary, tree, content, clone_path = await ingest_with_steroids(
                 code_url,
                 max_file_size=50000,  # Limit file size
-                include_patterns=["*.py", "*.js", "*.ts", "*.java", "*.cpp", "*.c", "*.m", "README*"]
+                include_patterns=[
+                    "README*",
+                ],
+                cleanup=False,  # Keep the clone for analyze_repository_comprehensive
+                get_tree=False,  # Skip tree for quick check
             )
-            
+
             # Check if we got actual code (not just documentation)
             if not content or len(content) < 100:
                 return {
-                    'accessible': False,
-                    'notes': 'Repository is empty or contains only documentation',
-                    'found_online': True
+                    "accessible": False,
+                    "notes": "Repository is empty or contains only documentation",
+                    "found_online": True,
                 }
-            
+
             # Check if it's mostly code vs just README
             # Supports: Python, JavaScript, TypeScript, Java, C++, C, Go, Rust, Matlab
-            code_extensions = ['.py', '.js', '.ts', '.java', '.cpp', '.c', '.go', '.rs', '.m']
+            code_extensions = [
+                ".py",
+                ".js",
+                ".ts",
+                ".java",
+                ".cpp",
+                ".c",
+                ".go",
+                ".rs",
+                ".m",
+            ]
             has_code_files = any(ext in content for ext in code_extensions)
-            
+
             if not has_code_files:
                 return {
-                    'accessible': False,
-                    'notes': 'Repository contains no recognizable code files',
-                    'found_online': True
+                    "accessible": False,
+                    "notes": "Repository contains no recognizable code files",
+                    "found_online": True,
                 }
-            
+
             logger.info("Repository is accessible and contains code")
             return {
-                'accessible': True,
-                'notes': 'Repository verified accessible with code',
-                'found_online': False
+                "accessible": True,
+                "notes": "Repository verified accessible with code",
+                "found_online": False,
+                "clone_path": clone_path,  # Pass clone path for reuse
             }
-            
+
         except Exception as e:
             logger.warning(f"Error ingesting repository: {e}")
+            # Clean up on error
+            if "clone_path" in locals() and clone_path and clone_path.parent.exists():
+                try:
+                    shutil.rmtree(clone_path.parent)
+                except Exception:
+                    pass
             return {
-                'accessible': False,
-                'notes': f'Error accessing repository content: {str(e)}',
-                'found_online': False
+                "accessible": False,
+                "notes": f"Error accessing repository content: {str(e)}",
+                "found_online": False,
             }
-            
+
     except requests.Timeout:
         return {
-            'accessible': False,
-            'notes': 'Repository request timed out',
-            'found_online': False
+            "accessible": False,
+            "notes": "Repository request timed out",
+            "found_online": False,
         }
     except Exception as e:
         return {
-            'accessible': False,
-            'notes': f'Error checking repository: {str(e)}',
-            'found_online': False
+            "accessible": False,
+            "notes": f"Error checking repository: {str(e)}",
+            "found_online": False,
         }
 
 
@@ -1036,53 +1550,125 @@ async def analyze_repository_comprehensive(
     paper: Paper,
     client: OpenAI,
     model: str,
-    node: 'WorkflowNode' = None  # Optional node for detailed logging
+    clone_path: Optional[PathlibPath] = None,
+    node: "WorkflowNode" = None,  # Optional node for detailed logging
 ) -> Dict[str, Any]:
     """
     Perform comprehensive analysis of code repository.
-    
+
     This is the main agentic analysis function that evaluates all reproducibility criteria.
+
+    Parameters
+    ----------
+    code_url : str
+        Repository URL
+    paper : Paper
+        Paper object
+    client : OpenAI
+        OpenAI client
+    model : str
+        Model name
+    clone_path : Optional[PathlibPath]
+        Existing clone path from verify_code_accessibility (avoids re-cloning)
     """
     logger.info(f"Starting comprehensive repository analysis for {code_url}")
+
     if node:
-        await async_ops.create_node_log(node, 'INFO', 'Starting comprehensive repository analysis')
-    
+        await async_ops.create_node_log(
+            node, "INFO", "Starting comprehensive repository analysis"
+        )
+
     try:
         # Download repository content using gitingest
         if node:
-            await async_ops.create_node_log(node, 'INFO', 'Downloading repository files...')
-            
-        summary, tree, content = await ingest_async(
+            await async_ops.create_node_log(
+                node, "INFO", "Downloading repository files..."
+            )
+        # Download repository content using enhanced ingestion with full tree structure
+        # Note: include_patterns order matters - files will be ordered in content as:
+        # 1. Documentation files (*.md, *.txt) - for understanding the project
+        # 2. Code files (*.py, *.js, etc.) - for analyzing implementation
+        # 3. Config files (*.yml, *.json, etc.) - for dependencies and setup
+        # If clone_path is provided, reuse it; otherwise clone fresh
+        summary, tree, content, _ = await ingest_with_steroids(
             code_url,
             max_file_size=100000,
-            include_patterns=["*.py", "*.js", "*.ts", "*.java", "*.cpp", "*.c", "*.m", "*.sh", 
-                             "*.md", "*.txt", "*.yml", "*.yaml", "*.json", "requirements*", 
-                             "setup.py", "package.json", "Dockerfile", "README*"]
+            include_patterns=[
+                "/README*",
+            ],
+            cleanup=True,  # Always cleanup after comprehensive analysis
+            existing_clone_path=clone_path,  # Reuse existing clone if available
         )
-        
-        content_size_kb = len(content) / 1024
-        logger.info(f"Repository ingested. Content size: {len(content)} chars ({content_size_kb:.1f} KB)")
-        if node:
-            # Count files in tree
-            file_count = tree.count('├──') + tree.count('└──')
-            await async_ops.create_node_log(
-                node, 
-                'INFO', 
-                f'Repository downloaded: {file_count} files, {content_size_kb:.1f} KB'
-            )
-        
-        # Prepare paper text (truncate if too long to avoid token limits)
-        paper_text = paper.text or ''
-        max_paper_chars = 10000
-        if len(paper_text) > max_paper_chars:
-            paper_text = paper_text[:max_paper_chars] + "\n\n[... text truncated for brevity ...]"
-            if node:
-                await async_ops.create_node_log(
-                    node, 
-                    'INFO', 
-                    f'Paper text truncated to {max_paper_chars} chars for analysis'
-                )
-        
+
+        logger.info(f"Repository ingested. Content size: {len(content)} chars")
+
+        code_info_prompt = f"""Documentation:
+{content}
+
+Repository Structure:
+{tree}
+
+Based on the documentation and the tree structure provided before, generate a list:
+ - include_patterns: containing the patterns of files to include that are useful for reproducibility. 
+I will use your output on gitingest to retrieve from the code only the useful files, this is an example on how the list should be provided to gitingest: 
+include_patterns=["README.md","test/test.py","requirements.txt","Dockerfile","compose.yml"] You can write the full name of a file, avoid using wildcards. 
+The include_patterns should be ordered in the way I should retrieve the files, first the documentation files and than the code files. 
+If the README is available and it contains instructions to reproduce the results, be sure all the files in it are included in the include_patterns.
+DO NOT include files related to comparisons models, only the ones related the architecture proposed in the paper.
+ADD "/" in front of a name to include only a file in the root, otherwise everyfile with that name will be included. For example, if you want to include only the README in the root, write "/README.md".
+In the tree structure next to the filename is also provided the tokens of each file. Select the included_patterns in a way to reach at maximum 100000 tokens as the count of every file selected, prioritizing the most important files for reproducibility. DO NOT exceed the token limit. DO NOT provide tokens in output, just the filenames or the patterns.
+Generate the output ready to be transformed into a Python list of strings.
+"""
+        response = client.responses.parse(
+            model=model,
+            input=[
+                {
+                    "role": "system",
+                    "content": "You are an expert code reviewer. Focus on identifying files essential for reproducibility.",
+                },
+                {"role": "user", "content": code_info_prompt},
+            ],
+            text_format=PatternExtraction,
+        )
+        retrieved_patterns = response.output_parsed
+        input_tokens = response.usage.input_tokens
+        output_tokens = response.usage.output_tokens
+        logger.info(f"LLM suggested code file patterns: {retrieved_patterns}")
+
+        # Get the content from the repository using the retrieved patterns generated by the LLM.
+        _, _, content, _ = await ingest_with_steroids(
+            code_url,
+            max_file_size=100000,
+            include_patterns=retrieved_patterns.included_patterns,
+            cleanup=True,  # Always cleanup after comprehensive analysis
+            existing_clone_path=clone_path,  # Reuse existing clone if available
+            get_tree=False,  # Skip tree for second pass to save time
+        )
+
+        # TODO add these node info
+        # content_size_kb = len(content) / 1024
+        # logger.info(f"Repository ingested. Content size: {len(content)} chars ({content_size_kb:.1f} KB)")
+        # if node:
+        #     # Count files in tree
+        #     file_count = tree.count('├──') + tree.count('└──')
+        #     await async_ops.create_node_log(
+        #         node,
+        #         'INFO',
+        #         f'Repository downloaded: {file_count} files, {content_size_kb:.1f} KB'
+        #     )
+
+        # # Prepare paper text (truncate if too long to avoid token limits)
+        # paper_text = paper.text or ''
+        # max_paper_chars = 10000
+        # if len(paper_text) > max_paper_chars:
+        #     paper_text = paper_text[:max_paper_chars] + "\n\n[... text truncated for brevity ...]"
+        #     if node:
+        #         await async_ops.create_node_log(
+        #             node,
+        #             'INFO',
+        #             f'Paper text truncated to {max_paper_chars} chars for analysis'
+        #         )
+
         # Use LLM to analyze repository structure and contents
         analysis_prompt = f"""You are an expert code reviewer analyzing a research code repository for reproducibility.
 
@@ -1091,15 +1677,15 @@ Repository: {code_url}
 Repository Structure:
 {tree}
 
-Code Summary:
-{summary}
+Code Files and documentation:
+{content[:400000]}
 
 Paper Information:
 Title: {paper.title}
 Abstract: {paper.abstract or 'Not available'}
 
 Paper Text (excerpt):
-{paper_text if paper_text else 'Not available'}
+{paper.text if paper.text else 'Not available'}
 
 Analyze this repository comprehensively and provide structured JSON output covering:
 
@@ -1146,34 +1732,47 @@ Be thorough and evidence-based in your analysis. Pay special attention to whethe
 NOTE: Do NOT compute a numeric score - focus on extracting factual information only."""
 
         if node:
-            await async_ops.create_node_log(node, 'INFO', 'Analyzing repository with LLM...')
+            await async_ops.create_node_log(
+                node, "INFO", "Analyzing repository with LLM..."
+            )
 
         # Call LLM with structured output
-        response = client.chat.completions.create(
+        response = client.responses.create(
             model=model,
-            messages=[
-                {"role": "system", "content": "You are an expert code reproducibility analyst. Provide detailed, evidence-based analysis."},
-                {"role": "user", "content": analysis_prompt}
+            input=[
+                {
+                    "role": "system",
+                    "content": "You are an expert code reproducibility analyst. Provide detailed, evidence-based analysis.",
+                },
+                {"role": "user", "content": analysis_prompt},
             ],
-            temperature=0.3,
-            max_tokens=4000
+            temperature=0.2,
+            max_output_tokens=4000,
         )
-        
+
         # Parse LLM response
-        analysis_text = response.choices[0].message.content
-        
+        analysis_text = response.output_text
+        input_tokens += response.usage.input_tokens
+        output_tokens += response.usage.output_tokens
+
         logger.info(f"LLM analysis received ({len(analysis_text)} chars)")
         if node:
             # Save detailed analysis text
             await async_ops.create_node_log(
-                node, 
-                'INFO', 
-                f'LLM analysis complete ({len(analysis_text)} chars, {response.usage.completion_tokens} tokens)'
+                node,
+                "INFO",
+                f"LLM analysis complete ({len(analysis_text)} chars, {response.usage.completion_tokens} tokens)",
             )
             # Log a preview of the analysis
-            preview = analysis_text[:500] + '...' if len(analysis_text) > 500 else analysis_text
-            await async_ops.create_node_log(node, 'DEBUG', f'Analysis preview:\n{preview}')
-        
+            preview = (
+                analysis_text[:500] + "..."
+                if len(analysis_text) > 500
+                else analysis_text
+            )
+            await async_ops.create_node_log(
+                node, "DEBUG", f"Analysis preview:\n{preview}"
+            )
+
         # Use LLM again to structure the analysis into our schema
         structuring_prompt = f"""Convert this repository analysis into structured JSON with the following exact schema:
 
@@ -1235,43 +1834,53 @@ Analysis to convert:
 Output the complete JSON object with ALL fields filled in based on the analysis above."""
 
         if node:
-            await async_ops.create_node_log(node, 'INFO', 'Structuring analysis into schema...')
-            
+            await async_ops.create_node_log(
+                node, "INFO", "Structuring analysis into schema..."
+            )
+
         structured_response = client.chat.completions.create(
             model=model,
             messages=[
-                {"role": "system", "content": "You are a JSON conversion specialist. Convert the analysis to the exact JSON schema provided. Include ALL required fields."},
-                {"role": "user", "content": structuring_prompt}
+                {
+                    "role": "system",
+                    "content": "You are a JSON conversion specialist. Convert the analysis to the exact JSON schema provided. Include ALL required fields.",
+                },
+                {"role": "user", "content": structuring_prompt},
             ],
             response_format={"type": "json_object"},
             temperature=0.0,
-            max_tokens=2000
+            max_tokens=2000,
         )
-        
+
         structured_data = json.loads(structured_response.choices[0].message.content)
-        
+
         # Log the structured data for debugging
-        logger.info(f"Structured extraction completed. Keys: {list(structured_data.keys())}")
+        logger.info(
+            f"Structured extraction completed. Keys: {list(structured_data.keys())}"
+        )
+        input_tokens += structured_response.usage.prompt_tokens
+        output_tokens += structured_response.usage.completion_tokens
+
         if node:
             await async_ops.create_node_log(
-                node, 
-                'INFO', 
-                f'Structured data extracted: {len(structured_data)} top-level fields'
+                node,
+                "INFO",
+                f"Structured data extracted: {len(structured_data)} top-level fields",
             )
-        
+
         # Helper function to safely create Pydantic models
         def safe_model_create(model_class, data):
             """Create Pydantic model only if data is not empty."""
             if not data or not isinstance(data, dict):
                 logger.warning(f"{model_class.__name__}: No data or invalid type")
                 return None
-            
+
             # Check if ALL values are None (but allow False, 0, empty strings, empty lists)
             all_none = all(v is None for v in data.values())
             if all_none:
                 logger.warning(f"{model_class.__name__}: All values are None")
                 return None
-                
+
             try:
                 instance = model_class(**data)
                 logger.info(f"{model_class.__name__}: Successfully created")
@@ -1280,104 +1889,124 @@ Output the complete JSON object with ALL fields filled in based on the analysis 
                 logger.error(f"Failed to create {model_class.__name__}: {e}")
                 logger.error(f"  Data was: {data}")
                 return None
-        
+
         # Build comprehensive result
-        methodology_obj = safe_model_create(ResearchMethodologyAnalysis, structured_data.get('methodology'))
-        structure_obj = safe_model_create(RepositoryStructureAnalysis, structured_data.get('structure'))
-        components_obj = safe_model_create(CodeAvailabilityAnalysis, structured_data.get('components'))
-        artifacts_obj = safe_model_create(ArtifactsAnalysis, structured_data.get('artifacts'))
-        dataset_splits_obj = safe_model_create(DatasetSplitsAnalysis, structured_data.get('dataset_splits'))
-        documentation_obj = safe_model_create(ReproducibilityDocumentation, structured_data.get('documentation'))
-        
+        methodology_obj = safe_model_create(
+            ResearchMethodologyAnalysis, structured_data.get("methodology")
+        )
+        structure_obj = safe_model_create(
+            RepositoryStructureAnalysis, structured_data.get("structure")
+        )
+        components_obj = safe_model_create(
+            CodeAvailabilityAnalysis, structured_data.get("components")
+        )
+        artifacts_obj = safe_model_create(
+            ArtifactsAnalysis, structured_data.get("artifacts")
+        )
+        dataset_splits_obj = safe_model_create(
+            DatasetSplitsAnalysis, structured_data.get("dataset_splits")
+        )
+        documentation_obj = safe_model_create(
+            ReproducibilityDocumentation, structured_data.get("documentation")
+        )
+
         # Compute reproducibility score programmatically
         if node:
-            await async_ops.create_node_log(node, 'INFO', 'Computing reproducibility score...')
-            
+            await async_ops.create_node_log(
+                node, "INFO", "Computing reproducibility score..."
+            )
+
         score, breakdown, recommendations = compute_reproducibility_score(
             methodology_obj,
             structure_obj,
             components_obj,
             artifacts_obj,
             dataset_splits_obj,
-            documentation_obj
+            documentation_obj,
         )
-        
+
         logger.info(f"Computed reproducibility score: {score}/10")
         logger.info(f"Score breakdown: {breakdown}")
+
         if node:
-            breakdown_text = '\n'.join(f'  • {k}: {v}/10' for k, v in breakdown.items())
+            breakdown_text = "\n".join(f"  • {k}: {v}/10" for k, v in breakdown.items())
             await async_ops.create_node_log(
-                node, 
-                'INFO', 
-                f'Reproducibility score: {score}/10\n\nBreakdown:\n{breakdown_text}'
+                node,
+                "INFO",
+                f"Reproducibility score: {score}/10\n\nBreakdown:\n{breakdown_text}",
             )
-            
+
             # Log key findings
             if recommendations:
-                rec_preview = '\n'.join(f'  • {r}' for r in recommendations[:3])
+                rec_preview = "\n".join(f"  • {r}" for r in recommendations[:3])
                 await async_ops.create_node_log(
-                    node, 
-                    'INFO', 
-                    f'Top recommendations:\n{rec_preview}{"\n  ..." if len(recommendations) > 3 else ""}'
+                    node,
+                    "INFO",
+                    f'Top recommendations:\n{rec_preview}{"\n  ..." if len(recommendations) > 3 else ""}',
                 )
-        
+
         result = {
-            'methodology': methodology_obj,
-            'structure': structure_obj,
-            'components': components_obj,
-            'artifacts': artifacts_obj,
-            'dataset_splits': dataset_splits_obj,
-            'documentation': documentation_obj,
-            'reproducibility_score': score,
-            'score_breakdown': breakdown,
-            'overall_assessment': structured_data.get('overall_assessment', 'Analysis completed'),
-            'recommendations': recommendations,  # Programmatically generated
-            'input_tokens': response.usage.prompt_tokens + structured_response.usage.prompt_tokens,
-            'output_tokens': response.usage.completion_tokens + structured_response.usage.completion_tokens,
-            'llm_analysis_text': analysis_text,  # Store full LLM analysis
-            'structured_data': structured_data  # Store structured JSON
+            "methodology": methodology_obj,
+            "structure": structure_obj,
+            "components": components_obj,
+            "artifacts": artifacts_obj,
+            "dataset_splits": dataset_splits_obj,
+            "documentation": documentation_obj,
+            "reproducibility_score": score,
+            "score_breakdown": breakdown,
+            "overall_assessment": structured_data.get(
+                "overall_assessment", "Analysis completed"
+            ),
+            "recommendations": recommendations,  # Programmatically generated
+            "input_tokens": input_tokens,  # concatenated previously since the number of llm calls increased
+            "output_tokens": output_tokens,  # concatenated previously since the number of llm calls increased
+            "llm_analysis_text": analysis_text,  # Store full LLM analysis
+            "structured_data": structured_data,  # Store structured JSON
         }
-        
+
         logger.info("Comprehensive repository analysis complete")
         return result
-        
+
     except Exception as e:
         logger.error(f"Error in comprehensive repository analysis: {e}", exc_info=True)
-        
+
         # Return minimal analysis on error
         return {
-            'structure': None,
-            'components': None,
-            'artifacts': None,
-            'dataset_splits': None,
-            'documentation': None,
-            'reproducibility_score': 0.0,
-            'score_breakdown': {},
-            'overall_assessment': f'Analysis failed: {str(e)}',
-            'recommendations': ['Manual review required due to analysis error'],
-            'input_tokens': 0,
-            'output_tokens': 0
+            "structure": None,
+            "components": None,
+            "artifacts": None,
+            "dataset_splits": None,
+            "documentation": None,
+            "reproducibility_score": 0.0,
+            "score_breakdown": {},
+            "overall_assessment": f"Analysis failed: {str(e)}",
+            "recommendations": ["Manual review required due to analysis error"],
+            "input_tokens": 0,
+            "output_tokens": 0,
         }
 
 
 # ============================================================================
-# Workflow Definition and Execution  
+# Workflow Definition and Execution
 # ============================================================================
+
 
 def build_paper_processing_workflow() -> StateGraph:
     """Build the LangGraph workflow for paper processing."""
-    
+
     workflow = StateGraph(PaperProcessingState)
-    
+
     # Add nodes
     workflow.add_node("paper_type_classification", paper_type_classification_node)
-    workflow.add_node("code_reproducibility_analysis", code_reproducibility_analysis_node)
-    
+    workflow.add_node(
+        "code_reproducibility_analysis", code_reproducibility_analysis_node
+    )
+
     # Define edges
     workflow.set_entry_point("paper_type_classification")
     workflow.add_edge("paper_type_classification", "code_reproducibility_analysis")
     workflow.add_edge("code_reproducibility_analysis", END)
-    
+
     return workflow.compile()
 
 
@@ -1385,40 +2014,42 @@ async def execute_single_node_only(
     node_uuid: str,
     force_reprocess: bool = True,
     openai_api_key: Optional[str] = None,
-    model: str = "gpt-4o"
+    model: str = "gpt-4o",
 ) -> Dict[str, Any]:
     """
     Execute a single node in isolation by re-running it within its existing workflow run.
-    
+
     Args:
         node_uuid: UUID of the node to re-execute
         force_reprocess: If True, reprocess even if already completed (default True)
         openai_api_key: OpenAI API key (uses env var if not provided)
         model: OpenAI model to use
-        
+
     Returns:
         Dictionary with execution results
     """
     logger.info(f"Re-executing single node {node_uuid}")
-    
+
     try:
         # Get the node
         node = await async_ops.get_node_by_uuid(node_uuid)
         if not node:
             raise ValueError(f"Node {node_uuid} not found")
-        
+
         workflow_run = node.workflow_run
         paper_id = workflow_run.paper.id
-        
-        logger.info(f"Node {node_uuid} current status: {node.status}, node_id: {node.node_id}")
-        
+
+        logger.info(
+            f"Node {node_uuid} current status: {node.status}, node_id: {node.node_id}"
+        )
+
         # Note: Node status should already be set to 'pending' by the view
         # The node function will update it to 'running' when it starts
-        
+
         # Initialize OpenAI client
         api_key = openai_api_key or os.getenv("OPENAI_API_KEY")
         client = OpenAI(api_key=api_key)
-        
+
         # Build state for this node execution
         state: PaperProcessingState = {
             "workflow_run_id": str(workflow_run.id),
@@ -1429,26 +2060,32 @@ async def execute_single_node_only(
             "force_reprocess": force_reprocess,
             "paper_type_result": None,
             "code_reproducibility_result": None,
-            "errors": []
+            "errors": [],
         }
-        
+
         logger.info(f"Loading dependencies for node {node.node_id}")
-        
+
         # Load previous node results if they exist
         if node.node_id == "code_reproducibility_analysis":
             # Need paper_type_result from previous node
-            prev_node = await async_ops.get_workflow_node(str(workflow_run.id), "paper_type_classification")
-            if prev_node and prev_node.status == 'completed':
+            prev_node = await async_ops.get_workflow_node(
+                str(workflow_run.id), "paper_type_classification"
+            )
+            if prev_node and prev_node.status == "completed":
                 # Get the result artifact
                 artifacts = await async_ops.get_node_artifacts(prev_node)
                 for artifact in artifacts:
-                    if artifact.name == 'result':
-                        state["paper_type_result"] = PaperTypeClassification(**artifact.data)
-                        logger.info(f"Loaded paper_type_result from previous node: {state['paper_type_result'].paper_type}")
+                    if artifact.name == "result":
+                        state["paper_type_result"] = PaperTypeClassification(
+                            **artifact.data
+                        )
+                        logger.info(
+                            f"Loaded paper_type_result from previous node: {state['paper_type_result'].paper_type}"
+                        )
                         break
-        
+
         logger.info(f"Executing node function for {node.node_id}")
-        
+
         # Execute the appropriate node function
         if node.node_id == "paper_type_classification":
             result = await paper_type_classification_node(state)
@@ -1456,44 +2093,50 @@ async def execute_single_node_only(
             result = await code_reproducibility_analysis_node(state)
         else:
             raise ValueError(f"Unknown node type: {node.node_id}")
-        
+
         logger.info(f"Node function executed, result keys: {result.keys()}")
-        
+
         # Check for errors
         errors = result.get("errors", [])
         success = len(errors) == 0
-        
-        logger.info(f"Single node execution completed. Success: {success}, Errors: {errors}")
-        
+
+        logger.info(
+            f"Single node execution completed. Success: {success}, Errors: {errors}"
+        )
+
         # Check if all nodes in the workflow are completed to update workflow run status
         try:
             # Get all nodes in this workflow run
             all_nodes = await async_ops.get_workflow_nodes(str(workflow_run.id))
-            
+
             # Check statuses
-            all_completed_or_failed = all(n.status in ['completed', 'failed'] for n in all_nodes)
-            any_failed = any(n.status == 'failed' for n in all_nodes)
-            
+            all_completed_or_failed = all(
+                n.status in ["completed", "failed"] for n in all_nodes
+            )
+            any_failed = any(n.status == "failed" for n in all_nodes)
+
             if all_completed_or_failed:
                 # All nodes finished, update workflow run status
-                workflow_status = 'failed' if any_failed else 'completed'
+                workflow_status = "failed" if any_failed else "completed"
                 await async_ops.update_workflow_run_status(
-                    workflow_run.id,
-                    workflow_status,
-                    completed_at=timezone.now()
+                    workflow_run.id, workflow_status, completed_at=timezone.now()
                 )
-                logger.info(f"Workflow run {workflow_run.id} updated to status: {workflow_status}")
+                logger.info(
+                    f"Workflow run {workflow_run.id} updated to status: {workflow_status}"
+                )
         except Exception as e:
-            logger.warning(f"Failed to update workflow run status after node execution: {e}")
-        
+            logger.warning(
+                f"Failed to update workflow run status after node execution: {e}"
+            )
+
         return {
             "success": success,
             "node_id": node.node_id,
             "node_uuid": str(node.id),
             "workflow_run_id": str(workflow_run.id),
-            "errors": errors
+            "errors": errors,
         }
-        
+
     except Exception as e:
         logger.error(f"Failed to execute single node: {e}", exc_info=True)
         # Try to update node status to failed
@@ -1501,129 +2144,134 @@ async def execute_single_node_only(
             node = await async_ops.get_node_by_uuid(node_uuid)
             if node:
                 await async_ops.update_node_status(
-                    node,
-                    'failed',
-                    completed_at=timezone.now(),
-                    error_message=str(e)
+                    node, "failed", completed_at=timezone.now(), error_message=str(e)
                 )
-                await async_ops.create_node_log(node, 'ERROR', f'Node execution failed: {str(e)}')
-                
+                await async_ops.create_node_log(
+                    node, "ERROR", f"Node execution failed: {str(e)}"
+                )
+
                 # Also check if workflow should be marked as failed
                 try:
-                    all_nodes = await async_ops.get_workflow_nodes(str(node.workflow_run.id))
-                    all_completed_or_failed = all(n.status in ['completed', 'failed'] for n in all_nodes)
+                    all_nodes = await async_ops.get_workflow_nodes(
+                        str(node.workflow_run.id)
+                    )
+                    all_completed_or_failed = all(
+                        n.status in ["completed", "failed"] for n in all_nodes
+                    )
                     if all_completed_or_failed:
                         await async_ops.update_workflow_run_status(
                             node.workflow_run.id,
-                            'failed',
+                            "failed",
                             completed_at=timezone.now(),
-                            error_message=str(e)
+                            error_message=str(e),
                         )
-                        logger.info(f"Workflow run {node.workflow_run.id} updated to 'failed'")
+                        logger.info(
+                            f"Workflow run {node.workflow_run.id} updated to 'failed'"
+                        )
                 except Exception as inner_inner_e:
                     logger.error(f"Failed to update workflow status: {inner_inner_e}")
         except Exception as inner_e:
-            logger.error(f"Failed to update node status after error: {inner_e}", exc_info=True)
-        
-        return {
-            "success": False,
-            "error": str(e)
-        }
+            logger.error(
+                f"Failed to update node status after error: {inner_e}", exc_info=True
+            )
+
+        return {"success": False, "error": str(e)}
 
 
 async def execute_workflow_from_node(
-    node_uuid: str,
-    openai_api_key: Optional[str] = None,
-    model: str = "gpt-4o"
+    node_uuid: str, openai_api_key: Optional[str] = None, model: str = "gpt-4o"
 ) -> Dict[str, Any]:
     """
     Create a new workflow run that copies results from previous nodes and executes from the specified node onwards.
-    
+
     Args:
         node_uuid: UUID of the node to start from
         openai_api_key: OpenAI API key (uses env var if not provided)
         model: OpenAI model to use
-        
+
     Returns:
         Dictionary with workflow results
     """
     logger.info(f"Executing workflow from node {node_uuid}")
-    
+
     try:
         # Get the original node
         original_node = await async_ops.get_node_by_uuid(node_uuid)
         if not original_node:
             raise ValueError(f"Node {node_uuid} not found")
-        
+
         original_workflow_run = original_node.workflow_run
         paper_id = original_workflow_run.paper.id
-        
+
         # Get workflow definition
         workflow_def = original_workflow_run.workflow_definition
-        
+
         # Create new workflow run
         config = {
-            'force_reprocess': True,
-            'model': model,
-            'max_retries': 3,
-            'start_from_node': original_node.node_id
+            "force_reprocess": True,
+            "model": model,
+            "max_retries": 3,
+            "start_from_node": original_node.node_id,
         }
         new_workflow_run = await async_ops.create_workflow_run_with_paper_id(
-            workflow_name=workflow_def.name,
-            paper_id=paper_id,
-            input_data=config
+            workflow_name=workflow_def.name, paper_id=paper_id, input_data=config
         )
-        
+
         # Update workflow run status to running
         await async_ops.update_workflow_run_status(
-            new_workflow_run.id,
-            'running',
-            started_at=timezone.now()
+            new_workflow_run.id, "running", started_at=timezone.now()
         )
-        
+
         # Get all nodes from the original workflow run
-        original_nodes = await async_ops.get_workflow_nodes(str(original_workflow_run.id))
-        
+        original_nodes = await async_ops.get_workflow_nodes(
+            str(original_workflow_run.id)
+        )
+
         # Determine which nodes come before the target node based on DAG
         dag_structure = workflow_def.dag_structure
-        nodes_order = [n['id'] for n in dag_structure.get('nodes', [])]
-        target_node_index = nodes_order.index(original_node.node_id) if original_node.node_id in nodes_order else -1
-        
+        nodes_order = [n["id"] for n in dag_structure.get("nodes", [])]
+        target_node_index = (
+            nodes_order.index(original_node.node_id)
+            if original_node.node_id in nodes_order
+            else -1
+        )
+
         # Copy results from nodes that come before the target node
         for orig_node in original_nodes:
             if nodes_order.index(orig_node.node_id) < target_node_index:
                 # Get new node in the new workflow run
-                new_node = await async_ops.get_workflow_node(str(new_workflow_run.id), orig_node.node_id)
-                
+                new_node = await async_ops.get_workflow_node(
+                    str(new_workflow_run.id), orig_node.node_id
+                )
+
                 # Copy status and results
                 await async_ops.update_node_status(
                     new_node,
                     orig_node.status,
                     started_at=orig_node.started_at,
                     completed_at=orig_node.completed_at,
-                    output_data=orig_node.output_data
+                    output_data=orig_node.output_data,
                 )
-                
+
                 # Copy artifacts
                 orig_artifacts = await async_ops.get_node_artifacts(orig_node)
                 for artifact in orig_artifacts:
-                    await async_ops.create_node_artifact(new_node, artifact.name, artifact.data)
-                
+                    await async_ops.create_node_artifact(
+                        new_node, artifact.name, artifact.data
+                    )
+
                 # Copy logs
-                orig_logs = orig_node.logs.all().order_by('timestamp')
+                orig_logs = orig_node.logs.all().order_by("timestamp")
                 for log in orig_logs:
                     await async_ops.create_node_log(
-                        new_node,
-                        log.level,
-                        f"[COPIED] {log.message}",
-                        log.context
+                        new_node, log.level, f"[COPIED] {log.message}", log.context
                     )
-        
+
         # Now execute the workflow from the target node
         # Initialize OpenAI client
         api_key = openai_api_key or os.getenv("OPENAI_API_KEY")
         client = OpenAI(api_key=api_key)
-        
+
         # Build state with results from copied nodes
         state: PaperProcessingState = {
             "workflow_run_id": str(new_workflow_run.id),
@@ -1634,19 +2282,23 @@ async def execute_workflow_from_node(
             "force_reprocess": True,
             "paper_type_result": None,
             "code_reproducibility_result": None,
-            "errors": []
+            "errors": [],
         }
-        
+
         # Load paper_type_result if we're starting from code_reproducibility_analysis
         if original_node.node_id == "code_reproducibility_analysis":
-            paper_type_node = await async_ops.get_workflow_node(str(new_workflow_run.id), "paper_type_classification")
-            if paper_type_node and paper_type_node.status == 'completed':
+            paper_type_node = await async_ops.get_workflow_node(
+                str(new_workflow_run.id), "paper_type_classification"
+            )
+            if paper_type_node and paper_type_node.status == "completed":
                 artifacts = await async_ops.get_node_artifacts(paper_type_node)
                 for artifact in artifacts:
-                    if artifact.name == 'result':
-                        state["paper_type_result"] = PaperTypeClassification(**artifact.data)
+                    if artifact.name == "result":
+                        state["paper_type_result"] = PaperTypeClassification(
+                            **artifact.data
+                        )
                         break
-        
+
         # Execute nodes from target node onwards
         if original_node.node_id == "paper_type_classification":
             # Execute both nodes
@@ -1655,66 +2307,75 @@ async def execute_workflow_from_node(
                 state["paper_type_result"] = result1["paper_type_result"]
             if "errors" in result1:
                 state["errors"].extend(result1["errors"])
-            
+
             result2 = await code_reproducibility_analysis_node(state)
             if "code_reproducibility_result" in result2:
-                state["code_reproducibility_result"] = result2["code_reproducibility_result"]
+                state["code_reproducibility_result"] = result2[
+                    "code_reproducibility_result"
+                ]
             if "errors" in result2:
                 state["errors"].extend(result2["errors"])
-                
+
         elif original_node.node_id == "code_reproducibility_analysis":
             # Execute only code_reproducibility_analysis
             result = await code_reproducibility_analysis_node(state)
             if "code_reproducibility_result" in result:
-                state["code_reproducibility_result"] = result["code_reproducibility_result"]
+                state["code_reproducibility_result"] = result[
+                    "code_reproducibility_result"
+                ]
             if "errors" in result:
                 state["errors"].extend(result["errors"])
-        
+
         # Check for errors
         errors = state.get("errors", [])
         success = len(errors) == 0
-        
+
         # Update workflow run status
         await async_ops.update_workflow_run_status(
             new_workflow_run.id,
-            'completed' if success else 'failed',
+            "completed" if success else "failed",
             completed_at=timezone.now(),
             output_data={
-                'success': success,
-                'paper_type': state.get("paper_type_result").model_dump() if state.get("paper_type_result") else None,
-                'code_reproducibility': state.get("code_reproducibility_result").model_dump() if state.get("code_reproducibility_result") else None
+                "success": success,
+                "paper_type": (
+                    state.get("paper_type_result").model_dump()
+                    if state.get("paper_type_result")
+                    else None
+                ),
+                "code_reproducibility": (
+                    state.get("code_reproducibility_result").model_dump()
+                    if state.get("code_reproducibility_result")
+                    else None
+                ),
             },
-            error_message='; '.join(errors) if errors else None
+            error_message="; ".join(errors) if errors else None,
         )
-        
+
         return {
             "success": success,
             "workflow_run_id": str(new_workflow_run.id),
             "run_number": new_workflow_run.run_number,
             "paper_id": paper_id,
             "started_from_node": original_node.node_id,
-            "errors": errors
+            "errors": errors,
         }
-        
+
     except Exception as e:
         logger.error(f"Failed to execute workflow from node: {e}", exc_info=True)
-        
+
         # Try to update workflow run status
         try:
-            if 'new_workflow_run' in locals():
+            if "new_workflow_run" in locals():
                 await async_ops.update_workflow_run_status(
                     new_workflow_run.id,
-                    'failed',
+                    "failed",
                     completed_at=timezone.now(),
-                    error_message=str(e)
+                    error_message=str(e),
                 )
         except:
             pass
-        
-        return {
-            "success": False,
-            "error": str(e)
-        }
+
+        return {"success": False, "error": str(e)}
 
 
 async def process_paper_workflow(
@@ -1722,23 +2383,23 @@ async def process_paper_workflow(
     force_reprocess: bool = False,
     openai_api_key: Optional[str] = None,
     model: str = "gpt-4o",
-    user_id: Optional[int] = None
+    user_id: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
     Execute the complete paper processing workflow using workflow_engine.
-    
+
     Args:
         paper_id: Database ID of paper to process
         force_reprocess: If True, reprocess even if already analyzed
         openai_api_key: OpenAI API key (uses env var if not provided)
         model: OpenAI model to use
         user_id: Optional user ID for tracking
-        
+
     Returns:
         Dictionary with workflow results and statistics
     """
     logger.info(f"Starting paper processing workflow for paper ID {paper_id}")
-    
+
     try:
         # Get or create workflow definition
         workflow_def = await async_ops.get_or_create_workflow_definition(
@@ -1751,47 +2412,41 @@ async def process_paper_workflow(
                         "id": "paper_type_classification",
                         "type": "python",
                         "handler": "webApp.services.paper_processing_workflow.paper_type_classification_handler",
-                        "config": {}
+                        "config": {},
                     },
                     {
                         "id": "code_reproducibility_analysis",
                         "type": "python",
                         "handler": "webApp.services.paper_processing_workflow.code_reproducibility_analysis_handler",
-                        "config": {}
-                    }
+                        "config": {},
+                    },
                 ],
                 "edges": [
                     {
                         "from": "paper_type_classification",
-                        "to": "code_reproducibility_analysis"
+                        "to": "code_reproducibility_analysis",
                     }
-                ]
-            }
+                ],
+            },
         )
-        
+
         # Create workflow run using orchestrator
-        config = {
-            'force_reprocess': force_reprocess,
-            'model': model,
-            'max_retries': 3
-        }
+        config = {"force_reprocess": force_reprocess, "model": model, "max_retries": 3}
         workflow_run = await async_ops.create_workflow_run_with_paper_id(
             workflow_name="reduced_paper_processing_pipeline",
             paper_id=paper_id,
-            input_data=config
+            input_data=config,
         )
-        
+
         # Update workflow run status to running
         await async_ops.update_workflow_run_status(
-            workflow_run.id,
-            'running',
-            started_at=timezone.now()
+            workflow_run.id, "running", started_at=timezone.now()
         )
-        
+
         # Initialize OpenAI client
         api_key = openai_api_key or os.getenv("OPENAI_API_KEY")
         client = OpenAI(api_key=api_key)
-        
+
         # Initialize state
         initial_state: PaperProcessingState = {
             "workflow_run_id": str(workflow_run.id),
@@ -1802,34 +2457,44 @@ async def process_paper_workflow(
             "force_reprocess": force_reprocess,
             "paper_type_result": None,
             "code_reproducibility_result": None,
-            "errors": []
+            "errors": [],
         }
-        
+
         # Build and run workflow
         workflow = build_paper_processing_workflow()
-        
+
         final_state = await workflow.ainvoke(initial_state)
-        
+
         # Check for errors
         errors = final_state.get("errors", [])
         success = len(errors) == 0
-        
+
         # Update workflow run status
         await async_ops.update_workflow_run_status(
             workflow_run.id,
-            'completed' if success else 'failed',
+            "completed" if success else "failed",
             completed_at=timezone.now(),
             output_data={
-                'success': success,
-                'paper_type': final_state.get("paper_type_result").model_dump() if final_state.get("paper_type_result") else None,
-                'code_reproducibility': final_state.get("code_reproducibility_result").model_dump() if final_state.get("code_reproducibility_result") else None
+                "success": success,
+                "paper_type": (
+                    final_state.get("paper_type_result").model_dump()
+                    if final_state.get("paper_type_result")
+                    else None
+                ),
+                "code_reproducibility": (
+                    final_state.get("code_reproducibility_result").model_dump()
+                    if final_state.get("code_reproducibility_result")
+                    else None
+                ),
             },
-            error_message='; '.join(errors) if errors else None
+            error_message="; ".join(errors) if errors else None,
         )
-        
+
         # Get token usage from artifacts
-        input_tokens, output_tokens = await async_ops.get_token_stats(str(workflow_run.id))
-        
+        input_tokens, output_tokens = await async_ops.get_token_stats(
+            str(workflow_run.id)
+        )
+
         # Compile results
         results = {
             "success": success,
@@ -1841,35 +2506,37 @@ async def process_paper_workflow(
             "code_reproducibility": final_state.get("code_reproducibility_result"),
             "total_input_tokens": input_tokens,
             "total_output_tokens": output_tokens,
-            "errors": errors
+            "errors": errors,
         }
-        
-        logger.info(f"Workflow run {workflow_run.id} completed. Status: {'success' if success else 'failed'}")
+
+        logger.info(
+            f"Workflow run {workflow_run.id} completed. Status: {'success' if success else 'failed'}"
+        )
         logger.info(f"Tokens used: {input_tokens} input, {output_tokens} output")
-        
+
         return results
-        
+
     except Exception as e:
         logger.error(f"Workflow execution failed: {e}", exc_info=True)
-        
+
         # Try to update workflow run status
         try:
-            if 'workflow_run' in locals():
+            if "workflow_run" in locals():
                 await async_ops.update_workflow_run_status(
                     workflow_run.id,
-                    'failed',
+                    "failed",
                     completed_at=timezone.now(),
-                    error_message=str(e)
+                    error_message=str(e),
                 )
         except:
             pass
-        
+
         return {
             "success": False,
             "paper_id": paper_id,
             "error": str(e),
             "total_input_tokens": 0,
-            "total_output_tokens": 0
+            "total_output_tokens": 0,
         }
 
 
@@ -1877,29 +2544,28 @@ async def process_paper_workflow(
 # Convenience Functions
 # ============================================================================
 
+
 async def process_multiple_papers(
-    paper_ids: List[int],
-    force_reprocess: bool = False,
-    max_concurrent: int = 3
+    paper_ids: List[int], force_reprocess: bool = False, max_concurrent: int = 3
 ) -> List[Dict[str, Any]]:
     """
     Process multiple papers concurrently.
-    
+
     Args:
         paper_ids: List of paper IDs to process
         force_reprocess: If True, reprocess even if already analyzed
         max_concurrent: Maximum number of concurrent processing tasks
-        
+
     Returns:
         List of results for each paper
     """
     semaphore = asyncio.Semaphore(max_concurrent)
-    
+
     async def process_with_limit(paper_id):
         async with semaphore:
             return await process_paper_workflow(paper_id, force_reprocess)
-    
+
     tasks = [process_with_limit(pid) for pid in paper_ids]
     results = await asyncio.gather(*tasks, return_exceptions=True)
-    
+
     return results
