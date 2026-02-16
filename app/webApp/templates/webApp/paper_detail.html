@@ -364,7 +364,7 @@ function showNodeDetails(nodeId, nodeName) {
     
     // Load node details via AJAX
     $.ajax({
-        url: '{% url "workflow_node_detail" 0 %}'.replace('0', nodeId),
+        url: '/workflow/node/' + nodeId + '/',
         method: 'GET',
         success: function(data) {
             renderNodeDetails(data);
