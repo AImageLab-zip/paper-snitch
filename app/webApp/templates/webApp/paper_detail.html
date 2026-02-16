@@ -179,6 +179,79 @@
         font-size: 16px;
     }
     
+    /* Terminal/Console Log Styling */
+    .terminal-output {
+        background: #1e1e1e;
+        color: #d4d4d4;
+        font-family: 'Courier New', Consolas, monospace;
+        font-size: 13px;
+        padding: 15px;
+        border-radius: 4px;
+        overflow-y: auto;
+        line-height: 1.6;
+        scroll-behavior: smooth;
+    }
+    
+    .terminal-line {
+        margin-bottom: 6px;
+        padding: 2px 0;
+    }
+    
+    .terminal-time {
+        color: #808080;
+        margin-right: 8px;
+        font-size: 12px;
+    }
+    
+    .terminal-prompt {
+        margin-right: 8px;
+        font-weight: bold;
+    }
+    
+    .terminal-success {
+        color: #4ec9b0;
+    }
+    
+    .terminal-info {
+        color: #d4d4d4;
+    }
+    
+    .terminal-warning {
+        color: #dcdcaa;
+    }
+    
+    .terminal-error {
+        color: #f48771;
+    }
+    
+    .terminal-debug {
+        color: #9cdcfe;
+        opacity: 0.8;
+        font-size: 12px;
+    }
+    
+    /* Fixed header in node details modal */
+    #nodeDetailsModal .modal-dialog {
+        max-height: 90vh;
+        margin: 1.75rem auto;
+    }
+    
+    #nodeDetailsModal .modal-content {
+        max-height: 90vh;
+        display: flex;
+        flex-direction: column;
+    }
+    
+    #nodeDetailsModal .modal-body {
+        overflow-y: auto;
+        flex: 1;
+    }
+    
+    #nodeDetailsModal .modal-header,
+    #nodeDetailsModal .modal-footer {
+        flex-shrink: 0;
+    }
+    
     .legend-box {
         width: 24px;
         height: 24px;
@@ -281,7 +354,7 @@
                             Workflow Analysis (Run #{{ selected_workflow.run_number }})
                             {% endif %}
                         </h5>
-                        <div>
+                        <div class="d-flex align-items-center">
                             <span class="badge badge-{{ selected_workflow.status|lower }}">
                                 {% if selected_workflow.status == 'completed' %}
                                 <i class="fas fa-check-circle"></i> Completed
@@ -303,6 +376,11 @@
                             <span class="badge badge-light ml-3 border" id="auto-update-indicator">
                                 <i class="fas fa-sync-alt fa-spin"></i> Auto-updating
                             </span>
+                            {% endif %}
+                            {% if selected_workflow.id == latest_workflow.id and selected_workflow.status not in 'running,pending' %}
+                            <button class="btn btn-sm btn-outline-primary ml-3" id="rerun-workflow-btn" onclick="rerunWorkflow({{ paper.id }})">
+                                <i class="fas fa-redo mr-1"></i> Rerun Analysis
+                            </button>
                             {% endif %}
                         </div>
                     </div>
@@ -347,6 +425,23 @@
                             <i class="fas fa-info-circle mr-1"></i> Click on any node to view execution details and logs
                         </div>
                     </div>
+                </div>
+            </div>
+            {% else %}
+            <!-- No workflow section -->
+            <div class="card shadow mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0">
+                        <i class="fas fa-project-diagram mr-2"></i>Workflow Analysis
+                    </h5>
+                </div>
+                <div class="card-body text-center py-5">
+                    <i class="fas fa-robot fa-4x text-muted mb-3"></i>
+                    <h5 class="text-muted">No Analysis Yet</h5>
+                    <p class="text-muted">Start analyzing this paper to generate a comprehensive reproducibility assessment.</p>
+                    <button class="btn btn-primary btn-lg mt-3" onclick="rerunWorkflow({{ paper.id }})">
+                        <i class="fas fa-play mr-2"></i> Start Analysis
+                    </button>
                 </div>
             </div>
             {% endif %}
@@ -456,6 +551,9 @@
                         <i class="fas fa-info-circle fa-4x text-muted mb-3"></i>
                         <h5 class="text-muted">No workflow runs for this paper yet</h5>
                         <p class="text-muted">This paper has not been analyzed by any workflow.</p>
+                        <button class="btn btn-primary mt-3" id="start-workflow-btn" onclick="rerunWorkflow({{ paper.id }})">
+                            <i class="fas fa-play mr-2"></i> Start Analysis
+                        </button>
                     </div>
                     {% endif %}
                 </div>
@@ -483,7 +581,111 @@
                 </div>
             </div>
             <div class="modal-footer">
+                <button type="button" class="btn btn-warning" id="rerun-node-btn" onclick="rerunNode()">
+                    <i class="fas fa-redo mr-2"></i>Rerun This Node
+                </button>
+                <button type="button" class="btn btn-info" id="rerun-from-node-btn" onclick="rerunFromNode()">
+                    <i class="fas fa-play mr-2"></i>Rerun From Here
+                </button>
                 <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Confirmation Modal for Rerun Workflow -->
+<div class="modal fade" id="rerunWorkflowModal" tabindex="-1" role="dialog" aria-labelledby="rerunWorkflowModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+        <div class="modal-content">
+            <div class="modal-header bg-warning text-dark">
+                <h5 class="modal-title" id="rerunWorkflowModalLabel">
+                    <i class="fas fa-exclamation-triangle mr-2"></i>Confirm Workflow Rerun
+                </h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-3">Are you sure you want to rerun the workflow analysis?</p>
+                <div class="alert alert-info mb-0">
+                    <i class="fas fa-info-circle mr-2"></i>
+                    <strong>Note:</strong> This will create a new workflow run and may take several minutes to complete. The analysis will process the paper and repository from scratch.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">
+                    <i class="fas fa-times mr-1"></i> Cancel
+                </button>
+                <button type="button" class="btn btn-primary" id="confirm-rerun-btn">
+                    <i class="fas fa-redo mr-1"></i> Yes, Rerun Analysis
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Confirmation Modal for Rerun Single Node -->
+<div class="modal fade" id="rerunNodeModal" tabindex="-1" role="dialog" aria-labelledby="rerunNodeModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+        <div class="modal-content">
+            <div class="modal-header bg-warning text-dark">
+                <h5 class="modal-title" id="rerunNodeModalLabel">
+                    <i class="fas fa-redo mr-2"></i>Confirm Node Rerun
+                </h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-3">Are you sure you want to rerun this specific node?</p>
+                <div class="alert alert-info mb-0">
+                    <i class="fas fa-info-circle mr-2"></i>
+                    <strong>Note:</strong> This will re-execute only this node. Previous results for this node will be replaced, but other nodes in the workflow will remain unchanged.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">
+                    <i class="fas fa-times mr-1"></i> Cancel
+                </button>
+                <button type="button" class="btn btn-warning" id="confirm-rerun-node-btn">
+                    <i class="fas fa-redo mr-1"></i> Yes, Rerun This Node
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Confirmation Modal for Rerun From Node -->
+<div class="modal fade" id="rerunFromNodeModal" tabindex="-1" role="dialog" aria-labelledby="rerunFromNodeModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+        <div class="modal-content">
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title" id="rerunFromNodeModalLabel">
+                    <i class="fas fa-play mr-2"></i>Confirm Rerun From Node
+                </h5>
+                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-3">Are you sure you want to rerun the workflow from this node onwards?</p>
+                <div class="alert alert-info mb-0">
+                    <i class="fas fa-info-circle mr-2"></i>
+                    <strong>Note:</strong> This will create a new workflow run that:
+                    <ul class="mb-0 mt-2">
+                        <li>Keeps the results of all previous nodes (copied from current run)</li>
+                        <li>Re-executes this node and all subsequent nodes</li>
+                        <li>May take several minutes to complete</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">
+                    <i class="fas fa-times mr-1"></i> Cancel
+                </button>
+                <button type="button" class="btn btn-info" id="confirm-rerun-from-node-btn">
+                    <i class="fas fa-play mr-1"></i> Yes, Rerun From Here
+                </button>
             </div>
         </div>
     </div>
@@ -514,6 +716,9 @@ const edges = {{ workflow_edges|safe }};
 const workflowRunId = {% if selected_workflow %}'{{ selected_workflow.id }}'{% else %}null{% endif %};
 const workflowStatus = {% if selected_workflow %}'{{ selected_workflow.status }}'{% else %}null{% endif %};
 let pollingInterval = null;
+let nodeDetailsPollingInterval = null;
+let currentNodeId = null;
+let currentNodeStatus = null;
 
 // Render workflow DAG
 $(document).ready(function() {
@@ -539,23 +744,50 @@ $(document).ready(function() {
 
 function showNodeDetails(nodeId, nodeName) {
     console.log('showNodeDetails called with:', nodeId, nodeName);
-    $('#nodeDetailsModal').modal('show');
-    $('#nodeDetailsModalLabel').html('<i class="fas fa-code mr-2"></i>Node: ' + nodeName);
     
-    // Show loading state
-    $('#node-details-content').html(
-        '<div class="text-center py-4">' +
-        '<i class="fas fa-spinner fa-spin fa-2x text-primary mb-3"></i>' +
-        '<p>Loading node details...</p>' +
-        '</div>'
-    );
+    // Store current node info
+    currentNodeId = nodeId;
+    
+    $('#nodeDetailsModal').modal('show');
+    updateModalTitle(nodeName, nodeId);
+    
+    // Load node details
+    loadNodeDetails(nodeId);
+}
+
+function updateModalTitle(nodeName, status) {
+    let liveIndicator = '';
+    if (status === 'running' || status === 'pending') {
+        liveIndicator = ' <span class="badge badge-info badge-sm ml-2"><i class="fas fa-sync-alt fa-spin"></i> Live</span>';
+    }
+    $('#nodeDetailsModalLabel').html('<i class="fas fa-code mr-2"></i>Node: ' + nodeName + liveIndicator);
+}
+
+function loadNodeDetails(nodeId) {
+    // Show loading state only on first load
+    if (!currentNodeStatus) {
+        $('#node-details-content').html(
+            '<div class="text-center py-4">' +
+            '<i class="fas fa-spinner fa-spin fa-2x text-primary mb-3"></i>' +
+            '<p>Loading node details...</p>' +
+            '</div>'
+        );
+    }
     
     // Load node details via AJAX
     $.ajax({
         url: '/workflow/node/' + nodeId + '/',
         method: 'GET',
         success: function(data) {
+            currentNodeStatus = data.status;
             renderNodeDetails(data);
+            
+            // Start polling if node is running or pending
+            if ((data.status === 'running' || data.status === 'pending') && !nodeDetailsPollingInterval) {
+                startNodeDetailsPolling(nodeId);
+            } else if (data.status !== 'running' && data.status !== 'pending') {
+                stopNodeDetailsPolling();
+            }
         },
         error: function(xhr, status, error) {
             console.error('AJAX Error:', status, error);
@@ -571,6 +803,51 @@ function showNodeDetails(nodeId, nodeName) {
         }
     });
 }
+
+// Polling for node details updates
+function startNodeDetailsPolling(nodeId) {
+    if (nodeDetailsPollingInterval) return; // Already polling
+    
+    console.log('Starting node details polling for node:', nodeId);
+    nodeDetailsPollingInterval = setInterval(function() {
+        $.ajax({
+            url: '/workflow/node/' + nodeId + '/',
+            method: 'GET',
+            success: function(data) {
+                const previousStatus = currentNodeStatus;
+                currentNodeStatus = data.status;
+                
+                // Update the modal content
+                renderNodeDetails(data);
+                
+                // Stop polling if node completed
+                if (data.status !== 'running' && data.status !== 'pending') {
+                    console.log('Node completed, stopping polling');
+                    stopNodeDetailsPolling();
+                }
+            },
+            error: function(xhr, status, error) {
+                console.error('Polling error:', error);
+                // Don't stop polling on temporary errors
+            }
+        });
+    }, 2000); // Poll every 2 seconds
+}
+
+function stopNodeDetailsPolling() {
+    if (nodeDetailsPollingInterval) {
+        console.log('Stopping node details polling');
+        clearInterval(nodeDetailsPollingInterval);
+        nodeDetailsPollingInterval = null;
+    }
+}
+
+// Stop polling when modal is closed
+$('#nodeDetailsModal').on('hidden.bs.modal', function() {
+    stopNodeDetailsPolling();
+    currentNodeId = null;
+    currentNodeStatus = null;
+});
 
 function renderNodeDetails(node) {
     let statusBadge = '';
@@ -591,6 +868,12 @@ function renderNodeDetails(node) {
     } else {
         statusBadge = '<span class="badge badge-secondary">' + node.status + '</span>';
         statusIcon = '○';
+    }
+    
+    // Update modal title with status indicator
+    const nodeData = Object.values(nodesData).find(n => n.node_id === node.node_id);
+    if (nodeData) {
+        updateModalTitle(nodeData.display_name, node.status);
     }
     
     let html = `
@@ -667,11 +950,50 @@ function renderNodeDetails(node) {
         <div class="mb-4">
             <h6 class="border-bottom pb-2">
                 <i class="fas fa-terminal text-primary mr-2"></i>Execution Log
+                ${(node.status === 'running' || node.status === 'pending') ? '<span class="badge badge-info badge-sm ml-2"><i class="fas fa-sync-alt fa-spin"></i> Live</span>' : ''}
             </h6>
-            <div class="terminal-output" style="max-height: 400px;">
+            <div class="terminal-output" id="node-logs-container" style="max-height: 400px;">
     `;
     
-    if (node.error_message || node.error_traceback) {
+    // Display node logs if available
+    if (node.logs && node.logs.length > 0) {
+        node.logs.forEach(log => {
+            const logTime = new Date(log.timestamp).toLocaleTimeString();
+            let logClass = 'terminal-info';
+            let logIcon = 'ℹ️';
+            
+            if (log.level === 'ERROR') {
+                logClass = 'terminal-error';
+                logIcon = '❌';
+            } else if (log.level === 'WARNING') {
+                logClass = 'terminal-warning';
+                logIcon = '⚠️';
+            } else if (log.level === 'DEBUG') {
+                logClass = 'terminal-debug';
+                logIcon = '🔍';
+            } else {
+                logIcon = '✓';
+            }
+            
+            html += `
+                <div class="terminal-line">
+                    <span class="terminal-time">[${logTime}]</span>
+                    <span class="terminal-prompt">${logIcon}</span>
+                    <span class="${logClass}">${escapeHtml(log.message)}</span>
+                </div>
+            `;
+            
+            // Show context data if available
+            if (log.context && Object.keys(log.context).length > 0) {
+                html += `
+                    <div class="terminal-line ml-4">
+                        <span class="terminal-debug" style="font-size: 0.9em;">${escapeHtml(JSON.stringify(log.context, null, 2))}</span>
+                    </div>
+                `;
+            }
+        });
+    } else if (node.error_message || node.error_traceback) {
+    } else if (node.error_message || node.error_traceback) {
         html += `
                 <div class="terminal-line">
                     <span class="terminal-time">[${new Date(node.started_at || Date.now()).toLocaleTimeString()}]</span>
@@ -698,7 +1020,7 @@ function renderNodeDetails(node) {
                 </div>
             `;
         }
-    } else if (node.status === 'completed') {
+    } else if (node.status === 'completed' && (!node.logs || node.logs.length === 0)) {
         html += `
                 <div class="terminal-line">
                     <span class="terminal-time">[${new Date(node.completed_at || Date.now()).toLocaleTimeString()}]</span>
@@ -760,6 +1082,14 @@ function renderNodeDetails(node) {
     }
     
     $('#node-details-content').html(html);
+    
+    // Auto-scroll to bottom of logs if node is running
+    if (node.status === 'running' || node.status === 'pending') {
+        const logsContainer = document.getElementById('node-logs-container');
+        if (logsContainer) {
+            logsContainer.scrollTop = logsContainer.scrollHeight;
+        }
+    }
 }
 
 function escapeHtml(text) {
@@ -953,6 +1283,300 @@ $(document).ready(function() {
         startPolling();
     }
 });
+
+// Function to rerun workflow
+function rerunWorkflow(paperId) {
+    // Store paper ID for later use
+    $('#rerunWorkflowModal').data('paperId', paperId);
+    
+    // Show confirmation modal
+    $('#rerunWorkflowModal').modal('show');
+}
+
+// Handle confirmation button click
+$('#confirm-rerun-btn').on('click', function() {
+    const paperId = $('#rerunWorkflowModal').data('paperId');
+    const btn = $(this);
+    const originalHtml = btn.html();
+    
+    // Disable button and show loading state
+    btn.prop('disabled', true);
+    btn.html('<i class="fas fa-spinner fa-spin mr-1"></i> Starting...');
+    
+    // Disable cancel button
+    $('#rerunWorkflowModal .btn-secondary').prop('disabled', true);
+    
+    // Get CSRF token
+    const csrfToken = $('input[name="csrfmiddlewaretoken"]').val() || 
+                      document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
+                      getCookie('csrftoken');
+    
+    // Make AJAX request
+    $.ajax({
+        url: `/paper/${paperId}/rerun-workflow/`,
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': csrfToken
+        },
+        success: function(response) {
+            if (response.success) {
+                // Workflow started successfully - reload immediately to show running workflow
+                $('#rerunWorkflowModal').modal('hide');
+                location.reload();
+            } else {
+                // Show error
+                $('#rerunWorkflowModal .modal-body').html(`
+                    <div class="alert alert-danger mb-0">
+                        <i class="fas fa-exclamation-triangle mr-2"></i>
+                        <strong>Error:</strong> ${response.error || 'Unknown error occurred'}
+                    </div>
+                `);
+                btn.prop('disabled', false);
+                btn.html(originalHtml);
+                $('#rerunWorkflowModal .btn-secondary').prop('disabled', false);
+            }
+        },
+        error: function(xhr) {
+            console.error('Workflow rerun error:', xhr);
+            let errorMsg = 'Failed to start workflow';
+            let isAlreadyRunning = false;
+            try {
+                const response = JSON.parse(xhr.responseText);
+                errorMsg = response.error || errorMsg;
+                if (response.status && (response.status === 'running' || response.status === 'pending')) {
+                    isAlreadyRunning = true;
+                }
+            } catch(e) {
+                errorMsg += ': ' + xhr.statusText;
+            }
+            
+            // Show error in modal with helpful instructions
+            let errorHtml = `
+                <div class="alert alert-${isAlreadyRunning ? 'warning' : 'danger'} mb-0">
+                    <i class="fas fa-exclamation-triangle mr-2"></i>
+                    <strong>Error:</strong> ${errorMsg}
+            `;
+            
+            if (isAlreadyRunning) {
+                errorHtml += `
+                    <hr class="mt-2 mb-2">
+                    <small>
+                        <i class="fas fa-info-circle mr-1"></i>
+                        <strong>What to do:</strong>
+                        <ul class="mb-0 mt-1" style="padding-left: 20px;">
+                            <li>Wait for the current workflow to complete (check the DAG diagram)</li>
+                            <li>Or wait 5 minutes to force rerun if the workflow appears stuck</li>
+                            <li>Refresh the page to see the current status</li>
+                        </ul>
+                    </small>
+                `;
+            }
+            
+            errorHtml += `</div>`;
+            
+            $('#rerunWorkflowModal .modal-body').html(errorHtml);
+            btn.prop('disabled', false);
+            btn.html(originalHtml);
+            $('#rerunWorkflowModal .btn-secondary').prop('disabled', false);
+        }
+    });
+});
+
+// Handle rerun single node confirmation
+$('#confirm-rerun-node-btn').on('click', function() {
+    console.log('Rerun node confirmation clicked, currentNodeId:', currentNodeId);
+    const btn = $(this);
+    const originalHtml = btn.html();
+    
+    // Disable button and show loading state
+    btn.prop('disabled', true);
+    btn.html('<i class="fas fa-spinner fa-spin mr-1"></i> Processing...');
+    
+    // Disable cancel button
+    $('#rerunNodeModal .btn-secondary').prop('disabled', true);
+    
+    const csrfToken = getCookie('csrftoken');
+    
+    console.log('Making AJAX request to:', `/workflow/node/${currentNodeId}/rerun/`);
+    
+    $.ajax({
+        url: `/workflow/node/${currentNodeId}/rerun/`,
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': csrfToken
+        },
+        success: function(response) {
+            console.log('Rerun node response:', response);
+            if (response.success) {
+                // Close modals and reload page to show updated workflow
+                $('#rerunNodeModal').modal('hide');
+                $('#nodeDetailsModal').modal('hide');
+                location.reload();
+            } else {
+                // Show error
+                $('#rerunNodeModal .modal-body').html(`
+                    <div class="alert alert-danger mb-0">
+                        <i class="fas fa-exclamation-triangle mr-2"></i>
+                        <strong>Error:</strong> ${response.error || 'Failed to rerun node'}
+                    </div>
+                `);
+                btn.prop('disabled', false);
+                btn.html(originalHtml);
+                $('#rerunNodeModal .btn-secondary').prop('disabled', false);
+            }
+        },
+        error: function(xhr) {
+            console.error('Rerun node error:', xhr);
+            let errorMsg = 'Failed to rerun node';
+            let isAlreadyRunning = false;
+            try {
+                const response = JSON.parse(xhr.responseText);
+                errorMsg = response.error || errorMsg;
+                if (response.status && (response.status === 'running' || response.status === 'pending')) {
+                    isAlreadyRunning = true;
+                }
+            } catch(e) {
+                errorMsg += ': ' + xhr.statusText;
+            }
+            
+            // Show error in modal with helpful instructions
+            let errorHtml = `
+                <div class="alert alert-${isAlreadyRunning ? 'warning' : 'danger'} mb-0">
+                    <i class="fas fa-exclamation-triangle mr-2"></i>
+                    <strong>Error:</strong> ${errorMsg}
+            `;
+            
+            if (isAlreadyRunning) {
+                errorHtml += `
+                    <hr class="mt-2 mb-2">
+                    <small>
+                        <i class="fas fa-info-circle mr-1"></i>
+                        <strong>What to do:</strong>
+                        <ul class="mb-0 mt-1" style="padding-left: 20px;">
+                            <li>Wait for the current execution to complete (check the Live updates)</li>
+                            <li>Or wait 2 minutes to force rerun if the node appears stuck</li>
+                            <li>Refresh the page to see the current status</li>
+                        </ul>
+                    </small>
+                `;
+            }
+            
+            errorHtml += `</div>`;
+            
+            $('#rerunNodeModal .modal-body').html(errorHtml);
+            btn.prop('disabled', false);
+            btn.html(originalHtml);
+            $('#rerunNodeModal .btn-secondary').prop('disabled', false);
+        }
+    });
+});
+
+// Handle rerun from node confirmation
+$('#confirm-rerun-from-node-btn').on('click', function() {
+    console.log('Rerun from node confirmation clicked, currentNodeId:', currentNodeId);
+    const btn = $(this);
+    const originalHtml = btn.html();
+    
+    // Disable button and show loading state
+    btn.prop('disabled', true);
+    btn.html('<i class="fas fa-spinner fa-spin mr-1"></i> Starting...');
+    
+    // Disable cancel button
+    $('#rerunFromNodeModal .btn-secondary').prop('disabled', true);
+    
+    const csrfToken = getCookie('csrftoken');
+    
+    console.log('Making AJAX request to:', `/workflow/node/${currentNodeId}/rerun-from/`);
+    
+    $.ajax({
+        url: `/workflow/node/${currentNodeId}/rerun-from/`,
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': csrfToken
+        },
+        success: function(response) {
+            console.log('Rerun from node response:', response);
+            if (response.success) {
+                // Close modals and reload page to show new workflow run
+                $('#rerunFromNodeModal').modal('hide');
+                $('#nodeDetailsModal').modal('hide');
+                location.reload();
+            } else {
+                // Show error
+                $('#rerunFromNodeModal .modal-body').html(`
+                    <div class="alert alert-danger mb-0">
+                        <i class="fas fa-exclamation-triangle mr-2"></i>
+                        <strong>Error:</strong> ${response.error || 'Failed to rerun from node'}
+                    </div>
+                `);
+                btn.prop('disabled', false);
+                btn.html(originalHtml);
+                $('#rerunFromNodeModal .btn-secondary').prop('disabled', false);
+            }
+        },
+        error: function(xhr) {
+            console.error('Rerun from node error:', xhr);
+            let errorMsg = 'Failed to rerun from node';
+            try {
+                const response = JSON.parse(xhr.responseText);
+                errorMsg = response.error || errorMsg;
+            } catch(e) {
+                errorMsg += ': ' + xhr.statusText;
+            }
+            
+            // Show error in modal
+            $('#rerunFromNodeModal .modal-body').html(`
+                <div class="alert alert-danger mb-0">
+                    <i class="fas fa-exclamation-triangle mr-2"></i>
+                    <strong>Error:</strong> ${errorMsg}
+                </div>
+            `);
+            btn.prop('disabled', false);
+            btn.html(originalHtml);
+            $('#rerunFromNodeModal .btn-secondary').prop('disabled', false);
+        }
+    });
+});
+
+// Function to rerun single node
+function rerunNode() {
+    console.log('rerunNode called, currentNodeId:', currentNodeId);
+    if (!currentNodeId) {
+        alert('No node selected');
+        return;
+    }
+    
+    // Show confirmation modal
+    $('#rerunNodeModal').modal('show');
+}
+
+// Function to rerun workflow from this node
+function rerunFromNode() {
+    console.log('rerunFromNode called, currentNodeId:', currentNodeId);
+    if (!currentNodeId) {
+        alert('No node selected');
+        return;
+    }
+    
+    // Show confirmation modal
+    $('#rerunFromNodeModal').modal('show');
+}
+
+// Helper function to get CSRF cookie
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
 </script>
 {% endblock %}
 

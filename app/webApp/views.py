@@ -700,6 +700,124 @@ class PaperDetailView(View):
         return render(request, self.template_name, context)
 
 
+class RerunWorkflowView(View):
+    """API view to trigger workflow rerun for a paper."""
+
+    def post(self, request, paper_id):
+        """Trigger workflow rerun for the specified paper."""
+        from django.utils import timezone
+        from datetime import timedelta
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        try:
+            paper = Paper.objects.get(id=paper_id)
+        except Paper.DoesNotExist:
+            return JsonResponse({'error': 'Paper not found'}, status=404)
+        
+        # Import here to avoid circular imports
+        from webApp.services.paper_processing_workflow import process_paper_workflow
+        import asyncio
+        
+        # Check if there's already a running workflow (with timeout check)
+        running_workflow = WorkflowRun.objects.filter(
+            paper=paper,
+            status__in=['running', 'pending']
+        ).first()
+        
+        if running_workflow:
+            # Check how long it's been in this status
+            last_update = running_workflow.started_at or running_workflow.created_at
+            time_since_update = timezone.now() - last_update
+            timeout_minutes = 5  # Allow rerun if stuck for more than 5 minutes
+            
+            if time_since_update < timedelta(minutes=timeout_minutes):
+                minutes_remaining = timeout_minutes - (time_since_update.total_seconds() / 60)
+                return JsonResponse({
+                    'error': f'A workflow is currently {running_workflow.status}. If stuck, wait {int(minutes_remaining)} more minute(s) and try again.',
+                    'workflow_run_id': str(running_workflow.id),
+                    'status': running_workflow.status
+                }, status=400)
+            else:
+                # Workflow is stuck, mark it as failed and allow rerun
+                logger.warning(
+                    f"Workflow run {running_workflow.id} has been {running_workflow.status} for {time_since_update}. "
+                    f"Marking as failed and allowing rerun."
+                )
+                running_workflow.status = 'failed'
+                running_workflow.completed_at = timezone.now()
+                running_workflow.error_message = f"Workflow timeout after {time_since_update}"
+                running_workflow.save()
+                
+                # Also mark all running/pending nodes as failed
+                stuck_nodes = WorkflowNode.objects.filter(
+                    workflow_run=running_workflow,
+                    status__in=['running', 'pending']
+                )
+                for node in stuck_nodes:
+                    node.status = 'failed'
+                    node.completed_at = timezone.now()
+                    node.error_message = f"Node timeout after {time_since_update}"
+                    node.save()
+                    logger.info(f"Marked stuck node {node.id} ({node.node_id}) as failed")
+        
+        # Trigger workflow in background (non-blocking)
+        try:
+            import threading
+            
+            def run_workflow_in_background():
+                """Run workflow in background thread."""
+                try:
+                    logger.info(f"Starting background workflow for paper {paper_id}")
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    loop.run_until_complete(
+                        process_paper_workflow(
+                            paper_id=paper_id,
+                            force_reprocess=True,
+                            model='gpt-4o'
+                        )
+                    )
+                    loop.close()
+                    logger.info(f"Background workflow completed for paper {paper_id}")
+                except Exception as e:
+                    logger.error(f"Background workflow execution failed: {e}", exc_info=True)
+            
+            # Start workflow in background thread
+            workflow_thread = threading.Thread(target=run_workflow_in_background, daemon=True)
+            workflow_thread.start()
+            logger.info(f"Background workflow thread started for paper {paper_id}")
+            
+            # Get the workflow run that will be created (wait a moment for it to be created)
+            import time
+            time.sleep(0.5)  # Brief wait for workflow run to be created
+            
+            # Get the latest workflow run (should be the one we just started)
+            latest_run = WorkflowRun.objects.filter(paper=paper).order_by('-created_at').first()
+            
+            if latest_run:
+                return JsonResponse({
+                    'success': True,
+                    'message': 'Workflow started successfully',
+                    'workflow_run_id': str(latest_run.id),
+                    'run_number': latest_run.run_number
+                })
+            else:
+                return JsonResponse({
+                    'success': True,
+                    'message': 'Workflow started successfully',
+                    'workflow_run_id': None,
+                    'run_number': None
+                })
+                
+        except Exception as e:
+            logger.error(f"Failed to start workflow: {e}", exc_info=True)
+            return JsonResponse({
+                'error': f'Failed to start workflow: {str(e)}',
+                'success': False
+            }, status=500)
+
+
 class WorkflowStatusView(View):
     """API view for getting workflow run status (for polling)."""
 
@@ -735,7 +853,7 @@ class WorkflowStatusView(View):
         return JsonResponse({
             'status': workflow_run.status,
             'nodes': nodes_data,
-            'updated_at': workflow_run.updated_at.isoformat(),
+            'updated_at': (workflow_run.started_at or workflow_run.created_at).isoformat(),
         })
 
 
@@ -752,6 +870,18 @@ class WorkflowNodeDetailView(View):
             return JsonResponse({'error': f'Server error: {str(e)}'}, status=500)
         
         try:
+            # Get node logs
+            logs = node.logs.all().order_by('timestamp')
+            logs_data = [
+                {
+                    'level': log.level,
+                    'message': log.message,
+                    'context': log.context,
+                    'timestamp': log.timestamp.isoformat()
+                }
+                for log in logs
+            ]
+            
             data = {
                 'id': str(node.id),
                 'node_id': node.node_id,
@@ -768,9 +898,208 @@ class WorkflowNodeDetailView(View):
                 'started_at': node.started_at.isoformat() if node.started_at else None,
                 'completed_at': node.completed_at.isoformat() if node.completed_at else None,
                 'duration': node.duration,
+                'logs': logs_data,
             }
             
             return JsonResponse(data)
         except Exception as e:
             return JsonResponse({'error': f'Error serializing data: {str(e)}'}, status=500)
 
+
+class RerunSingleNodeView(View):
+    """API view to rerun a single node."""
+
+    def post(self, request, node_id):
+        """Rerun a single node."""
+        from django.utils import timezone
+        from datetime import timedelta
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        try:
+            node = WorkflowNode.objects.get(id=node_id)
+        except WorkflowNode.DoesNotExist:
+            return JsonResponse({'error': 'Node not found'}, status=404)
+        
+        # Check if node is already running (with timeout check)
+        if node.status in ['running', 'pending']:
+            # Check how long it's been in this status
+            last_update = node.started_at or node.created_at
+            time_since_update = timezone.now() - last_update
+            timeout_minutes = 2  # Allow rerun if stuck for more than 2 minutes
+            
+            if time_since_update < timedelta(minutes=timeout_minutes):
+                minutes_remaining = timeout_minutes - (time_since_update.total_seconds() / 60)
+                return JsonResponse({
+                    'error': f'Node is currently {node.status}. If stuck, wait {int(minutes_remaining)} more minute(s) and try again.',
+                    'node_id': str(node.id),
+                    'status': node.status,
+                    'seconds_elapsed': int(time_since_update.total_seconds())
+                }, status=400)
+            else:
+                # Node is stuck, log warning and allow rerun
+                logger.warning(
+                    f"Node {node.id} ({node.node_id}) has been {node.status} for {time_since_update}. "
+                    f"Allowing force rerun."
+                )
+        
+        # Update workflow run status to running (since we're rerunning a node)
+        workflow_run = node.workflow_run
+        original_status = workflow_run.status
+        if original_status in ['completed', 'failed']:
+            workflow_run.status = 'running'
+            workflow_run.completed_at = None
+            workflow_run.error_message = None
+            workflow_run.save(update_fields=['status', 'completed_at', 'error_message'])
+            logger.info(f"Workflow run {workflow_run.id} status reset from '{original_status}' to 'running'")
+        
+        # Update node status to pending immediately (synchronously)
+        node.status = 'pending'
+        node.started_at = None
+        node.completed_at = None
+        node.error_message = None
+        node.error_traceback = None
+        node.save(update_fields=['status', 'started_at', 'completed_at', 'error_message', 'error_traceback'])
+        
+        # Clear previous logs and artifacts
+        node.logs.all().delete()
+        node.artifacts.all().delete()
+        
+        logger.info(f"Node {node.id} ({node.node_id}) status set to pending, starting background execution")
+        
+        # Import here to avoid circular imports
+        from webApp.services.paper_processing_workflow import execute_single_node_only
+        import asyncio
+        import threading
+        
+        def run_node_in_background():
+            """Run node in background thread."""
+            import sys
+            from django.utils import timezone
+            try:
+                logger.info(f"=== Background thread started for node {node.id} ({node.node_id}) ===")
+                logger.info(f"Python version: {sys.version}")
+                logger.info(f"Starting asyncio event loop...")
+                
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                
+                logger.info(f"Event loop created, executing node...")
+                result = loop.run_until_complete(
+                    execute_single_node_only(
+                        node_uuid=str(node.id),
+                        force_reprocess=True,
+                        model='gpt-4o'
+                    )
+                )
+                logger.info(f"Node execution completed with result: {result}")
+                loop.close()
+                logger.info(f"=== Background thread finished for node {node.id} ===")
+            except Exception as e:
+                logger.error(f"=== Background node execution failed: {e} ===", exc_info=True)
+                # Ensure node status is updated to failed
+                try:
+                    # Get a fresh connection
+                    from django.db import connection
+                    connection.close_if_unusable_or_obsolete()
+                    
+                    failed_node = WorkflowNode.objects.get(id=node.id)
+                    failed_node.status = 'failed'
+                    failed_node.completed_at = timezone.now()
+                    failed_node.error_message = f"Background execution failed: {str(e)}"
+                    failed_node.save()
+                    logger.info(f"Node {node.id} status updated to 'failed' after exception")
+                except Exception as inner_e:
+                    logger.error(f"Failed to update node status after error: {inner_e}", exc_info=True)
+        
+        # Start node execution in background thread
+        logger.info(f"Starting background thread for node {node.id} ({node.node_id})...")
+        node_thread = threading.Thread(target=run_node_in_background, daemon=True)
+        node_thread.start()
+        logger.info(f"Background thread started successfully, thread name: {node_thread.name}")
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'Node execution started',
+            'node_id': str(node.id),
+            'node_name': node.node_id
+        })
+
+
+class RerunFromNodeView(View):
+    """API view to rerun workflow starting from a specific node."""
+
+    def post(self, request, node_id):
+        """Rerun workflow from the specified node onwards."""
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        try:
+            node = WorkflowNode.objects.get(id=node_id)
+        except WorkflowNode.DoesNotExist:
+            return JsonResponse({'error': 'Node not found'}, status=404)
+        
+        # Get the paper from the workflow run
+        paper = node.workflow_run.paper
+        
+        # Check if there's already a running workflow for this paper
+        running_workflow = WorkflowRun.objects.filter(
+            paper=paper,
+            status__in=['running', 'pending']
+        ).first()
+        
+        if running_workflow:
+            return JsonResponse({
+                'error': 'A workflow is already running for this paper',
+                'workflow_run_id': str(running_workflow.id)
+            }, status=400)
+        
+        logger.info(f"Starting workflow rerun from node {node.id} ({node.node_id}) for paper {paper.id}")
+        
+        # Import here to avoid circular imports
+        from webApp.services.paper_processing_workflow import execute_workflow_from_node
+        import asyncio
+        import threading
+        
+        def run_workflow_from_node_in_background():
+            """Run workflow from node in background thread."""
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(
+                    execute_workflow_from_node(
+                        node_uuid=str(node.id),
+                        model='gpt-4o'
+                    )
+                )
+                loop.close()
+            except Exception as e:
+                logger.error(f"Background workflow execution failed: {e}", exc_info=True)
+        
+        # Start workflow in background thread
+        workflow_thread = threading.Thread(target=run_workflow_from_node_in_background, daemon=True)
+        workflow_thread.start()
+        
+        # Wait briefly for workflow run to be created
+        import time
+        time.sleep(0.5)
+        
+        # Get the latest workflow run
+        latest_run = WorkflowRun.objects.filter(paper=paper).order_by('-created_at').first()
+        
+        if latest_run:
+            return JsonResponse({
+                'success': True,
+                'message': f'Workflow started from node {node.node_id}',
+                'workflow_run_id': str(latest_run.id),
+                'run_number': latest_run.run_number,
+                'started_from_node': node.node_id
+            })
+        else:
+            return JsonResponse({
+                'success': True,
+                'message': f'Workflow started from node {node.node_id}',
+                'workflow_run_id': None,
+                'run_number': None,
+                'started_from_node': node.node_id
+            })
