@@ -33,8 +33,8 @@ shift 4 2>/dev/null || true  # Remove first 4 args, remaining are exec command
 EXEC_CMD=("$@")
 
 # Validate action
-if [[ ! "$ACTION" =~ ^(up|down|logs|ps|restart|stop|exec)$ ]]; then
-    echo "Usage: $0 <up|down|logs|ps|restart|stop|exec> [base_port] [stack_name] [service] [command...]"
+if [[ ! "$ACTION" =~ ^(up|down|logs|ps|restart|stop|exec|build)$ ]]; then
+    echo "Usage: $0 <up|down|logs|ps|restart|stop|exec|build> [base_port] [stack_name] [service] [command...]"
     echo ""
     echo "Examples:"
     echo "  $0 up                                      # Start default stack (port 8000)"
@@ -43,6 +43,8 @@ if [[ ! "$ACTION" =~ ^(up|down|logs|ps|restart|stop|exec)$ ]]; then
     echo "  $0 up 8000 dev django-web-dev              # Start only django-web-dev (attached, see logs)"
     echo "  $0 down 8001                               # Stop stack on port 8001"
     echo "  $0 logs 8002 feature-x                     # View logs for 'feature-x' stack"
+    echo "  $0 build 8000 dev                          # Rebuild all containers"
+    echo "  $0 build 8000 dev django-web-dev           # Rebuild specific service"
     echo "  $0 exec 8000 dev django-web-dev bash       # Execute bash in django-web-dev container"
     echo "  $0 exec 8000 dev django-web-dev python manage.py shell  # Run Django shell"
     exit 1
@@ -147,12 +149,18 @@ export STACK_SUFFIX=${STACK_NAME}
 echo ""
 if [ "$ACTION" = "exec" ]; then
     echo "🐳 Executing in ${SERVICE}: ${EXEC_CMD[@]:-bash}"
+elif [ "$ACTION" = "build" ]; then
+    if [ -n "$SERVICE" ]; then
+        echo "🔨 Rebuilding service: $SERVICE"
+    else
+        echo "🔨 Rebuilding all containers"
+    fi
 elif [ -n "$SERVICE" ]; then
     echo "🐳 Running: docker compose -p ${PROJECT_NAME} -f compose.dev.yml --env-file .env.${STACK_NAME} $ACTION $SERVICE"
 else
     echo "🐳 Running: docker compose -p ${PROJECT_NAME} -f compose.dev.yml --env-file .env.${STACK_NAME} $ACTION"
 fi
-if [ "$ACTION" != "exec" ]; then
+if [ "$ACTION" != "exec" ] && [ "$ACTION" != "build" ]; then
     echo "   DJANGO_PORT=${DJANGO_PORT}, MYSQL_PORT=${MYSQL_PORT}, REDIS_PORT=${REDIS_PORT}, GROBID_PORT=${GROBID_PORT}"
 fi
 echo ""
@@ -168,6 +176,19 @@ if [ "$ACTION" = "exec" ]; then
         COMPOSE_PROJECT_NAME=${PROJECT_NAME} DJANGO_PORT=${DJANGO_PORT} MYSQL_PORT=${MYSQL_PORT} REDIS_PORT=${REDIS_PORT} GROBID_PORT=${GROBID_PORT} STACK_SUFFIX=${STACK_NAME} \
             docker compose -p ${PROJECT_NAME} -f compose.dev.yml --env-file ".env.${STACK_NAME}" exec ${SERVICE} "${EXEC_CMD[@]}"
     fi
+elif [ "$ACTION" = "build" ]; then
+    # Rebuild containers
+    if [ -n "$SERVICE" ]; then
+        # Build specific service
+        COMPOSE_PROJECT_NAME=${PROJECT_NAME} DJANGO_PORT=${DJANGO_PORT} MYSQL_PORT=${MYSQL_PORT} REDIS_PORT=${REDIS_PORT} GROBID_PORT=${GROBID_PORT} STACK_SUFFIX=${STACK_NAME} \
+            docker compose -p ${PROJECT_NAME} -f compose.dev.yml --env-file ".env.${STACK_NAME}" build --no-cache ${SERVICE}
+    else
+        # Build all services
+        COMPOSE_PROJECT_NAME=${PROJECT_NAME} DJANGO_PORT=${DJANGO_PORT} MYSQL_PORT=${MYSQL_PORT} REDIS_PORT=${REDIS_PORT} GROBID_PORT=${GROBID_PORT} STACK_SUFFIX=${STACK_NAME} \
+            docker compose -p ${PROJECT_NAME} -f compose.dev.yml --env-file ".env.${STACK_NAME}" build --no-cache
+    fi
+    echo ""
+    echo "✅ Build complete! Use '$0 up $BASE_PORT $STACK_NAME' to start the containers."
 elif [ "$ACTION" = "up" ] && [ -z "$SERVICE" ]; then
     # Start all services in detached mode
     COMPOSE_PROJECT_NAME=${PROJECT_NAME} DJANGO_PORT=${DJANGO_PORT} MYSQL_PORT=${MYSQL_PORT} REDIS_PORT=${REDIS_PORT} GROBID_PORT=${GROBID_PORT} STACK_SUFFIX=${STACK_NAME} \
@@ -197,5 +218,6 @@ if [ "$ACTION" = "up" ] && [ -z "$SERVICE" ]; then
     echo "   Logs:    $0 logs $BASE_PORT $STACK_NAME"
     echo "   Stop:    $0 down $BASE_PORT $STACK_NAME"
     echo "   Status:  $0 ps $BASE_PORT $STACK_NAME"
+    echo "   Rebuild: $0 build $BASE_PORT $STACK_NAME"
     echo ""
 fi
