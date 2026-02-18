@@ -18,8 +18,10 @@ services:
     ports:
       - "${DJANGO_PORT:-8000}:8000"
     depends_on:
-      - mysql
-      - redis
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
     environment:
       - UV_CACHE_DIR=/tmp/uv-cache # Cache in /tmp for development
       - PYTHONUNBUFFERED=1
@@ -48,6 +50,12 @@ services:
       - ./mysql_${STACK_SUFFIX:-dev}/lib:/var/lib/mysql
     env_file:
       - .env.local
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
     restart: unless-stopped
 
   redis:
@@ -70,8 +78,10 @@ services:
       - django-venv:/app/.venv
       - ./media_${STACK_SUFFIX:-dev}:/app/media
     depends_on:
-      - mysql
-      - redis
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
     environment:
       - UV_CACHE_DIR=/tmp/uv-cache
       - PYTHONUNBUFFERED=1
@@ -90,8 +100,10 @@ services:
       - django-venv:/app/.venv
       - ./media_${STACK_SUFFIX:-dev}:/app/media
     depends_on:
-      - mysql
-      - redis
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
     environment:
       - UV_CACHE_DIR=/tmp/uv-cache
       - PYTHONUNBUFFERED=1

@@ -29,10 +29,12 @@ from openai import OpenAI
 from pydantic import BaseModel, Field, ConfigDict
 from gitingest import ingest_async
 from gitingest.clone import clone_repo
-from gitingest.query_parser import parse_remote_repo
+from gitingest.query_parser import parse_remote_repo, parse_local_dir_path
 from gitingest.utils.auth import resolve_token
 from gitingest.utils.pattern_utils import process_patterns
 from gitingest.utils.ingestion_utils import _should_exclude, _should_include
+from urllib.parse import urlparse
+from gitingest.utils.query_parser_utils import KNOWN_GIT_HOSTS
 import tempfile
 import shutil
 import subprocess
@@ -109,7 +111,7 @@ class CodeAvailabilityCheck(BaseModel):
     )
     clone_path: Optional[str] = Field(
         default=None,
-        description="Path to cloned repository if verified (for reuse in Node C)"
+        description="Path to cloned repository if verified (for reuse in Node C)",
     )
 
 
@@ -245,6 +247,8 @@ class CodeReproducibilityAnalysis(BaseModel):
     recommendations: List[str] = Field(
         description="Recommendations for improving reproducibility"
     )
+    input_tokens: int = Field(description="Tokens used in LLM input")
+    output_tokens: int = Field(description="Tokens used in LLM output")
 
 
 class PatternExtraction(BaseModel):
@@ -317,11 +321,11 @@ def compute_reproducibility_score(
         - recommendations: List of improvement suggestions
     """
     breakdown = {
-        "code_completeness": 0.0,       # 2.5-3.0 points (adaptive)
-        "dependencies": 0.0,            # 1.0 points
-        "artifacts": 0.0,               # 0-2.5 points (adaptive)
-        "dataset_splits": 0.0,          # 0-2.0 points (adaptive)
-        "documentation": 0.0            # 2.0 points
+        "code_completeness": 0.0,  # 2.5-3.0 points (adaptive)
+        "dependencies": 0.0,  # 1.0 points
+        "artifacts": 0.0,  # 0-2.5 points (adaptive)
+        "dataset_splits": 0.0,  # 0-2.0 points (adaptive)
+        "documentation": 0.0,  # 2.0 points
     }
     recommendations = []
 
@@ -498,31 +502,35 @@ def compute_reproducibility_score(
         else:
             recommendations.append("Document step-by-step reproduction commands")
     else:
-        recommendations.append("Add comprehensive documentation with results and reproduction steps")
-    
+        recommendations.append(
+            "Add comprehensive documentation with results and reproduction steps"
+        )
+
     # Calculate maximum achievable score for this paper type (for normalization)
     max_possible_score = 0.0
     max_possible_score += max_code_points  # 2.5 or 3.0
     max_possible_score += 1.0  # dependencies (always)
-    
+
     if requires_datasets or requires_training:
         max_possible_score += 2.5  # artifacts
     else:
         max_possible_score += 2.0  # baseline for complete code
-    
+
     if requires_splits:
         max_possible_score += 2.0  # dataset_splits
     else:
         max_possible_score += 1.5  # best case for non-split papers (documented seeds)
-    
+
     max_possible_score += 2.0  # documentation (always)
-    
+
     # Compute raw total score
     raw_score = sum(breakdown.values())
-    
+
     # Normalize to 10-point scale
-    total_score = (raw_score / max_possible_score) * 10.0 if max_possible_score > 0 else 0.0
-    
+    total_score = (
+        (raw_score / max_possible_score) * 10.0 if max_possible_score > 0 else 0.0
+    )
+
     # Round to 1 decimal place
     total_score = round(total_score, 1)
     breakdown = {k: round(v, 2) for k, v in breakdown.items()}
@@ -583,6 +591,7 @@ async def paper_type_classification_node(state: PaperProcessingState) -> Dict[st
 
         # Get paper from database
         paper = await async_ops.get_paper(state["paper_id"])
+        # TODO da fixare per avere tutto il paper
 
         # Use title + abstract for efficiency (or full text if abstract unavailable)
         if paper.abstract:
@@ -788,35 +797,161 @@ async def code_availability_check_node(
             await async_ops.create_node_log(
                 node, "INFO", f"Code URL found in database: {code_url}"
             )
-        
+
         # Step 2: If not in database, search in paper text
         if not code_url and paper.text:
             url_pattern = r"https?://(?:github\.com|gitlab\.com|bitbucket\.org|gitee\.com|codeberg\.org)/[\w\-]+/[\w\-]+"
             matches = re.findall(url_pattern, paper.text)
+
             if matches:
-                code_url = matches[0]
-                search_notes = "Found in paper text via regex"
-                logger.info(f"Found code URL in paper text: {code_url}")
-                await async_ops.create_node_log(
-                    node, "INFO", f"Code URL found in paper text: {code_url}"
+                # Multiple matches found - need to verify which is the correct one
+                logger.info(
+                    f"Found {len(matches)} repository URLs in paper text. Verifying which belongs to this paper..."
                 )
+                await async_ops.create_node_log(
+                    node,
+                    "INFO",
+                    f"Found {len(matches)} repository URLs - checking each to find the correct one",
+                )
+
+                best_match = None
+                best_confidence = 0.0
+
+                for candidate_url in matches:
+                    try:
+                        logger.info(f"Checking repository: {candidate_url}")
+
+                        # Clone and get README
+                        summary, tree, content, clone_path = await ingest_with_steroids(
+                            candidate_url,
+                            max_file_size=100000,
+                            include_patterns=["README*", "readme*"],
+                            cleanup=True,  # Clean up after checking
+                            get_tree=False,
+                        )
+
+                        if content and len(content) > 50:
+                            # Use LLM to check if this repo is associated with this paper
+                            verification_prompt = f"""You are verifying if a GitHub repository belongs to a specific research paper.
+
+Paper Title: {paper.title}
+Paper Authors: {getattr(paper, 'authors', 'Unknown')}
+
+Repository URL: {candidate_url}
+Repository README excerpt:
+{content[:2000]}
+
+Your task: Determine if this repository is the OFFICIAL code release for THIS specific paper, or if it's just cited/referenced as related work.
+
+Indicators that it IS the official repo:
+- README mentions the exact paper title
+- README mentions the paper authors
+- README says "code for our paper" or similar
+- README links to this paper on arXiv/proceedings
+
+Indicators that it is NOT the official repo:
+- README describes a different paper/project
+- Different authors
+- Just a general tool/library cited as related work
+- No mention of this specific paper
+
+Respond with your assessment."""
+
+                            class RepoVerification(BaseModel):
+                                is_official_repo: bool = Field(
+                                    description="True if this is the official code repo for the paper"
+                                )
+                                confidence: float = Field(
+                                    description="Confidence score 0.0-1.0",
+                                    ge=0.0,
+                                    le=1.0,
+                                )
+                                reasoning: str = Field(
+                                    description="Brief explanation of the decision"
+                                )
+
+                            response = client.responses.parse(
+                                model=model,
+                                input=[
+                                    {"role": "user", "content": verification_prompt}
+                                ],
+                                text_format=RepoVerification,
+                            )
+
+                            verification = response.output_parsed
+                            input_tokens = response.usage.input_tokens
+                            output_tokens = response.usage.output_tokens
+
+                            logger.info(
+                                f"Verification for {candidate_url}: official={verification.is_official_repo}, confidence={verification.confidence}"
+                            )
+                            await async_ops.create_node_log(
+                                node,
+                                "INFO",
+                                f"Repository {candidate_url}: {'OFFICIAL' if verification.is_official_repo else 'NOT official'} (confidence: {verification.confidence})",
+                                {"reasoning": verification.reasoning},
+                            )
+
+                            if (
+                                verification.is_official_repo
+                                and verification.confidence > best_confidence
+                            ):
+                                best_match = candidate_url
+                                best_confidence = verification.confidence
+
+                    except Exception as e:
+                        logger.warning(
+                            f"Error verifying repository {candidate_url}: {e}"
+                        )
+                        await async_ops.create_node_log(
+                            node,
+                            "WARNING",
+                            f"Could not verify {candidate_url}: {str(e)}",
+                        )
+
+                    if best_match:
+                        code_url = best_match
+                        search_notes = f"Found in paper text (verified from {len(matches)} candidates, confidence: {best_confidence})"
+                        logger.info(
+                            f"Selected repository: {code_url} (confidence: {best_confidence})"
+                        )
+                        await async_ops.create_node_log(
+                            node, "INFO", f"Selected verified repository: {code_url}"
+                        )
+                    else:
+                        # No match found
+                        search_notes = f"Not found in paper text (unverified - None of {len(matches)} candidates has been selected)"
+                        logger.info(
+                            f"No verified match found, using first URL: {code_url}"
+                        )
+                        await async_ops.create_node_log(
+                            node,
+                            "WARNING",
+                            f"Could not verify any repository - using first match: {code_url}",
+                        )
 
         # Step 3: If still not found, perform LLM-powered online search (last resort)
         if not code_url:
-            logger.info("Code URL not in database or paper text. Performing online search as last resort...")
+            logger.info(
+                "Code URL not in database or paper text. Performing online search as last resort..."
+            )
             await async_ops.create_node_log(
-                node, "INFO", "Code not found in database or paper - attempting LLM-powered online search"
+                node,
+                "INFO",
+                "Code not found in database or paper - attempting LLM-powered online search",
             )
 
             try:
                 search_result = await search_code_online(paper, client, model)
-                
+
                 if search_result.repository_url and search_result.confidence >= 0.7:
                     code_url = search_result.repository_url
                     found_online = True
                     search_notes = f"Found online: {search_result.search_strategy} (confidence: {search_result.confidence})"
-                    
-                    logger.info(f"LLM found repository: {code_url} ({search_result.search_strategy})")
+
+                    logger.info(
+                        f"LLM found repository: {code_url} ({search_result.search_strategy})"
+                    )
                     await async_ops.create_node_log(
                         node,
                         "INFO",
@@ -829,15 +964,17 @@ async def code_availability_check_node(
 
                     # Save to database
                     from asgiref.sync import sync_to_async
-                    
+
                     @sync_to_async
                     def update_paper_code_url(paper_id, url):
                         paper = Paper.objects.get(id=paper_id)
                         paper.code_url = url
                         paper.save()
-                        
+
                     await update_paper_code_url(state["paper_id"], code_url)
-                    logger.info(f"Saved code URL to database for paper {state['paper_id']}")
+                    logger.info(
+                        f"Saved code URL to database for paper {state['paper_id']}"
+                    )
                     await async_ops.create_node_log(
                         node, "INFO", "Code URL saved to paper database"
                     )
@@ -862,12 +999,13 @@ async def code_availability_check_node(
             await async_ops.create_node_log(
                 node, "INFO", f"Verifying repository accessibility: {code_url}"
             )
-            
+
             try:
                 # Quick HTTP HEAD check
                 import requests
+
                 response = requests.head(code_url, timeout=10, allow_redirects=True)
-                
+
                 if response.status_code == 404:
                     logger.warning(f"Repository not found (404): {code_url}")
                     await async_ops.create_node_log(
@@ -880,9 +1018,13 @@ async def code_availability_check_node(
                         availability_notes=f"{search_notes}. Verification failed: Repository not found (404)",
                     )
                 elif response.status_code >= 400:
-                    logger.warning(f"Repository not accessible (HTTP {response.status_code}): {code_url}")
+                    logger.warning(
+                        f"Repository not accessible (HTTP {response.status_code}): {code_url}"
+                    )
                     await async_ops.create_node_log(
-                        node, "WARNING", f"Repository not accessible (HTTP {response.status_code})"
+                        node,
+                        "WARNING",
+                        f"Repository not accessible (HTTP {response.status_code})",
                     )
                     result = CodeAvailabilityCheck(
                         code_available=False,
@@ -894,34 +1036,56 @@ async def code_availability_check_node(
                     # URL is reachable, now verify it contains actual code files
                     logger.info(f"URL reachable, verifying code content...")
                     await async_ops.create_node_log(
-                        node, "INFO", "URL reachable, performing shallow clone to verify code content"
+                        node,
+                        "INFO",
+                        "URL reachable, performing shallow clone to verify code content",
                     )
-                    
+
                     try:
                         # Shallow clone to verify code content (lightweight check)
                         # Include common research code patterns: Python, JS, Java, C/C++, Go, Rust,
                         # Matlab, R, Julia, shell scripts, and Jupyter notebooks
+                        # verify_code_accessibility
                         summary, tree, content, clone_path = await ingest_with_steroids(
                             code_url,
                             max_file_size=50000,
                             include_patterns=[
-                                "*.py", "*.js", "*.ts", "*.java", "*.cpp", "*.c", "*.h",
-                                "*.go", "*.rs", "*.m", "*.R", "*.jl", "*.sh", "*.bash",
-                                "*.ipynb", "*.scala", "*.rb"
+                                "*.py",
+                                "*.js",
+                                "*.ts",
+                                "*.java",
+                                "*.cpp",
+                                "*.c",
+                                "*.h",
+                                "*.go",
+                                "*.rs",
+                                "*.m",
+                                "*.R",
+                                "*.jl",
+                                "*.sh",
+                                "*.bash",
+                                "*.ipynb",
+                                "*.scala",
+                                "*.rb",
                             ],
                             cleanup=False,  # Keep clone for Node C
                             get_tree=False,  # Skip tree for speed
                         )
-                        
+
                         # Check if actual code files exist
                         if not content or len(content) < 100:
-                            logger.warning(f"Repository empty or no code files: {code_url}")
+                            logger.warning(
+                                f"Repository empty or no code files: {code_url}"
+                            )
                             await async_ops.create_node_log(
-                                node, "WARNING", "Repository empty or contains no code files"
+                                node,
+                                "WARNING",
+                                "Repository empty or contains no code files",
                             )
                             # Cleanup failed clone
                             if clone_path and clone_path.parent.exists():
                                 import shutil
+
                                 shutil.rmtree(clone_path.parent)
                             result = CodeAvailabilityCheck(
                                 code_available=False,
@@ -931,10 +1095,16 @@ async def code_availability_check_node(
                             )
                         else:
                             # Success - code verified!
-                            verified_clone_path = str(clone_path) if clone_path else None
-                            logger.info(f"Repository verified: contains {len(content)} chars of code")
+                            verified_clone_path = (
+                                str(clone_path) if clone_path else None
+                            )
+                            logger.info(
+                                f"Repository verified: contains {len(content)} chars of code"
+                            )
                             await async_ops.create_node_log(
-                                node, "INFO", f"Repository verified: contains code ({len(content)} chars). Clone saved for Node C."
+                                node,
+                                "INFO",
+                                f"Repository verified: contains code ({len(content)} chars). Clone saved for Node C.",
                             )
                             result = CodeAvailabilityCheck(
                                 code_available=True,
@@ -943,7 +1113,7 @@ async def code_availability_check_node(
                                 availability_notes=f"{search_notes}. Verified: Repository accessible and contains code.",
                                 clone_path=verified_clone_path,
                             )
-                    
+
                     except Exception as e:
                         logger.warning(f"Error verifying repository content: {e}")
                         await async_ops.create_node_log(
@@ -955,7 +1125,7 @@ async def code_availability_check_node(
                             found_online=found_online,
                             availability_notes=f"{search_notes}. Verification failed: {str(e)}",
                         )
-            
+
             except requests.Timeout:
                 logger.warning(f"Repository request timed out: {code_url}")
                 await async_ops.create_node_log(
@@ -984,7 +1154,8 @@ async def code_availability_check_node(
                 code_available=False,
                 code_url=None,
                 found_online=False,
-                availability_notes=search_notes or "No code repository found in paper, text, or online",
+                availability_notes=search_notes
+                or "No code repository found in paper, text, or online",
             )
 
         # Store result as artifact
@@ -1087,15 +1258,18 @@ async def code_repository_analysis_node(
                 )
 
                 return {"code_reproducibility_result": result}
-        
+
         # Get code URL from Node B (code_availability_check_node)
         code_availability = state.get("code_availability_result")
         if not code_availability or not code_availability.code_available:
             # This shouldn't happen due to routing, but handle defensively
-            logger.warning("Node C called without code availability - this indicates routing issue")
+            logger.warning(
+                "Node C called without code availability - this indicates routing issue"
+            )
             analysis = CodeReproducibilityAnalysis(
                 analysis_timestamp=datetime.utcnow().isoformat(),
-                code_availability=code_availability or CodeAvailabilityCheck(
+                code_availability=code_availability
+                or CodeAvailabilityCheck(
                     code_available=False,
                     code_url=None,
                     found_online=False,
@@ -1160,6 +1334,8 @@ async def code_repository_analysis_node(
             score_breakdown=repo_analysis.get("score_breakdown", {}),
             overall_assessment=repo_analysis.get("overall_assessment", ""),
             recommendations=repo_analysis.get("recommendations", []),
+            input_tokens=repo_analysis.get("input_tokens", 0),
+            output_tokens=repo_analysis.get("output_tokens", 0),
         )
 
         # Store as artifacts
@@ -1371,6 +1547,8 @@ async def ingest_with_steroids(
         Whether to delete the cloned repository after processing (default: True)
     existing_clone_path : Optional[PathlibPath]
         Path to existing cloned repository to reuse (skips cloning step)
+    get_tree : bool
+        Whether to generate the full tree structure (default: True)
 
     Returns
     -------
@@ -1392,11 +1570,11 @@ async def ingest_with_steroids(
     query = None
 
     try:
-        if existing_clone_path:
-            logger.info(f"Reusing existing clone at: {existing_clone_path}")
-            # Still need to parse for repo info
-            query = await parse_remote_repo(source, token=token)
-        else:
+        if urlparse(source).scheme in ("https", "http") or any(
+            h in source for h in KNOWN_GIT_HOSTS
+        ):
+            # We either have a full URL or a domain-less slug
+            logger.info("Parsing remote repository", extra={"source": source})
             # Parse the repository URL
             query = await parse_remote_repo(source, token=token)
 
@@ -1410,6 +1588,10 @@ async def ingest_with_steroids(
             clone_config = query.extract_clone_config()
             logger.info(f"Cloning repository to: {clone_path}")
             await clone_repo(clone_config, token=token)
+        else:
+            # Local path scenario
+            logger.info("Processing local directory", extra={"source": source})
+            query = parse_local_dir_path(source)
 
         # Generate full tree structure using tree command
         tree_output = ""
@@ -1656,7 +1838,7 @@ def _generate_basic_tree(
         ]
 
         for i, item in enumerate(items):
-            current_prefix = "    "
+            current_prefix = "    "  # spaces instead of │ and ├─ for save tokens
             child_prefix = "    "
 
             # For files, add estimated token count
@@ -1684,108 +1866,6 @@ def _generate_basic_tree(
         pass
 
     return "".join(tree_lines)
-
-
-async def verify_code_accessibility(
-    code_url: str, client: OpenAI, model: str
-) -> Dict[str, Any]:
-    """
-    Verify that code repository is accessible and contains actual code.
-
-    Returns:
-        Dict with 'accessible' bool, 'notes' str, and token counts
-    """
-    try:
-        # Try to fetch repository info
-        logger.info(f"Verifying accessibility of {code_url}")
-
-        # Check if URL is reachable
-        response = requests.head(code_url, timeout=10, allow_redirects=True)
-
-        if response.status_code == 404:
-            return {
-                "accessible": False,
-                "notes": "Repository not found (404)",
-                "found_online": False,
-            }
-        elif response.status_code >= 400:
-            return {
-                "accessible": False,
-                "notes": f"Repository not accessible (HTTP {response.status_code})",
-                "found_online": False,
-            }
-
-        # Try to ingest a small sample to verify it contains code
-        # Keep the cloned repo for later use by analyze_repository_comprehensive
-        try:
-            summary, tree, content, clone_path = await ingest_with_steroids(
-                code_url,
-                max_file_size=50000,  # Limit file size
-                include_patterns=[
-                    "README*",
-                ],
-                cleanup=False,  # Keep the clone for analyze_repository_comprehensive
-                get_tree=False,  # Skip tree for quick check
-            )
-
-            # Check if we got actual code (not just documentation)
-            if not content or len(content) < 100:
-                return {
-                    "accessible": False,
-                    "notes": "Repository is empty or contains only documentation",
-                    "found_online": True,
-                }
-
-            # Check if it's mostly code vs just README
-            # Supports: Python, JS/TS, Java, C/C++, Go, Rust, Matlab, R, Julia, Shell, Jupyter, Scala, Ruby
-            code_extensions = [
-                ".py", ".js", ".ts", ".java", ".cpp", ".c", ".h",
-                ".go", ".rs", ".m", ".R", ".jl", ".sh", ".bash",
-                ".ipynb", ".scala", ".rb"
-            ]
-            has_code_files = any(ext in content for ext in code_extensions)
-
-            if not has_code_files:
-                return {
-                    "accessible": False,
-                    "notes": "Repository contains no recognizable code files",
-                    "found_online": True,
-                }
-
-            logger.info("Repository is accessible and contains code")
-            return {
-                "accessible": True,
-                "notes": "Repository verified accessible with code",
-                "found_online": False,
-                "clone_path": clone_path,  # Pass clone path for reuse
-            }
-
-        except Exception as e:
-            logger.warning(f"Error ingesting repository: {e}")
-            # Clean up on error
-            if "clone_path" in locals() and clone_path and clone_path.parent.exists():
-                try:
-                    shutil.rmtree(clone_path.parent)
-                except Exception:
-                    pass
-            return {
-                "accessible": False,
-                "notes": f"Error accessing repository content: {str(e)}",
-                "found_online": False,
-            }
-
-    except requests.Timeout:
-        return {
-            "accessible": False,
-            "notes": "Repository request timed out",
-            "found_online": False,
-        }
-    except Exception as e:
-        return {
-            "accessible": False,
-            "notes": f"Error checking repository: {str(e)}",
-            "found_online": False,
-        }
 
 
 async def analyze_repository_comprehensive(
@@ -1885,32 +1965,49 @@ Generate the output ready to be transformed into a Python list of strings.
             include_patterns=retrieved_patterns.included_patterns,
             cleanup=True,  # Always cleanup after comprehensive analysis
             existing_clone_path=clone_path,  # Reuse existing clone if available
-            get_tree=False,  # Skip tree for second pass to save time
+            get_tree=True,
         )
 
-        # TODO add these node info
-        # content_size_kb = len(content) / 1024
-        # logger.info(f"Repository ingested. Content size: {len(content)} chars ({content_size_kb:.1f} KB)")
-        # if node:
-        #     # Count files in tree
-        #     file_count = tree.count('├──') + tree.count('└──')
-        #     await async_ops.create_node_log(
-        #         node,
-        #         'INFO',
-        #         f'Repository downloaded: {file_count} files, {content_size_kb:.1f} KB'
-        #     )
+        content_size_kb = len(content) / 1024
+        logger.info(
+            f"Repository ingested. Content size: {len(content)} chars ({content_size_kb:.1f} KB)"
+        )
+        if node:
+            # Count files in tree
+            file_count = len(tree.splitlines())  # directories included
+            await async_ops.create_node_log(
+                node,
+                "INFO",
+                f"Repository downloaded: {file_count} files, {content_size_kb:.1f} KB",
+            )
 
-        # # Prepare paper text (truncate if too long to avoid token limits)
-        # paper_text = paper.text or ''
-        # max_paper_chars = 10000
-        # if len(paper_text) > max_paper_chars:
-        #     paper_text = paper_text[:max_paper_chars] + "\n\n[... text truncated for brevity ...]"
-        #     if node:
-        #         await async_ops.create_node_log(
-        #             node,
-        #             'INFO',
-        #             f'Paper text truncated to {max_paper_chars} chars for analysis'
-        #         )
+        # Prepare paper text (truncate if too long to avoid token limits)
+        paper_text = paper.text or ""
+        max_paper_chars = 50000
+        if len(paper_text) > max_paper_chars:
+            paper_text = (
+                paper_text[:max_paper_chars]
+                + "\n\n[... text truncated for brevity ...]"
+            )
+            if node:
+                await async_ops.create_node_log(
+                    node,
+                    "INFO",
+                    f"Paper text truncated to {max_paper_chars} chars for analysis",
+                )
+
+        max_code_chars = 400000
+        if len(content) > max_code_chars:
+            content = (
+                content[:max_code_chars]
+                + "\n\n[... code content truncated for brevity ...]"
+            )
+            if node:
+                await async_ops.create_node_log(
+                    node,
+                    "INFO",
+                    f"Code content truncated to {max_code_chars} chars for analysis",
+                )
 
         # Use LLM to analyze repository structure and contents
         analysis_prompt = f"""You are an expert code reviewer analyzing a research code repository for reproducibility.
@@ -2004,7 +2101,7 @@ NOTE: Do NOT compute a numeric score - focus on extracting factual information o
             await async_ops.create_node_log(
                 node,
                 "INFO",
-                f"LLM analysis complete ({len(analysis_text)} chars, {response.usage.completion_tokens} tokens)",
+                f"LLM analysis complete ({len(analysis_text)} chars, {output_tokens} tokens)",
             )
             # Log a preview of the analysis
             preview = (
@@ -2237,19 +2334,21 @@ Output the complete JSON object with ALL fields filled in based on the analysis 
 def build_paper_processing_workflow() -> StateGraph:
     """
     Build the LangGraph workflow for paper processing with conditional routing.
-    
-    Workflow structure:
-    - Node A (paper_type_classification): Parallel with Node B
-    - Node B (code_availability_check): Parallel with Node A
-    - Node C (code_repository_analysis): Conditional based on outputs
-    
-    Routing logic:
-    - After both A and B complete, route to:
-      * END if paper is 'theoretical' or 'dataset'
-      * END if no code found (code_available=False)
-      * Node C if code found AND paper is 'method', 'both', or 'unknown'
+
+    Workflow structure (sequential with conditional routing):
+    - Node A (paper_type_classification): Classify paper type
+    - Node B (code_availability_check): Check code availability and verify accessibility
+    - Node C (code_repository_analysis): Comprehensive code analysis (conditional)
+
+    Flow:
+    1. paper_type_classification runs first
+    2. code_availability_check runs second
+    3. After code_availability_check, route to:
+       * END if paper is 'theoretical' or 'dataset'
+       * END if no code found (code_available=False)
+       * code_repository_analysis if code found AND paper is 'method', 'both', or 'unknown'
     """
-    
+
     workflow = StateGraph(PaperProcessingState)
 
     # Add nodes
@@ -2261,24 +2360,29 @@ def build_paper_processing_workflow() -> StateGraph:
     def route_after_checks(state: PaperProcessingState) -> str:
         """
         Route after both paper type classification and code availability check.
-        
+
         Returns:
             - "code_repository_analysis" if should analyze code
             - END if should skip analysis
         """
         paper_type_result = state.get("paper_type_result")
         code_availability = state.get("code_availability_result")
-        
+
         # Skip if theoretical or dataset paper
-        if paper_type_result and paper_type_result.paper_type in ["theoretical", "dataset"]:
-            logger.info(f"Skipping code analysis for {paper_type_result.paper_type} paper")
+        if paper_type_result and paper_type_result.paper_type in [
+            "theoretical",
+            "dataset",
+        ]:
+            logger.info(
+                f"Skipping code analysis for {paper_type_result.paper_type} paper"
+            )
             return END
-        
+
         # Skip if no code available
         if not code_availability or not code_availability.code_available:
             logger.info("Skipping code analysis - no code available")
             return END
-        
+
         # Proceed to repository analysis for method/both/unknown papers with code
         logger.info("Proceeding to code repository analysis")
         return "code_repository_analysis"
@@ -2286,7 +2390,7 @@ def build_paper_processing_workflow() -> StateGraph:
     # Set entry point and sequential flow
     workflow.set_entry_point("paper_type_classification")
     workflow.add_edge("paper_type_classification", "code_availability_check")
-    
+
     # Conditional routing after both checks complete
     workflow.add_conditional_edges(
         "code_availability_check",
@@ -2294,9 +2398,9 @@ def build_paper_processing_workflow() -> StateGraph:
         {
             "code_repository_analysis": "code_repository_analysis",
             END: END,
-        }
+        },
     )
-    
+
     # Code repository analysis always ends
     workflow.add_edge("code_repository_analysis", END)
 
@@ -2352,6 +2456,7 @@ async def execute_single_node_only(
             "model": model,
             "force_reprocess": force_reprocess,
             "paper_type_result": None,
+            "code_availability_result": None,
             "code_reproducibility_result": None,
             "errors": [],
         }
@@ -2359,7 +2464,7 @@ async def execute_single_node_only(
         logger.info(f"Loading dependencies for node {node.node_id}")
 
         # Load previous node results if they exist
-        if node.node_id == "code_reproducibility_analysis":
+        if node.node_id == "code_availability_check":
             # Need paper_type_result from previous node
             prev_node = await async_ops.get_workflow_node(
                 str(workflow_run.id), "paper_type_classification"
@@ -2370,10 +2475,42 @@ async def execute_single_node_only(
                 for artifact in artifacts:
                     if artifact.name == "result":
                         state["paper_type_result"] = PaperTypeClassification(
-                            **artifact.data
+                            **artifact.inline_data
                         )
                         logger.info(
                             f"Loaded paper_type_result from previous node: {state['paper_type_result'].paper_type}"
+                        )
+                        break
+
+        elif node.node_id == "code_repository_analysis":
+            # Need both paper_type_result and code_availability_result from previous nodes
+            paper_type_node = await async_ops.get_workflow_node(
+                str(workflow_run.id), "paper_type_classification"
+            )
+            if paper_type_node and paper_type_node.status == "completed":
+                artifacts = await async_ops.get_node_artifacts(paper_type_node)
+                for artifact in artifacts:
+                    if artifact.name == "result":
+                        state["paper_type_result"] = PaperTypeClassification(
+                            **artifact.inline_data
+                        )
+                        logger.info(
+                            f"Loaded paper_type_result: {state['paper_type_result'].paper_type}"
+                        )
+                        break
+
+            code_avail_node = await async_ops.get_workflow_node(
+                str(workflow_run.id), "code_availability_check"
+            )
+            if code_avail_node and code_avail_node.status == "completed":
+                artifacts = await async_ops.get_node_artifacts(code_avail_node)
+                for artifact in artifacts:
+                    if artifact.name == "result":
+                        state["code_availability_result"] = CodeAvailabilityCheck(
+                            **artifact.inline_data
+                        )
+                        logger.info(
+                            f"Loaded code_availability_result: code_available={state['code_availability_result'].code_available}"
                         )
                         break
 
@@ -2382,8 +2519,10 @@ async def execute_single_node_only(
         # Execute the appropriate node function
         if node.node_id == "paper_type_classification":
             result = await paper_type_classification_node(state)
-        elif node.node_id == "code_reproducibility_analysis":
-            result = await code_reproducibility_analysis_node(state)
+        elif node.node_id == "code_availability_check":
+            result = await code_availability_check_node(state)
+        elif node.node_id == "code_repository_analysis":
+            result = await code_repository_analysis_node(state)
         else:
             raise ValueError(f"Unknown node type: {node.node_id}")
 
@@ -2550,7 +2689,7 @@ async def execute_workflow_from_node(
                 orig_artifacts = await async_ops.get_node_artifacts(orig_node)
                 for artifact in orig_artifacts:
                     await async_ops.create_node_artifact(
-                        new_node, artifact.name, artifact.data
+                        new_node, artifact.name, artifact.inline_data
                     )
 
                 # Copy logs
@@ -2574,12 +2713,17 @@ async def execute_workflow_from_node(
             "model": model,
             "force_reprocess": True,
             "paper_type_result": None,
+            "code_availability_result": None,
             "code_reproducibility_result": None,
             "errors": [],
         }
 
-        # Load paper_type_result if we're starting from code_reproducibility_analysis
-        if original_node.node_id == "code_reproducibility_analysis":
+        # Load previous results based on which node we're starting from
+        if original_node.node_id in [
+            "code_availability_check",
+            "code_repository_analysis",
+        ]:
+            # Load paper_type_result
             paper_type_node = await async_ops.get_workflow_node(
                 str(new_workflow_run.id), "paper_type_classification"
             )
@@ -2588,20 +2732,56 @@ async def execute_workflow_from_node(
                 for artifact in artifacts:
                     if artifact.name == "result":
                         state["paper_type_result"] = PaperTypeClassification(
-                            **artifact.data
+                            **artifact.inline_data
+                        )
+                        break
+
+        if original_node.node_id == "code_repository_analysis":
+            # Also load code_availability_result
+            code_avail_node = await async_ops.get_workflow_node(
+                str(new_workflow_run.id), "code_availability_check"
+            )
+            if code_avail_node and code_avail_node.status == "completed":
+                artifacts = await async_ops.get_node_artifacts(code_avail_node)
+                for artifact in artifacts:
+                    if artifact.name == "result":
+                        state["code_availability_result"] = CodeAvailabilityCheck(
+                            **artifact.inline_data
                         )
                         break
 
         # Execute nodes from target node onwards
         if original_node.node_id == "paper_type_classification":
-            # Execute both nodes
+            # Execute all three nodes
             result1 = await paper_type_classification_node(state)
             if "paper_type_result" in result1:
                 state["paper_type_result"] = result1["paper_type_result"]
             if "errors" in result1:
                 state["errors"].extend(result1["errors"])
 
-            result2 = await code_reproducibility_analysis_node(state)
+            result2 = await code_availability_check_node(state)
+            if "code_availability_result" in result2:
+                state["code_availability_result"] = result2["code_availability_result"]
+            if "errors" in result2:
+                state["errors"].extend(result2["errors"])
+
+            result3 = await code_repository_analysis_node(state)
+            if "code_reproducibility_result" in result3:
+                state["code_reproducibility_result"] = result3[
+                    "code_reproducibility_result"
+                ]
+            if "errors" in result3:
+                state["errors"].extend(result3["errors"])
+
+        elif original_node.node_id == "code_availability_check":
+            # Execute code_availability_check and code_repository_analysis
+            result1 = await code_availability_check_node(state)
+            if "code_availability_result" in result1:
+                state["code_availability_result"] = result1["code_availability_result"]
+            if "errors" in result1:
+                state["errors"].extend(result1["errors"])
+
+            result2 = await code_repository_analysis_node(state)
             if "code_reproducibility_result" in result2:
                 state["code_reproducibility_result"] = result2[
                     "code_reproducibility_result"
@@ -2609,9 +2789,9 @@ async def execute_workflow_from_node(
             if "errors" in result2:
                 state["errors"].extend(result2["errors"])
 
-        elif original_node.node_id == "code_reproducibility_analysis":
-            # Execute only code_reproducibility_analysis
-            result = await code_reproducibility_analysis_node(state)
+        elif original_node.node_id == "code_repository_analysis":
+            # Execute only code_repository_analysis
+            result = await code_repository_analysis_node(state)
             if "code_reproducibility_result" in result:
                 state["code_reproducibility_result"] = result[
                     "code_reproducibility_result"
@@ -2633,6 +2813,11 @@ async def execute_workflow_from_node(
                 "paper_type": (
                     state.get("paper_type_result").model_dump()
                     if state.get("paper_type_result")
+                    else None
+                ),
+                "code_availability": (
+                    state.get("code_availability_result").model_dump()
+                    if state.get("code_availability_result")
                     else None
                 ),
                 "code_reproducibility": (
@@ -2727,14 +2912,14 @@ async def process_paper_workflow(
                     {
                         "from": "paper_type_classification",
                         "to": "code_availability_check",
-                        "type": "sequential"
+                        "type": "sequential",
                     },
                     {
                         "from": "code_availability_check",
                         "to": "code_repository_analysis",
                         "type": "conditional",
-                        "condition": "code_available AND paper_type NOT IN (theoretical, dataset)"
-                    }
+                        "condition": "code_available AND paper_type NOT IN (theoretical, dataset)",
+                    },
                 ],
             },
         )
@@ -2765,6 +2950,7 @@ async def process_paper_workflow(
             "model": model,
             "force_reprocess": force_reprocess,
             "paper_type_result": None,
+            "code_availability_result": None,
             "code_reproducibility_result": None,
             "errors": [],
         }
@@ -2790,6 +2976,11 @@ async def process_paper_workflow(
                     if final_state.get("paper_type_result")
                     else None
                 ),
+                "code_availability": (
+                    final_state.get("code_availability_result").model_dump()
+                    if final_state.get("code_availability_result")
+                    else None
+                ),
                 "code_reproducibility": (
                     final_state.get("code_reproducibility_result").model_dump()
                     if final_state.get("code_reproducibility_result")
@@ -2812,6 +3003,7 @@ async def process_paper_workflow(
             "paper_id": paper_id,
             "paper_title": (await async_ops.get_paper(paper_id)).title,
             "paper_type": final_state.get("paper_type_result"),
+            "code_availability": final_state.get("code_availability_result"),
             "code_reproducibility": final_state.get("code_reproducibility_result"),
             "total_input_tokens": input_tokens,
             "total_output_tokens": output_tokens,
