@@ -241,8 +241,8 @@
                     <span aria-hidden="true">&times;</span>
                 </button>
             </div>
-            <div class="modal-body p-0">
-                <div class="d-flex justify-content-between align-items-center px-3 py-2 bg-light border-bottom">
+            <div class="modal-body">
+                <div class="d-flex justify-content-between align-items-center px-3 py-2 bg-light border-bottom rounded-top">
                     <div>
                         <span class="badge badge-info mr-2" id="log-status-badge">Loading...</span>
                         <small class="text-muted">Papers: <strong id="log-paper-count">-</strong></small>
@@ -269,6 +269,85 @@
     </div>
 </div>
 
+<!-- Stop Scraping Confirmation Modal -->
+<div class="modal fade" id="stopScrapingModal" tabindex="-1" role="dialog" aria-labelledby="stopScrapingModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="stopScrapingModalLabel">
+                    <i class="fas fa-stop-circle mr-2"></i>Stop Scraping
+                </h5>
+                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p><i class="fas fa-exclamation-triangle text-warning mr-2"></i>Are you sure you want to stop the scraping process?</p>
+                <p class="text-muted mb-0">
+                    <i class="fas fa-info-circle mr-1"></i>
+                    Any papers already scraped will be saved, but the process will be interrupted.
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">
+                    <i class="fas fa-times mr-1"></i>Cancel
+                </button>
+                <button type="button" class="btn btn-danger" id="confirm-stop-scraping">
+                    <i class="fas fa-stop mr-1"></i>Stop Scraping
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Success Modal -->
+<div class="modal fade" id="successModal" tabindex="-1" role="dialog" aria-labelledby="successModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title" id="successModalLabel">
+                    <i class="fas fa-check-circle mr-2"></i>Success
+                </h5>
+                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-0" id="success-message"></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-success" data-dismiss="modal">
+                    <i class="fas fa-check mr-1"></i>Ok
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Error Modal -->
+<div class="modal fade" id="errorModal" tabindex="-1" role="dialog" aria-labelledby="errorModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="errorModalLabel">
+                    <i class="fas fa-exclamation-circle mr-2"></i>Error
+                </h5>
+                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-0" id="error-message"></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-danger" data-dismiss="modal">
+                    <i class="fas fa-times mr-1"></i>Close
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <style>
 .log-container {
     height: 500px;
@@ -278,12 +357,13 @@
     overflow-x: auto;
     background-color: #1e1e1e;
     border-radius: 4px;
+    margin: 0;
 }
 
 #log-content {
     font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'Courier New', monospace;
     font-size: 13px;
-    line-height: 1.5;
+    line-height: 1.6;
     white-space: pre-wrap;
     word-wrap: break-word;
     margin: 0;
@@ -314,6 +394,17 @@
 </style>
 
 <script>
+// Helper functions for modals
+function showSuccessModal(message) {
+    $('#success-message').text(message);
+    $('#successModal').modal('show');
+}
+
+function showErrorModal(message) {
+    $('#error-message').text(message);
+    $('#errorModal').modal('show');
+}
+
 $(document).ready(function() {
     let filterTimeout;
     const $filterInput = $('#filter-input');
@@ -387,12 +478,12 @@ $(document).ready(function() {
                               .attr('title', 'Scraping in progress')
                               .html('<i class="fas fa-spinner fa-spin"></i>');
                 } else {
-                    alert('Error: ' + response.message);
+                    showErrorModal(response.message);
                 }
             },
             error: function(xhr) {
                 const message = xhr.responseJSON?.message || 'Failed to start scraping';
-                alert('Error: ' + message);
+                showErrorModal(message);
             },
             complete: function() {
                 $btn.prop('disabled', false).html(originalHtml);
@@ -517,11 +608,18 @@ $(document).ready(function() {
     $('#stop-scraping').on('click', function() {
         if (!currentConferenceId) return;
         
-        if (!confirm('Are you sure you want to stop the scraping process?')) {
-            return;
-        }
+        // Show confirmation modal
+        $('#stopScrapingModal').modal('show');
+    });
+    
+    // Confirm stop scraping
+    $('#confirm-stop-scraping').on('click', function() {
+        if (!currentConferenceId) return;
         
-        const $btn = $(this);
+        // Hide the confirmation modal
+        $('#stopScrapingModal').modal('hide');
+        
+        const $btn = $('#stop-scraping');
         const originalHtml = $btn.html();
         
         $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin mr-1"></i>Stopping...');
@@ -534,14 +632,14 @@ $(document).ready(function() {
             },
             success: function(response) {
                 if (response.success) {
-                    alert('Scraping stopped successfully.');
+                    showSuccessModal('Scraping stopped successfully.');
                     refreshLog();
                 } else {
-                    alert('Error: ' + response.message);
+                    showErrorModal(response.message);
                 }
             },
             error: function() {
-                alert('Failed to stop scraping.');
+                showErrorModal('Failed to stop scraping.');
             },
             complete: function() {
                 $btn.prop('disabled', false).html(originalHtml);
@@ -625,7 +723,7 @@ $(document).ready(function() {
             },
             error: function() {
                 $conferenceContainer.css('opacity', '1');
-                alert('Error applying filter. Please try again.');
+                showErrorModal('Error applying filter. Please try again.');
             }
         });
     }
