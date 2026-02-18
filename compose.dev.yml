@@ -51,7 +51,7 @@ services:
     env_file:
       - .env.local
     healthcheck:
-      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      test: ["CMD", "mariadb", "-u${MYSQL_USER}", "-p${MYSQL_PASSWORD}", "-e", "SELECT 1"]
       interval: 5s
       timeout: 5s
       retries: 10
