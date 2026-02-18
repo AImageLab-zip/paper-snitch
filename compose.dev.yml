@@ -6,7 +6,7 @@ services:
     container_name: django-web-${STACK_SUFFIX:-dev}
     command: /app/entrypoint.dev.sh
     env_file:
-      - .env.local
+      - .env.${STACK_SUFFIX:-local}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -49,7 +49,7 @@ services:
     volumes:
       - ./mysql_${STACK_SUFFIX:-dev}/lib:/var/lib/mysql
     env_file:
-      - .env.local
+      - .env.${STACK_SUFFIX:-local}
     healthcheck:
       test: ["CMD", "mariadb", "-u${MYSQL_USER}", "-p${MYSQL_PASSWORD}", "-e", "SELECT 1"]
       interval: 5s
@@ -70,7 +70,7 @@ services:
     container_name: celery-worker-${STACK_SUFFIX:-dev}
     command: watchfiles "celery -A web worker --loglevel=info"
     env_file:
-      - .env.local
+      - .env.${STACK_SUFFIX:-local}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -92,7 +92,7 @@ services:
     container_name: celery-beat-${STACK_SUFFIX:-dev}
     command: watchfiles "celery -A web beat --loglevel=info"
     env_file:
-      - .env.local
+      - .env.${STACK_SUFFIX:-local}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
