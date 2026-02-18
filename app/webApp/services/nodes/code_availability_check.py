@@ -536,30 +536,21 @@ Provide:
 4. Notes about the search process"""
 
     try:
-        response = client.chat.completions.create(
+        response = client.responses.create(
             model=model,
-            messages=[
+            input=[
                 {
                     "role": "system",
                     "content": "You are an expert at finding academic code repositories. Be conservative - only return URLs when you're confident they match the paper.",
                 },
                 {"role": "user", "content": search_prompt},
             ],
-            tools=[{"type": "web_search"}],
-            tool_choice="auto",
-            response_format={
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "online_code_search",
-                    "strict": True,
-                    "schema": OnlineCodeSearch.model_json_schema(),
-                },
-            },
+            tools=[{"type": "web_search_preview"}],
+            text_format=OnlineCodeSearch,
             temperature=0.2,
         )
 
-        result_dict = json.loads(response.choices[0].message.content)
-        result = OnlineCodeSearch(**result_dict)
+        result = response.output_parsed
 
         logger.info(
             f"Online search result: {result.repository_url or 'Not found'} (confidence: {result.confidence})"

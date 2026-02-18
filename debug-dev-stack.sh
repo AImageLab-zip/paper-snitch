@@ -29,15 +29,24 @@ ACTION=${1:-"up"}
 BASE_PORT=${2:-8000}
 STACK_NAME=${3:-"dev"}
 SERVICE=${4:-""}
+
+# Check for --attached flag in SERVICE position
+ATTACHED_MODE=false
+if [[ "$SERVICE" == "--attached" ]] || [[ "$SERVICE" == "-a" ]]; then
+    ATTACHED_MODE=true
+    SERVICE=""
+fi
+
 shift 4 2>/dev/null || true  # Remove first 4 args, remaining are exec command
 EXEC_CMD=("$@")
 
 # Validate action
 if [[ ! "$ACTION" =~ ^(up|down|logs|ps|restart|stop|exec|build)$ ]]; then
-    echo "Usage: $0 <up|down|logs|ps|restart|stop|exec|build> [base_port] [stack_name] [service] [command...]"
+    echo "Usage: $0 <up|down|logs|ps|restart|stop|exec|build> [base_port] [stack_name] [service] [--attached|-a] [command...]"
     echo ""
     echo "Examples:"
-    echo "  $0 up                                      # Start default stack (port 8000)"
+    echo "  $0 up                                      # Start default stack (port 8000, detached)"
+    echo "  $0 up 8000 dev --attached                  # Start all services (attached, see logs)"
     echo "  $0 up 8001                                 # Start stack on port 8001"
     echo "  $0 up 8002 feature-x                       # Start 'feature-x' stack on port 8002"
     echo "  $0 up 8000 dev django-web-dev              # Start only django-web-dev (attached, see logs)"
@@ -190,9 +199,15 @@ elif [ "$ACTION" = "build" ]; then
     echo ""
     echo "✅ Build complete! Use '$0 up $BASE_PORT $STACK_NAME' to start the containers."
 elif [ "$ACTION" = "up" ] && [ -z "$SERVICE" ]; then
-    # Start all services in detached mode
-    COMPOSE_PROJECT_NAME=${PROJECT_NAME} DJANGO_PORT=${DJANGO_PORT} MYSQL_PORT=${MYSQL_PORT} REDIS_PORT=${REDIS_PORT} GROBID_PORT=${GROBID_PORT} STACK_SUFFIX=${STACK_NAME} \
-        docker compose -p ${PROJECT_NAME} -f compose.dev.yml --env-file ".env.${STACK_NAME}" $ACTION -d
+    # Start all services (detached or attached based on flag)
+    if [ "$ATTACHED_MODE" = true ]; then
+        echo "🔍 Starting all services in attached mode (Ctrl+C to stop)..."
+        COMPOSE_PROJECT_NAME=${PROJECT_NAME} DJANGO_PORT=${DJANGO_PORT} MYSQL_PORT=${MYSQL_PORT} REDIS_PORT=${REDIS_PORT} GROBID_PORT=${GROBID_PORT} STACK_SUFFIX=${STACK_NAME} \
+            docker compose -p ${PROJECT_NAME} -f compose.dev.yml --env-file ".env.${STACK_NAME}" $ACTION
+    else
+        COMPOSE_PROJECT_NAME=${PROJECT_NAME} DJANGO_PORT=${DJANGO_PORT} MYSQL_PORT=${MYSQL_PORT} REDIS_PORT=${REDIS_PORT} GROBID_PORT=${GROBID_PORT} STACK_SUFFIX=${STACK_NAME} \
+            docker compose -p ${PROJECT_NAME} -f compose.dev.yml --env-file ".env.${STACK_NAME}" $ACTION -d
+    fi
 elif [ "$ACTION" = "up" ] && [ -n "$SERVICE" ]; then
     # Start single service in attached mode (no -d, shows logs)
     echo "🔍 Starting $SERVICE in attached mode (Ctrl+C to stop)..."
