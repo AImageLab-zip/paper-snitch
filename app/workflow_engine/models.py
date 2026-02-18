@@ -25,9 +25,8 @@ class WorkflowDefinition(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(
         max_length=255,
-        unique=True,
         db_index=True,
-        help_text="Unique workflow name (e.g., 'pdf_analysis_pipeline')"
+        help_text="Workflow name (e.g., 'pdf_analysis_pipeline')"
     )
     version = models.IntegerField(
         default=1,
@@ -71,6 +70,12 @@ class WorkflowDefinition(models.Model):
         indexes = [
             models.Index(fields=['name', 'version']),
             models.Index(fields=['is_active', 'name']),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['name', 'version'],
+                name='unique_workflow_name_version'
+            )
         ]
     
     def __str__(self):

@@ -38,15 +38,17 @@ services:
 
   mysql:
     container_name: mysql-${STACK_SUFFIX:-dev}
-    image: mysql
+    image: mariadb:11.7
     ports:
       - "${MYSQL_PORT:-3306}:3306"
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
     volumes:
       - ./mysql_${STACK_SUFFIX:-dev}/lib:/var/lib/mysql
-      - ./mysql_${STACK_SUFFIX:-dev}/.client.cnf:/root/.my.cnf
-      - ./mysql_${STACK_SUFFIX:-dev}/my.cnf:/etc/mysql/my.cnf
     env_file:
       - .env.local
+    restart: unless-stopped
 
   redis:
     image: redis:7-alpine

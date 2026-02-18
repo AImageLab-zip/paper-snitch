@@ -47,10 +47,11 @@ def get_grobid_semaphore():
 class ConferenceScraper:
     """Service for scraping conference papers and saving to database."""
 
-    def __init__(self, conference_name: str, conference_url: str, year: Optional[int] = None):
+    def __init__(self, conference_name: str, conference_url: str, year: Optional[int] = None, conference_id: Optional[int] = None):
         self.conference_name = conference_name
         self.conference_url = conference_url
         self.year = year
+        self.conference_id = conference_id
         self.base_url = self._extract_base_url(conference_url)
         self.schema_cache_dir = FIXTURES_DIR / "scraper_schemas"
         self.schema_cache_dir.mkdir(parents=True, exist_ok=True)
@@ -381,16 +382,17 @@ class ConferenceScraper:
                 
                 @sync_to_async
                 def extract():
-                    title, text = get_pdf_content(pdf_path)
-                    return text
+                    title, text, sections = get_pdf_content(pdf_path)
+                    return text, sections
                 
-                text = await extract()
+                text, sections = await extract()
                 
-                # Save text to database
+                # Save text and sections to database
                 @sync_to_async
                 def save_text():
                     paper.text = text
-                    paper.save(update_fields=['text'])
+                    paper.sections = sections
+                    paper.save(update_fields=['text', 'sections'])
                 
                 await save_text()
                 logger.info(f"Extracted text from PDF for: {paper.title} ({len(text)} characters)")
@@ -420,33 +422,51 @@ class ConferenceScraper:
         # Get or create conference (wrapped for async)
         @sync_to_async
         def get_or_create_conference():
+            # If conference_id is provided, use the existing conference
+            if self.conference_id:
+                try:
+                    conference = Conference.objects.get(id=self.conference_id)
+                    # Update papers_url if it's different
+                    if conference.papers_url != self.conference_url:
+                        conference.papers_url = self.conference_url
+                        conference.save()
+                    return conference
+                except Conference.DoesNotExist:
+                    logger.warning(f"Conference with ID {self.conference_id} not found, creating new one")
+            
+            # Otherwise, get or create by name and year
             conference, created = Conference.objects.get_or_create(
                 name=self.conference_name,
                 year=self.year,
-                defaults={"url": self.conference_url},
+                defaults={"papers_url": self.conference_url},
             )
             if not created:
-                conference.url = self.conference_url
+                conference.papers_url = self.conference_url
                 conference.save()
             return conference
         
         conference = await get_or_create_conference()
         logger.info(f"Conference: {conference}")
 
-        # Fetch HTML sample for schema generation if needed
-        schema_file = self.schema_cache_dir / f"{self.conference_name.lower().replace(' ', '_')}_schema.json"
-        if not schema_file.exists():
-            logger.info("Fetching HTML sample for schema generation...")
-            async with AsyncWebCrawler() as crawler:
-                result = await crawler.arun(url=self.conference_url)
-                if result.success:
-                    # Take only first 50KB of HTML to avoid token limits
-                    html_sample = result.html[:50000] if result.html else None
-                else:
-                    html_sample = None
-            schema = self.get_schema(html_sample=html_sample)
+        # Priority: Database schema > File schema > LLM generation
+        if conference.scraping_schema:
+            logger.info("Using schema from database")
+            schema = conference.scraping_schema
         else:
-            schema = self.get_schema()
+            # Fetch HTML sample for schema generation if needed
+            schema_file = self.schema_cache_dir / f"{self.conference_name.lower().replace(' ', '_')}_schema.json"
+            if not schema_file.exists():
+                logger.info("Fetching HTML sample for schema generation...")
+                async with AsyncWebCrawler() as crawler:
+                    result = await crawler.arun(url=self.conference_url)
+                    if result.success:
+                        # Take only first 50KB of HTML to avoid token limits
+                        html_sample = result.html[:50000] if result.html else None
+                    else:
+                        html_sample = None
+                schema = self.get_schema(html_sample=html_sample)
+            else:
+                schema = self.get_schema()
         
         # Crawl paper list using the schema
         paper_list = await self.crawl_paper_list(schema)

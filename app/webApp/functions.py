@@ -341,8 +341,10 @@ def get_pdf_content(
     Returns:
         title: The title of the paper with spaces replaced by underscores.
         text: The concatenated text including abstract, sections, figures descriptions, and tables.
+        sections: Dictionary mapping section names to their content, with figures/tables as separate entries.
     """
     # Use host.docker.internal to reach GROBID running on host from Docker container
+    # TODO change the hardcoded link to grobid with the one defined in the environment variable and add error handling if grobid is not reachable
     base_url = os.environ.get("GROBID_URL", "http://grobid:8070")
     grobid_url = f"{base_url}/api/processFulltextDocument"
 
@@ -353,13 +355,13 @@ def get_pdf_content(
 
         if response.status_code != 200:
             print(f"Error Grobid: {response.status_code}")
-            return None, None
+            return None, None, None
 
         xml_content = response.text
 
     except Exception as e:
         print(f"Error: {e}")
-        return None, None
+        return None, None, None
 
     # 2. BeautifulSoup parsing
     soup = BeautifulSoup(xml_content, "xml")
@@ -388,10 +390,15 @@ def get_pdf_content(
     body = soup.find("body")
 
     text_content = []
-
+    sections_dict = {}
+    
     # Add abstract at the beginning
     if abstract_text:
         text_content.append("Abstract\n\n" + abstract_text)
+        sections_dict["Abstract"] = abstract_text
+    
+    current_section = None
+    section_content = []
 
     if body:
         # find all paragraph (<p>), section title (<head>), figures and tables
@@ -404,16 +411,37 @@ def get_pdf_content(
             for ref in tag.find_all("ref", type="bibr"):
                 ref.decompose()
 
+            # Handle section headers
+            if tag.name == "head":
+                # Save previous section if exists
+                if current_section and section_content:
+                    sections_dict[current_section] = "\n\n".join(section_content)
+                
+                # Start new section
+                current_section = tag.get_text(strip=True)
+                section_content = []
+                text_content.append(current_section)
+                continue
+
             # For figures, extract the caption/description
-            if tag.name == "figure":
+            elif tag.name == "figure":
                 fig_head = tag.find("head")
                 fig_desc = tag.find("figDesc")
                 table = tag.find("table")
 
                 fig_text_parts = []
+                
+                # Determine the key for this figure/table
+                if fig_head:
+                    fig_key = fig_head.get_text(strip=True)
+                else:
+                    # Generate a key if no head found
+                    if table:
+                        fig_key = f"Table {len([k for k in sections_dict.keys() if k.startswith('Table')]) + 1}"
+                    else:
+                        fig_key = f"Figure {len([k for k in sections_dict.keys() if k.startswith('Figure')]) + 1}"
 
                 # Add label (e.g., "Table 1" or "Fig. 1")
-
                 if fig_head and table:
                     fig_text_parts.append(fig_head.get_text(strip=True))
 
@@ -432,14 +460,25 @@ def get_pdf_content(
                         fig_text_parts.append("\n".join(table_rows))
 
                 if fig_text_parts:
-                    text_content.append(" ".join(fig_text_parts))
-            else:
-                text_content.append(tag.get_text(strip=True))
+                    fig_content = " ".join(fig_text_parts)
+                    text_content.append(fig_content)
+                    sections_dict[fig_key] = fig_content
+            
+            # Handle paragraphs
+            else:  # tag.name == "p"
+                para_text = tag.get_text(strip=True)
+                text_content.append(para_text)
+                if current_section:
+                    section_content.append(para_text)
+        
+        # Save the last section
+        if current_section and section_content:
+            sections_dict[current_section] = "\n\n".join(section_content)
 
     # concatenate all text parts
     text = "\n\n".join(text_content)
 
-    return title, text
+    return title, text, sections_dict
 
 
 def get_text(pdf_file):

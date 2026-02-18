@@ -36,6 +36,10 @@ media/
 # Logs
 scraping_logs/
 
+# Database backups and migration scripts
+backups/
+migrate_to_mariadb.sh
+
 # --- OS & Editor ---
 # macOS
 .DS_Store

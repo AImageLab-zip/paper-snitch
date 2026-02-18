@@ -45,6 +45,12 @@ class Command(BaseCommand):
             action='store_true',
             help='Start task and return immediately without waiting for completion',
         )
+        parser.add_argument(
+            '--conference-id',
+            type=int,
+            help='Conference ID to update (avoids creating duplicates)',
+            default=None,
+        )
 
     def handle(self, *args, **options):
         conference_name = options['conference_name']
@@ -53,6 +59,7 @@ class Command(BaseCommand):
         limit = options['limit']
         sync_mode = options['sync']
         no_wait = options['no_wait']
+        conference_id = options['conference_id']
 
         self.stdout.write(
             self.style.SUCCESS(f'\n🚀 Starting conference scrape: {conference_name}')
@@ -77,7 +84,8 @@ class Command(BaseCommand):
             scraper = ConferenceScraper(
                 conference_name=conference_name,
                 conference_url=conference_url,
-                year=year
+                year=year,
+                conference_id=conference_id
             )
 
             def progress_callback(current, total, message):
@@ -106,7 +114,8 @@ class Command(BaseCommand):
                 conference_name=conference_name,
                 conference_url=conference_url,
                 year=year,
-                limit=limit
+                limit=limit,
+                conference_id=conference_id
             )
 
             self.stdout.write(

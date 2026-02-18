@@ -8,8 +8,13 @@
     <div class="row justify-content-center">
         <div class="col-lg-10">
             <div class="card shadow">
-                <div class="card-header bg-primary text-white">
+                <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
                     <h4 class="mb-0"><i class="fas fa-calendar-alt mr-2"></i>Conferences</h4>
+                    {% if user.is_staff or user.is_superuser %}
+                    <button class="btn btn-light btn-sm" data-toggle="modal" data-target="#newConferenceModal">
+                        <i class="fas fa-plus-circle mr-1"></i>Add New Conference
+                    </button>
+                    {% endif %}
                 </div>
                 <div class="card-body">
                     <!-- Filter Bar -->
@@ -88,11 +93,22 @@
                                             <small class="text-muted">
                                                 <i class="fas fa-clock mr-1"></i>Updated {{ conference.last_update|date:"M d, Y" }}
                                             </small>
-                                            {% if conference.url %}
-                                            <a href="{{ conference.url }}" target="_blank" class="btn btn-sm btn-outline-primary" onclick="event.stopPropagation()">
-                                                <i class="fas fa-external-link-alt"></i>
-                                            </a>
-                                            {% endif %}
+                                            <div>
+                                                {% if conference.website_url %}
+                                                <a href="{{ conference.website_url }}" target="_blank" class="btn btn-sm btn-outline-primary mr-1" onclick="event.stopPropagation()" title="Visit conference website">
+                                                    <i class="fas fa-external-link-alt"></i>
+                                                </a>
+                                                {% endif %}
+                                                {% if user.is_staff or user.is_superuser %}
+                                                <button class="btn btn-sm btn-outline-success scrape-btn" 
+                                                        data-conference-id="{{ conference.id }}"
+                                                        data-conference-name="{{ conference.name }}"
+                                                        data-is-scraping="{{ conference.is_scraping|lower }}"
+                                                        title="{% if conference.is_scraping %}Scraping in progress{% else %}Start scraping{% endif %}">
+                                                    <i class="fas {% if conference.is_scraping %}fa-spinner fa-spin{% else %}fa-play{% endif %}"></i>
+                                                </button>
+                                                {% endif %}
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -171,13 +187,670 @@
     </div>
 </div>
 
+<!-- Scraping Confirmation Modal -->
+<div class="modal fade" id="scrapingModal" tabindex="-1" role="dialog" aria-labelledby="scrapingModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="scrapingModalLabel">
+                    <i class="fas fa-play-circle mr-2"></i>Start Scraping
+                </h5>
+                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to start scraping papers for <strong id="scraping-conference-name"></strong>?</p>
+                
+                <div class="form-group">
+                    <label for="scraping-limit">Number of papers to scrape:</label>
+                    <div class="input-group">
+                        <input type="number" class="form-control" id="scraping-limit" placeholder="Leave empty for all papers" min="1">
+                        <div class="input-group-append">
+                            <button class="btn btn-outline-secondary" type="button" id="scrape-all-btn" title="Scrape all papers">
+                                <i class="fas fa-infinity"></i> All
+                            </button>
+                        </div>
+                    </div>
+                    <small class="form-text text-muted">
+                        Specify a number to limit papers scraped, or leave empty to scrape all papers.
+                    </small>
+                </div>
+                
+                <p class="text-muted mb-0">
+                    <i class="fas fa-info-circle mr-1"></i>
+                    This process may take several minutes depending on the number of papers.
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">
+                    <i class="fas fa-times mr-1"></i>Cancel
+                </button>
+                <button type="button" class="btn btn-primary" id="confirm-scraping">
+                    <i class="fas fa-play mr-1"></i>Start Scraping
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Scraping Log Viewer Modal -->
+<div class="modal fade" id="logViewerModal" tabindex="-1" role="dialog" aria-labelledby="logViewerModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered" role="document">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="logViewerModalLabel">
+                    <i class="fas fa-file-alt mr-2"></i>Scraping Log: <span id="log-conference-name"></span>
+                </h5>
+                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="d-flex justify-content-between align-items-center px-3 py-2 bg-light border-bottom rounded-top">
+                    <div>
+                        <span class="badge badge-info mr-2" id="log-status-badge">Loading...</span>
+                        <small class="text-muted">Papers: <strong id="log-paper-count">-</strong></small>
+                    </div>
+                    <div>
+                        <button class="btn btn-sm btn-outline-primary" id="refresh-log" title="Refresh log">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger ml-2" id="stop-scraping" title="Stop scraping">
+                            <i class="fas fa-stop"></i> Stop
+                        </button>
+                    </div>
+                </div>
+                <div class="log-container">
+                    <pre id="log-content" class="mb-0"><code>Loading log...</code></pre>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">
+                    <i class="fas fa-times mr-1"></i>Close
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Stop Scraping Confirmation Modal -->
+<div class="modal fade" id="stopScrapingModal" tabindex="-1" role="dialog" aria-labelledby="stopScrapingModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="stopScrapingModalLabel">
+                    <i class="fas fa-stop-circle mr-2"></i>Stop Scraping
+                </h5>
+                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p><i class="fas fa-exclamation-triangle text-warning mr-2"></i>Are you sure you want to stop the scraping process?</p>
+                <p class="text-muted mb-0">
+                    <i class="fas fa-info-circle mr-1"></i>
+                    Any papers already scraped will be saved, but the process will be interrupted.
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">
+                    <i class="fas fa-times mr-1"></i>Cancel
+                </button>
+                <button type="button" class="btn btn-danger" id="confirm-stop-scraping">
+                    <i class="fas fa-stop mr-1"></i>Stop Scraping
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Success Modal -->
+<div class="modal fade" id="successModal" tabindex="-1" role="dialog" aria-labelledby="successModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title" id="successModalLabel">
+                    <i class="fas fa-check-circle mr-2"></i>Success
+                </h5>
+                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-0" id="success-message"></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-success" data-dismiss="modal">
+                    <i class="fas fa-check mr-1"></i>Ok
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Error Modal -->
+<div class="modal fade" id="errorModal" tabindex="-1" role="dialog" aria-labelledby="errorModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="errorModalLabel">
+                    <i class="fas fa-exclamation-circle mr-2"></i>Error
+                </h5>
+                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-0" id="error-message"></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-danger" data-dismiss="modal">
+                    <i class="fas fa-times mr-1"></i>Close
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- New Conference Modal -->
+<div class="modal fade" id="newConferenceModal" tabindex="-1" role="dialog" aria-labelledby="newConferenceModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="newConferenceModalLabel">
+                    <i class="fas fa-plus-circle mr-2"></i>Add New Conference and Start Scraping
+                </h5>
+                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="newConferenceForm">
+                    <div class="form-group">
+                        <label for="conference_name">
+                            <i class="fas fa-signature mr-1"></i>Conference Name <span class="text-danger">*</span>
+                        </label>
+                        <input type="text" class="form-control" id="conference_name" name="name" required
+                               placeholder="e.g., Medical Image Computing and Computer Assisted Intervention - MICCAI 2026">
+                        <small class="form-text text-muted">Full name of the conference</small>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="conference_acronym">
+                                    <i class="fas fa-tag mr-1"></i>Acronym
+                                </label>
+                                <input type="text" class="form-control" id="conference_acronym" name="acronym"
+                                       placeholder="e.g., MICCAI">
+                                <small class="form-text text-muted">Short name (optional)</small>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="conference_year">
+                                    <i class="fas fa-calendar mr-1"></i>Year
+                                </label>
+                                <input type="number" class="form-control" id="conference_year" name="year"
+                                       min="1900" max="2100" placeholder="e.g., 2026">
+                                <small class="form-text text-muted">Conference year (optional)</small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="website_url">
+                            <i class="fas fa-globe mr-1"></i>Conference Website
+                        </label>
+                        <input type="url" class="form-control" id="website_url" name="website_url"
+                               placeholder="https://conferences.miccai.org/2026/">
+                        <small class="form-text text-muted">Main conference website URL (optional)</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="papers_url">
+                            <i class="fas fa-link mr-1"></i>Papers URL <span class="text-danger">*</span>
+                        </label>
+                        <input type="url" class="form-control" id="papers_url" name="papers_url" required
+                               placeholder="https://papers.miccai.org/miccai-2026/">
+                        <small class="form-text text-muted">URL where the papers are listed</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="conference_logo">
+                            <i class="fas fa-image mr-1"></i>Conference Logo
+                        </label>
+                        <div class="custom-file">
+                            <input type="file" class="custom-file-input" id="conference_logo" name="logo" accept="image/*">
+                            <label class="custom-file-label" for="conference_logo">Choose logo image...</label>
+                        </div>
+                        <small class="form-text text-muted">Upload a logo for the conference (optional, PNG, JPG, or SVG)</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="scraping_schema_select">
+                            <i class="fas fa-code mr-1"></i>Scraping Schema (Optional)
+                        </label>
+                        <select class="form-control mb-2" id="scraping_schema_select">
+                            <option value="">-- Auto-infer schema or select template --</option>
+                            <option value="miccai">MICCAI Template</option>
+                            <option value="custom">Custom JSON</option>
+                        </select>
+                        <textarea class="form-control font-monospace" id="scraping_schema" name="scraping_schema" rows="12"
+                                  placeholder='Leave empty to auto-infer schema, or paste custom JSON here...'></textarea>
+                        <small class="form-text text-muted">
+                            <i class="fas fa-info-circle mr-1"></i>
+                            Leave empty to automatically infer the schema, or select a template/paste custom JSON. 
+                            <a href="#" id="schema-help-link" class="text-primary">
+                                <i class="fas fa-question-circle"></i> Schema format help
+                            </a>
+                        </small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="scraping_limit">
+                            <i class="fas fa-hashtag mr-1"></i>Limit (optional)
+                        </label>
+                        <input type="number" class="form-control" id="scraping_limit" name="limit" min="1"
+                               placeholder="Leave empty to scrape all papers">
+                        <small class="form-text text-muted">Limit the number of papers to scrape (for testing)</small>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">
+                    <i class="fas fa-times mr-1"></i>Cancel
+                </button>
+                <button type="button" class="btn btn-primary" id="submitNewConference">
+                    <i class="fas fa-rocket mr-1"></i>Create & Start Scraping
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Schema Help Modal -->
+<div class="modal fade" id="schemaHelpModal" tabindex="-1" role="dialog" aria-labelledby="schemaHelpModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title" id="schemaHelpModalLabel">
+                    <i class="fas fa-question-circle mr-2"></i>Scraping Schema Format
+                </h5>
+                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info">
+                    <i class="fas fa-magic mr-2"></i><strong>Note:</strong> The scraping schema is optional. 
+                    If left empty, the system will automatically analyze the paper listing page and infer the appropriate schema.
+                </div>
+                <p>If you want to provide a custom schema, it should be a JSON object with the following structure:</p>
+                <pre class="bg-light p-3 rounded"><code>{
+  "name": "Schema Description",
+  "baseSelector": ".container-class",
+  "fields": [
+    {
+      "name": "title",
+      "type": "text",
+      "selector": ".title-class"
+    },
+    {
+      "name": "authors",
+      "type": "list",
+      "selector": ".author-link",
+      "fields": [
+        {
+          "name": "author_name",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "name": "paper_url",
+      "type": "attribute",
+      "selector": "a.paper-link",
+      "attribute": "href"
+    }
+  ]
+}</code></pre>
+                <dl class="mt-3">
+                    <dt><code>name</code></dt>
+                    <dd>Description of the schema</dd>
+                    
+                    <dt><code>baseSelector</code></dt>
+                    <dd>CSS selector for the container of each paper item</dd>
+                    
+                    <dt><code>fields</code></dt>
+                    <dd>Array of field definitions:
+                        <ul class="mt-2">
+                            <li><strong>type: "text"</strong> - Extract text content from element</li>
+                            <li><strong>type: "list"</strong> - Extract multiple items (like authors)</li>
+                            <li><strong>type: "attribute"</strong> - Extract an attribute value (requires <code>attribute</code> field)</li>
+                        </ul>
+                    </dd>
+                </dl>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-info" data-dismiss="modal">
+                    <i class="fas fa-check mr-1"></i>Got it
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.log-container {
+    height: 500px;
+    max-height: 500px;
+    min-height: 500px;
+    overflow-y: auto;
+    overflow-x: auto;
+    background-color: #1e1e1e;
+    border-radius: 4px;
+    margin: 0;
+}
+
+#log-content {
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    margin: 0;
+    padding: 0;
+    color: #d4d4d4;
+    display: block;
+    height: auto;
+}
+
+#log-content code {
+    display: block;
+    padding: 15px;
+}
+
+.scrape-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.conference-card {
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.conference-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
+}
+</style>
+
 <script>
+// Helper functions for modals
+function showSuccessModal(message) {
+    $('#success-message').text(message);
+    $('#successModal').modal('show');
+}
+
+function showErrorModal(message) {
+    $('#error-message').text(message);
+    $('#errorModal').modal('show');
+}
+
 $(document).ready(function() {
     let filterTimeout;
     const $filterInput = $('#filter-input');
     const $clearButton = $('#clear-filters');
     const $conferenceContainer = $('#conferences-container');
     const $paginationContainer = $('#pagination-container');
+    let currentConferenceId = null;
+    let logRefreshInterval = null;
+    
+    // === Scraping functionality ===
+    
+    // Handle scrape button click
+    $(document).on('click', '.scrape-btn', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        const conferenceId = $(this).data('conference-id');
+        const conferenceName = $(this).data('conference-name');
+        const isScraping = $(this).data('is-scraping');
+        
+        currentConferenceId = conferenceId;
+        
+        if (isScraping) {
+            // Show log viewer for ongoing scraping
+            showLogViewer(conferenceId, conferenceName);
+        } else {
+            // Show confirmation modal
+            $('#scraping-conference-name').text(conferenceName);
+            $('#scraping-limit').val(''); // Clear previous limit
+            $('#scrapingModal').modal('show');
+        }
+    });
+    
+    // Clear limit button
+    $('#scrape-all-btn').on('click', function() {
+        $('#scraping-limit').val('');
+    });
+    
+    // Confirm scraping start
+    $('#confirm-scraping').on('click', function() {
+        const $btn = $(this);
+        const originalHtml = $btn.html();
+        const limit = $('#scraping-limit').val();
+        
+        $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin mr-1"></i>Starting...');
+        
+        const requestData = {};
+        if (limit && limit > 0) {
+            requestData.limit = parseInt(limit);
+        }
+        
+        $.ajax({
+            url: `/conference/${currentConferenceId}/scrape/start/`,
+            type: 'POST',
+            data: JSON.stringify(requestData),
+            contentType: 'application/json',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            success: function(response) {
+                if (response.success) {
+                    $('#scrapingModal').modal('hide');
+                    
+                    // Show log viewer
+                    const conferenceName = $('#scraping-conference-name').text();
+                    showLogViewer(currentConferenceId, conferenceName);
+                    
+                    // Update button state
+                    const $scrapeBtn = $(`.scrape-btn[data-conference-id="${currentConferenceId}"]`);
+                    $scrapeBtn.data('is-scraping', true)
+                              .attr('title', 'Scraping in progress')
+                              .html('<i class="fas fa-spinner fa-spin"></i>');
+                } else {
+                    showErrorModal(response.message);
+                }
+            },
+            error: function(xhr) {
+                const message = xhr.responseJSON?.message || 'Failed to start scraping';
+                showErrorModal(message);
+            },
+            complete: function() {
+                $btn.prop('disabled', false).html(originalHtml);
+            }
+        });
+    });
+    
+    // Show log viewer modal
+    function showLogViewer(conferenceId, conferenceName) {
+        currentConferenceId = conferenceId;
+        $('#log-conference-name').text(conferenceName);
+        $('#logViewerModal').modal('show');
+        
+        // Start refreshing log
+        refreshLog();
+        startLogRefresh();
+    }
+    
+    // Refresh log content
+    function refreshLog() {
+        if (!currentConferenceId) return;
+        
+        $.ajax({
+            url: `/conference/${currentConferenceId}/scrape/log/`,
+            type: 'GET',
+            success: function(response) {
+                if (response.success) {
+                    const content = response.content || 'No log content available yet.';
+                    $('#log-content').text(content);
+                    
+                    // Scroll to bottom
+                    const logContainer = $('.log-container')[0];
+                    if (logContainer) {
+                        logContainer.scrollTop = logContainer.scrollHeight;
+                    }
+                } else {
+                    $('#log-content').text(response.message || 'Error loading log file.');
+                }
+            },
+            error: function(xhr) {
+                const message = xhr.responseJSON?.message || 'Error loading log file.';
+                $('#log-content').text(message);
+            }
+        });
+        
+        // Update status
+        updateScrapingStatus();
+    }
+    
+    // Update scraping status
+    function updateScrapingStatus() {
+        if (!currentConferenceId) return;
+        
+        $.ajax({
+            url: `/conference/${currentConferenceId}/scrape/status/`,
+            type: 'GET',
+            success: function(data) {
+                const isScraping = data.is_scraping;
+                const status = data.last_scrape_status || 'unknown';
+                const paperCount = data.paper_count || 0;
+                
+                // Update badge
+                let badgeClass = 'badge-secondary';
+                let badgeText = 'Unknown';
+                let badgeIcon = '';
+                
+                if (isScraping) {
+                    badgeClass = 'badge-info';
+                    badgeText = 'Running';
+                    badgeIcon = '<i class="fas fa-spinner fa-spin mr-1"></i>';
+                } else if (status === 'success') {
+                    badgeClass = 'badge-success';
+                    badgeText = 'Completed';
+                    badgeIcon = '<i class="fas fa-check mr-1"></i>';
+                } else if (status === 'failed') {
+                    badgeClass = 'badge-danger';
+                    badgeText = 'Failed';
+                    badgeIcon = '<i class="fas fa-times mr-1"></i>';
+                } else if (status === 'cancelled') {
+                    badgeClass = 'badge-warning';
+                    badgeText = 'Cancelled';
+                    badgeIcon = '<i class="fas fa-ban mr-1"></i>';
+                }
+                
+                $('#log-status-badge').removeClass().addClass(`badge ${badgeClass}`).html(badgeIcon + badgeText);
+                $('#log-paper-count').text(paperCount);
+                
+                // Enable/disable stop button
+                $('#stop-scraping').prop('disabled', !isScraping);
+                
+                // Stop refreshing if not scraping
+                if (!isScraping) {
+                    stopLogRefresh();
+                }
+            }
+        });
+    }
+    
+    // Start auto-refresh
+    function startLogRefresh() {
+        stopLogRefresh(); // Clear any existing interval
+        logRefreshInterval = setInterval(refreshLog, 2000); // Refresh every 2 seconds
+    }
+    
+    // Stop auto-refresh
+    function stopLogRefresh() {
+        if (logRefreshInterval) {
+            clearInterval(logRefreshInterval);
+            logRefreshInterval = null;
+        }
+    }
+    
+    // Manual refresh button
+    $('#refresh-log').on('click', function() {
+        const $icon = $(this).find('i');
+        $icon.addClass('fa-spin');
+        refreshLog();
+        setTimeout(() => $icon.removeClass('fa-spin'), 1000);
+    });
+    
+    // Stop scraping button
+    $('#stop-scraping').on('click', function() {
+        if (!currentConferenceId) return;
+        
+        // Show confirmation modal
+        $('#stopScrapingModal').modal('show');
+    });
+    
+    // Confirm stop scraping
+    $('#confirm-stop-scraping').on('click', function() {
+        if (!currentConferenceId) return;
+        
+        // Hide the confirmation modal
+        $('#stopScrapingModal').modal('hide');
+        
+        const $btn = $('#stop-scraping');
+        const originalHtml = $btn.html();
+        
+        $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin mr-1"></i>Stopping...');
+        
+        $.ajax({
+            url: `/conference/${currentConferenceId}/scrape/stop/`,
+            type: 'POST',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            success: function(response) {
+                if (response.success) {
+                    showSuccessModal('Scraping stopped successfully.');
+                    refreshLog();
+                } else {
+                    showErrorModal(response.message);
+                }
+            },
+            error: function() {
+                showErrorModal('Failed to stop scraping.');
+            },
+            complete: function() {
+                $btn.prop('disabled', false).html(originalHtml);
+            }
+        });
+    });
+    
+    // Clean up when modal is closed
+    $('#logViewerModal').on('hidden.bs.modal', function() {
+        stopLogRefresh();
+        currentConferenceId = null;
+        
+        // Refresh conference list to update button states
+        location.reload();
+    });
+    
+    // === Filter functionality (existing) ===
     
     // Auto-filter on input with debouncing
     $filterInput.on('input', function() {
@@ -244,7 +917,7 @@ $(document).ready(function() {
             },
             error: function() {
                 $conferenceContainer.css('opacity', '1');
-                alert('Error applying filter. Please try again.');
+                showErrorModal('Error applying filter. Please try again.');
             }
         });
     }
@@ -281,6 +954,174 @@ $(document).ready(function() {
                 $conferenceContainer.css('opacity', '1');
             }
         });
+    });
+    
+    // === New Conference functionality ===
+    
+    // MICCAI template
+    const miccaiTemplate = {
+        "name": "MICCAI Paper Listings",
+        "baseSelector": ".posts-list-item",
+        "fields": [
+            {
+                "name": "title",
+                "type": "text",
+                "selector": ".posts-list-item-name b"
+            },
+            {
+                "name": "authors",
+                "type": "list",
+                "selector": "ul li a[href^='/miccai-']",
+                "fields": [
+                    {
+                        "name": "author_name",
+                        "type": "text"
+                    }
+                ]
+            },
+            {
+                "name": "paper_url",
+                "type": "attribute",
+                "selector": "li a[href*='Paper']",
+                "attribute": "href"
+            },
+            {
+                "name": "pdf_url",
+                "type": "attribute",
+                "selector": "a[href*='paper.pdf']",
+                "attribute": "href"
+            }
+        ]
+    };
+    
+    // Handle schema template selection
+    $('#scraping_schema_select').on('change', function() {
+        const value = $(this).val();
+        const $textarea = $('#scraping_schema');
+        
+        if (value === 'miccai') {
+            $textarea.val(JSON.stringify(miccaiTemplate, null, 2));
+        } else if (value === 'custom') {
+            $textarea.val('').focus();
+        }
+    });
+    
+    // Show schema help modal
+    $('#schema-help-link').on('click', function(e) {
+        e.preventDefault();
+        $('#schemaHelpModal').modal('show');
+    });
+    
+    // Update file input label when file is selected
+    $('#conference_logo').on('change', function() {
+        const fileName = $(this).val().split('\\').pop();
+        $(this).next('.custom-file-label').html(fileName || 'Choose logo image...');
+    });
+    
+    // Handle new conference form submission
+    $('#submitNewConference').on('click', function() {
+        const $btn = $(this);
+        const originalHtml = $btn.html();
+        const $form = $('#newConferenceForm');
+        
+        // Get form values
+        const name = $('#conference_name').val().trim();
+        const acronym = $('#conference_acronym').val().trim();
+        const year = $('#conference_year').val();
+        const website_url = $('#website_url').val().trim();
+        const papers_url = $('#papers_url').val().trim();
+        const scraping_schema_raw = $('#scraping_schema').val().trim();
+        const limit = $('#scraping_limit').val();
+        const logo_file = $('#conference_logo')[0].files[0];
+        
+        // Validate required fields
+        if (!name) {
+            showErrorModal('Conference name is required.');
+            return;
+        }
+        
+        if (!papers_url) {
+            showErrorModal('Papers URL is required.');
+            return;
+        }
+        
+        // Validate and prepare scraping schema
+        let scraping_schema = '';
+        if (scraping_schema_raw) {
+            try {
+                // Validate it's valid JSON
+                JSON.parse(scraping_schema_raw);
+                scraping_schema = scraping_schema_raw;
+            } catch (e) {
+                showErrorModal('Scraping schema must be valid JSON. Error: ' + e.message);
+                return;
+            }
+        }
+        
+        // Create FormData object to support file upload
+        const formData = new FormData();
+        formData.append('name', name);
+        if (acronym) formData.append('acronym', acronym);
+        if (year) formData.append('year', year);
+        if (website_url) formData.append('website_url', website_url);
+        formData.append('papers_url', papers_url);
+        if (scraping_schema) formData.append('scraping_schema', scraping_schema);
+        if (limit) formData.append('limit', limit);
+        if (logo_file) formData.append('logo', logo_file);
+        
+        // Disable button
+        $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin mr-1"></i>Creating...');
+        
+        // Submit via AJAX
+        $.ajax({
+            url: '/conference/create-and-scrape/',
+            type: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            success: function(response) {
+                if (response.success) {
+                    // Hide new conference modal
+                    $('#newConferenceModal').modal('hide');
+                    
+                    // Reset form
+                    $form[0].reset();
+                    $('#scraping_schema_select').val('');
+                    
+                    // Show success message
+                    showSuccessModal(response.message);
+                    
+                    // Show log viewer for the new conference
+                    setTimeout(function() {
+                        showLogViewer(response.conference_id, name);
+                    }, 500);
+                    
+                    // Reload page after modal is closed to show new conference
+                    $('#successModal').on('hidden.bs.modal', function() {
+                        location.reload();
+                    });
+                } else {
+                    showErrorModal(response.message);
+                }
+            },
+            error: function(xhr) {
+                const message = xhr.responseJSON?.message || 'Failed to create conference';
+                showErrorModal(message);
+            },
+            complete: function() {
+                $btn.prop('disabled', false).html(originalHtml);
+            }
+        });
+    });
+    
+    // Reset form when modal is closed
+    $('#newConferenceModal').on('hidden.bs.modal', function() {
+        $('#newConferenceForm')[0].reset();
+        $('#scraping_schema_select').val('');
+        $('.custom-file-label').html('Choose logo image...');
     });
 });
 </script>

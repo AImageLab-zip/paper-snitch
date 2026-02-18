@@ -1,15 +1,15 @@
 {
   "name": "MICCAI 2022 Paper Listings",
-  "baseSelector": ".posts-list-item",
+  "baseSelector": "ul li",
   "fields": [
     {
       "name": "title",
-      "selector": ".posts-list-item-name a",
+      "selector": "a[href*=\"Paper\"]",
       "type": "text"
     },
     {
-      "name": "link",
-      "selector": ".posts-list-item-name a",
+      "name": "paper_url",
+      "selector": "a[href*=\"Paper\"]",
       "type": "attribute",
       "attribute": "href"
     }

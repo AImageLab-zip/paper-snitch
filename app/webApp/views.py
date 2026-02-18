@@ -100,7 +100,7 @@ class CheckPastAnalysesView(LoginRequiredMixin, View):
                 tmp_path = tmp_file.name
 
             try:
-                title, text = get_pdf_content(tmp_path)
+                title, text, sections = get_pdf_content(tmp_path)
             finally:
                 # Clean up temporary file
                 if os.path.exists(tmp_path):
@@ -145,7 +145,7 @@ class CheckPastAnalysesView(LoginRequiredMixin, View):
             pdf_file.seek(0)
             pdf_content = ContentFile(pdf_file.read(), name=filename)
 
-            paper = Paper.objects.create(title=title, text=text, file=pdf_content)
+            paper = Paper.objects.create(title=title, text=text, sections=sections, file=pdf_content)
             paper.save()
 
             paper_id = paper.id
@@ -345,7 +345,7 @@ class AnalyzePaperView(View):
                 pdf_file.seek(0)
                 pdf_content = ContentFile(pdf_file.read(), name=title + ".pdf")
                 paper = Paper.objects.create(
-                    title=base_title, text=text, file=pdf_content
+                    title=base_title, text=text, sections=sections, file=pdf_content
                 )
 
         else:
@@ -556,8 +556,8 @@ class ConferenceListView(View):
                 Q(year__icontains=search_query)
             )
         
-        # Order by name
-        conferences = conferences.order_by('name', '-year')
+        # Order by year (latest first), then by name
+        conferences = conferences.order_by('-year', 'name')
         
         # Pagination
         paginator = Paginator(conferences, 20)  # 20 conferences per page
@@ -580,11 +580,35 @@ class ConferenceDetailView(View):
 
     def get(self, request, conference_id):
         """Display conference with its papers, search, and pagination."""
+        from django.db.models import Count, Prefetch
+        from django.core.paginator import Paginator
+        
         conference = get_object_or_404(Conference, id=conference_id)
         search_query = request.GET.get('q', '').strip()
         
-        # Get papers for this conference
-        papers = Paper.objects.filter(conference=conference)
+        # Get total paper count for this conference (optimized)
+        total_papers = Paper.objects.filter(conference=conference).count()
+        
+        # Prefetch latest workflow run for each paper (single additional query)
+        latest_workflow_prefetch = Prefetch(
+            'workflow_runs',
+            queryset=WorkflowRun.objects.order_by('-created_at').only('id', 'status', 'created_at')[:1],
+            to_attr='latest_workflow_list'
+        )
+        
+        # Get papers for this conference with workflow stats annotated
+        # Use only() to fetch only required fields for better performance
+        papers = Paper.objects.filter(
+            conference=conference
+        ).select_related(
+            'conference'
+        ).prefetch_related(
+            latest_workflow_prefetch
+        ).only(
+            'id', 'title', 'doi', 'authors', 'conference__id', 'conference__name'
+        ).annotate(
+            workflow_count=Count('workflow_runs')
+        )
         
         # Apply search filter
         if search_query:
@@ -597,24 +621,8 @@ class ConferenceDetailView(View):
         # Order by title
         papers = papers.order_by('title')
         
-        # Annotate each paper with workflow statistics
-        papers_with_stats = []
-        for paper in papers:
-            # Get workflow stats - only workflows, not legacy Analysis
-            workflow_runs = WorkflowRun.objects.filter(paper=paper)
-            total_workflows = workflow_runs.count()
-            
-            latest_workflow = workflow_runs.order_by('-created_at').first()
-            latest_status = latest_workflow.status if latest_workflow else None
-            
-            paper.workflow_stats = {
-                'total': total_workflows,
-                'latest_status': latest_status,
-            }
-            papers_with_stats.append(paper)
-        
-        # Pagination
-        paginator = Paginator(papers_with_stats, 25)  # 25 papers per page
+        # Pagination - paginate BEFORE accessing the data
+        paginator = Paginator(papers, 25)  # 25 papers per page
         page_number = request.GET.get('page', 1)
         page_obj = paginator.get_page(page_number)
         
@@ -623,6 +631,7 @@ class ConferenceDetailView(View):
             'papers': page_obj,
             'page_obj': page_obj,
             'search_query': search_query,
+            'total_papers': total_papers,  # Pre-calculated count
         }
         
         return render(request, self.template_name, context)
