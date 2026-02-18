@@ -1,5 +1,7 @@
 from django.contrib import admin
 from django.utils.html import format_html
+from django.db import models
+import json
 from .models import (
     AnalysisTask,
     Operations,
@@ -17,6 +19,32 @@ from .models import (
 from .models_schema import DatabaseSchema
 
 
+def format_json_with_highlighting(data):
+    """Format JSON data for display."""
+    if not data:
+        return '<em>No data available</em>'
+    
+    formatted_json = json.dumps(data, indent=2, ensure_ascii=False)
+    
+    return format_html(
+        '<div style="max-width: 1000px;">'
+        '<pre style="'
+        'background: #f8f8f8;'
+        'border: 1px solid #ddd;'
+        'border-radius: 4px;'
+        'padding: 15px;'
+        'overflow-x: auto;'
+        'font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace;'
+        'font-size: 13px;'
+        'line-height: 1.6;'
+        'max-height: 600px;'
+        'overflow-y: auto;'
+        '">{}</pre>'
+        '</div>',
+        formatted_json
+    )
+
+
 @admin.register(Operations)
 class OperationsAdmin(admin.ModelAdmin):
     list_display = ["name"]
@@ -25,10 +53,26 @@ class OperationsAdmin(admin.ModelAdmin):
 
 @admin.register(Conference)
 class ConferenceAdmin(admin.ModelAdmin):
-    list_display = ["name", "year", "last_update"]
+    list_display = ["name", "year", "paper_count", "last_update"]
     list_filter = ["year"]
     search_fields = ["name"]
-    readonly_fields = ["last_update"]
+    readonly_fields = ["last_update", "scraping_schema_display"]
+    
+    def paper_count(self, obj):
+        return obj.papers.count()
+    paper_count.short_description = "Papers"
+    paper_count.admin_order_field = "papers__count"
+    
+    def get_queryset(self, request):
+        queryset = super().get_queryset(request)
+        queryset = queryset.annotate(
+            models.Count("papers")
+        )
+        return queryset
+    
+    def scraping_schema_display(self, obj):
+        return format_json_with_highlighting(obj.scraping_schema)
+    scraping_schema_display.short_description = "Scraping Schema (JSON)"
 
 
 class DatasetInline(admin.TabularInline):
@@ -55,8 +99,8 @@ class DatasetInline(admin.TabularInline):
 class PaperAdmin(admin.ModelAdmin):
     list_display = ["title", "doi", "last_update"]
     search_fields = ["title", "doi", "authors", "abstract"]
-    readonly_fields = ["last_update", "text_preview", "reviews_preview", "author_feedback_preview", "meta_review_preview", "metadata_display"]
-    exclude = ["text", "reviews", "author_feedback", "meta_review", "metadata"]
+    readonly_fields = ["last_update", "text_preview", "reviews_preview", "author_feedback_preview", "meta_review_preview", "sections_display", "metadata_display"]
+    exclude = ["text", "reviews", "author_feedback", "meta_review", "sections", "metadata"]
     inlines = [DatasetInline]
     
     def text_preview(self, obj):
@@ -167,29 +211,12 @@ class PaperAdmin(admin.ModelAdmin):
         return "No meta-review available"
     meta_review_preview.short_description = "All meta review text"
     
+    def sections_display(self, obj):
+        return format_json_with_highlighting(obj.sections)
+    sections_display.short_description = "Paper Sections (JSON)"
+    
     def metadata_display(self, obj):
-        if obj.metadata:
-            import json
-            formatted_json = json.dumps(obj.metadata, indent=2, ensure_ascii=False)
-            return format_html(
-                '<div style="max-width: 1000px;">'
-                '<pre style="'
-                'background: #f8f8f8;'
-                'border: 1px solid #ddd;'
-                'border-radius: 4px;'
-                'padding: 15px;'
-                'overflow-x: auto;'
-                'font-family: \"Courier New\", monospace;'
-                'font-size: 13px;'
-                'line-height: 1.5;'
-                'color: #333;'
-                'max-height: 600px;'
-                'overflow-y: auto;'
-                '">{}</pre>'
-                '</div>',
-                formatted_json
-            )
-        return format_html('<em style="color: #999;">No metadata available</em>')
+        return format_json_with_highlighting(obj.metadata)
     metadata_display.short_description = "Metadata (unknown/unexpected fields)"
 
 

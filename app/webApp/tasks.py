@@ -665,7 +665,7 @@ def run_old_celery_task(self, task_id):
 
 
 @shared_task(bind=True)
-def scrape_conference_task(self, conference_name: str, conference_url: str, year: Optional[int] = None, limit: Optional[int] = None):
+def scrape_conference_task(self, conference_name: str, conference_url: str, year: Optional[int] = None, limit: Optional[int] = None, conference_id: Optional[int] = None):
     """
     Celery task to scrape a conference website and save papers to database.
     
@@ -674,6 +674,7 @@ def scrape_conference_task(self, conference_name: str, conference_url: str, year
         conference_url: URL of the conference papers page
         year: Conference year (optional)
         limit: Maximum number of papers to scrape (for testing)
+        conference_id: Existing conference ID to update (optional, prevents duplicates)
     
     Returns:
         Dictionary with scraping results
@@ -691,7 +692,8 @@ def scrape_conference_task(self, conference_name: str, conference_url: str, year
         scraper = ConferenceScraper(
             conference_name=conference_name,
             conference_url=conference_url,
-            year=year
+            year=year,
+            conference_id=conference_id
         )
         
         # Progress callback for updates

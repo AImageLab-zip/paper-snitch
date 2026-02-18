@@ -39,6 +39,13 @@ from .views import (
     RerunFromNodeView,
 )
 
+from .scraping_views import (
+    StartScrapingView,
+    ScrapingStatusView,
+    ScrapingLogView,
+    StopScrapingView,
+)
+
 from django.contrib.auth import views as auth_views
 
 urlpatterns = [
@@ -51,6 +58,13 @@ urlpatterns = [
     path("workflow/node/<uuid:node_id>/", WorkflowNodeDetailView.as_view(), name="workflow_node_detail"),
     path("workflow/node/<uuid:node_id>/rerun/", RerunSingleNodeView.as_view(), name="rerun_single_node"),
     path("workflow/node/<uuid:node_id>/rerun-from/", RerunFromNodeView.as_view(), name="rerun_from_node"),
+    
+    # Scraping operations
+    path("conference/<int:conference_id>/scrape/start/", StartScrapingView.as_view(), name="start_scraping"),
+    path("conference/<int:conference_id>/scrape/status/", ScrapingStatusView.as_view(), name="scraping_status"),
+    path("conference/<int:conference_id>/scrape/log/", ScrapingLogView.as_view(), name="scraping_log"),
+    path("conference/<int:conference_id>/scrape/stop/", StopScrapingView.as_view(), name="stop_scraping"),
+    
     path("accounts/", include("django.contrib.auth.urls")),
     path("accounts/login/", auth_views.LoginView.as_view(), name="login"),
     path("accounts/signup/", SignUpView.as_view(), name="signup"),

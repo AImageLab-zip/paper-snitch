@@ -57,8 +57,8 @@ class AsyncWorkflowOperations:
         """
         workflow, created = WorkflowDefinition.objects.get_or_create(
             name=name,
+            version=version,
             defaults={
-                "version": version,
                 "description": description,
                 "dag_structure": dag_structure,
                 "is_active": True

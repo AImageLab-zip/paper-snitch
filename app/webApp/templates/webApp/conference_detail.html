@@ -19,7 +19,7 @@
                                 {% if conference.year %}
                                 <span class="mr-3"><i class="fas fa-calendar mr-1"></i>{{ conference.year }}</span>
                                 {% endif %}
-                                <span><i class="fas fa-file-pdf mr-1"></i>{{ conference.papers.count }} paper{{ conference.papers.count|pluralize }}</span>
+                                <span><i class="fas fa-file-pdf mr-1"></i>{{ total_papers }} paper{{ total_papers|pluralize }}</span>
                             </div>
                         </div>
                         <div>
@@ -110,29 +110,31 @@
                                         </small>
                                     </td>
                                     <td class="text-center">
-                                        {% if paper.workflow_stats.total > 0 %}
+                                        {% if paper.workflow_count > 0 %}
                                         <div class="d-flex justify-content-center align-items-center">
-                                            {% if paper.workflow_stats.latest_status == 'completed' %}
+                                            {% with latest=paper.latest_workflow_list.0 %}
+                                            {% if latest.status == 'completed' %}
                                             <span class="badge badge-success">
                                                 <i class="fas fa-check-circle"></i> Completed
                                             </span>
-                                            {% elif paper.workflow_stats.latest_status == 'running' %}
+                                            {% elif latest.status == 'running' %}
                                             <span class="badge badge-info">
                                                 <i class="fas fa-spinner fa-spin"></i> Running
                                             </span>
-                                            {% elif paper.workflow_stats.latest_status == 'failed' %}
+                                            {% elif latest.status == 'failed' %}
                                             <span class="badge badge-danger">
                                                 <i class="fas fa-times-circle"></i> Failed
                                             </span>
-                                            {% elif paper.workflow_stats.latest_status == 'pending' %}
+                                            {% elif latest.status == 'pending' %}
                                             <span class="badge badge-warning">
                                                 <i class="fas fa-clock"></i> Pending
                                             </span>
                                             {% else %}
                                             <span class="badge badge-secondary">
-                                                <i class="fas fa-minus-circle"></i> {{ paper.workflow_stats.latest_status|title }}
+                                                <i class="fas fa-minus-circle"></i> {{ latest.status|title }}
                                             </span>
                                             {% endif %}
+                                            {% endwith %}
                                         </div>
                                         {% else %}
                                         <span class="text-muted">
@@ -141,9 +143,9 @@
                                         {% endif %}
                                     </td>
                                     <td class="text-center">
-                                        {% if paper.workflow_stats.total > 0 %}
+                                        {% if paper.workflow_count > 0 %}
                                         <span class="badge badge-primary" style="font-size: 1rem;">
-                                            {{ paper.workflow_stats.total }}
+                                            {{ paper.workflow_count }}
                                         </span>
                                         {% else %}
                                         <span class="text-muted">0</span>

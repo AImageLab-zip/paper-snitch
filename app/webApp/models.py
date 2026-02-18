@@ -18,9 +18,23 @@ class Operations(models.Model):
 
 class Conference(models.Model):
 
-    name = models.CharField(max_length=300, verbose_name="Conference name")
+    name = models.CharField(max_length=300, verbose_name="Conference name", 
+                            help_text="Full display name, e.g., 'MICCAI 2024'")
+    acronym = models.CharField(max_length=50, verbose_name="Acronym", blank=True, null=True,
+                                help_text="Short name, e.g., 'MICCAI'")
+    full_name = models.CharField(max_length=500, verbose_name="Full name", blank=True, null=True,
+                                  help_text="Complete conference name, e.g., 'Medical Image Computing and Computer Assisted Intervention'")
     year = models.IntegerField(verbose_name="Year", blank=True, null=True)
-    url = models.URLField(verbose_name="Website", blank=True, max_length=500)
+    website_url = models.URLField(verbose_name="Conference Website", blank=True, max_length=500,
+                                   help_text="Main conference website URL")
+    papers_url = models.URLField(verbose_name="Papers Page URL", blank=True, max_length=500,
+                                  help_text="URL of the page listing papers")
+    scraping_schema = models.JSONField(
+        verbose_name="Scraping Schema",
+        blank=True,
+        null=True,
+        help_text="JSON schema for scraping papers from this conference"
+    )
     logo = models.ImageField(
         upload_to="conference_logos/",
         blank=True,
@@ -29,14 +43,59 @@ class Conference(models.Model):
         help_text="Upload conference logo or icon"
     )
     last_update = models.DateTimeField(auto_now=True, verbose_name="Last update")
+    
+    # Scraping status tracking
+    is_scraping = models.BooleanField(
+        default=False,
+        verbose_name="Scraping in Progress",
+        help_text="True if scraping is currently running for this conference"
+    )
+    last_scrape_start = models.DateTimeField(
+        blank=True,
+        null=True,
+        verbose_name="Last Scrape Start",
+        help_text="When the last scraping process was started"
+    )
+    last_scrape_end = models.DateTimeField(
+        blank=True,
+        null=True,
+        verbose_name="Last Scrape End",
+        help_text="When the last scraping process completed"
+    )
+    last_scrape_status = models.CharField(
+        max_length=50,
+        blank=True,
+        null=True,
+        verbose_name="Last Scrape Status",
+        choices=[
+            ('success', 'Success'),
+            ('failed', 'Failed'),
+            ('cancelled', 'Cancelled'),
+            ('running', 'Running'),
+        ],
+        help_text="Status of the last scraping operation"
+    )
+    scraping_log_file = models.CharField(
+        max_length=500,
+        blank=True,
+        null=True,
+        verbose_name="Scraping Log File",
+        help_text="Path to the current/last scraping log file"
+    )
 
     class Meta:
-        ordering = ["name"]
+        ordering = ["-year", "acronym"]
         verbose_name = "Conference"
         verbose_name_plural = "Conferences"
+        unique_together = [['acronym', 'year']]
 
     def __str__(self):
-        return f"{self.name}{self.year}"
+        return self.name
+    
+    @property
+    def url(self):
+        """Backward compatibility property"""
+        return self.papers_url or self.website_url
 
 
 # class Author(models.Model):
@@ -72,11 +131,11 @@ class Paper(models.Model):
     pdf_url = models.URLField(verbose_name="PDF URL", blank=True, max_length=500)
     code_url = models.URLField(verbose_name="Code URL", blank=True, max_length=500)
     authors = models.CharField(
-        max_length=255, unique=True, verbose_name="Authors", blank=True, null=True
+        max_length=255, verbose_name="Authors", blank=True, null=True
     )
     conference = models.ForeignKey(
         Conference,
-        on_delete=models.PROTECT,
+        on_delete=models.CASCADE,
         related_name="papers",
         verbose_name="Conference",
         blank=True,
@@ -89,6 +148,12 @@ class Paper(models.Model):
     )
 
     text = models.TextField(verbose_name="Full paper text", blank=True, null=True)
+    sections = models.JSONField(
+        verbose_name="Paper sections",
+        blank=True,
+        null=True,
+        help_text="Dictionary mapping section names to their content"
+    )
     code_text = models.TextField(
         verbose_name="Code text retrieved from the repository", blank=True, null=True
     )

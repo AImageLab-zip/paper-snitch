@@ -1150,7 +1150,6 @@ async def code_repository_analysis_node(
         analysis = CodeReproducibilityAnalysis(
             analysis_timestamp=datetime.utcnow().isoformat(),
             code_availability=code_availability,  # Use result from Node B
-            ),
             research_methodology=repo_analysis.get("methodology"),
             repository_structure=repo_analysis.get("structure"),
             code_components=repo_analysis.get("components"),
