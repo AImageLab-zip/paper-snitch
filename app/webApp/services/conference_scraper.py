@@ -448,20 +448,25 @@ class ConferenceScraper:
         conference = await get_or_create_conference()
         logger.info(f"Conference: {conference}")
 
-        # Fetch HTML sample for schema generation if needed
-        schema_file = self.schema_cache_dir / f"{self.conference_name.lower().replace(' ', '_')}_schema.json"
-        if not schema_file.exists():
-            logger.info("Fetching HTML sample for schema generation...")
-            async with AsyncWebCrawler() as crawler:
-                result = await crawler.arun(url=self.conference_url)
-                if result.success:
-                    # Take only first 50KB of HTML to avoid token limits
-                    html_sample = result.html[:50000] if result.html else None
-                else:
-                    html_sample = None
-            schema = self.get_schema(html_sample=html_sample)
+        # Priority: Database schema > File schema > LLM generation
+        if conference.scraping_schema:
+            logger.info("Using schema from database")
+            schema = conference.scraping_schema
         else:
-            schema = self.get_schema()
+            # Fetch HTML sample for schema generation if needed
+            schema_file = self.schema_cache_dir / f"{self.conference_name.lower().replace(' ', '_')}_schema.json"
+            if not schema_file.exists():
+                logger.info("Fetching HTML sample for schema generation...")
+                async with AsyncWebCrawler() as crawler:
+                    result = await crawler.arun(url=self.conference_url)
+                    if result.success:
+                        # Take only first 50KB of HTML to avoid token limits
+                        html_sample = result.html[:50000] if result.html else None
+                    else:
+                        html_sample = None
+                schema = self.get_schema(html_sample=html_sample)
+            else:
+                schema = self.get_schema()
         
         # Crawl paper list using the schema
         paper_list = await self.crawl_paper_list(schema)

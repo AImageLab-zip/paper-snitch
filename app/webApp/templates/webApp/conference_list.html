@@ -8,8 +8,13 @@
     <div class="row justify-content-center">
         <div class="col-lg-10">
             <div class="card shadow">
-                <div class="card-header bg-primary text-white">
+                <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
                     <h4 class="mb-0"><i class="fas fa-calendar-alt mr-2"></i>Conferences</h4>
+                    {% if user.is_staff or user.is_superuser %}
+                    <button class="btn btn-light btn-sm" data-toggle="modal" data-target="#newConferenceModal">
+                        <i class="fas fa-plus-circle mr-1"></i>Add New Conference
+                    </button>
+                    {% endif %}
                 </div>
                 <div class="card-body">
                     <!-- Filter Bar -->
@@ -342,6 +347,195 @@
             <div class="modal-footer">
                 <button type="button" class="btn btn-danger" data-dismiss="modal">
                     <i class="fas fa-times mr-1"></i>Close
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- New Conference Modal -->
+<div class="modal fade" id="newConferenceModal" tabindex="-1" role="dialog" aria-labelledby="newConferenceModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="newConferenceModalLabel">
+                    <i class="fas fa-plus-circle mr-2"></i>Add New Conference and Start Scraping
+                </h5>
+                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="newConferenceForm">
+                    <div class="form-group">
+                        <label for="conference_name">
+                            <i class="fas fa-signature mr-1"></i>Conference Name <span class="text-danger">*</span>
+                        </label>
+                        <input type="text" class="form-control" id="conference_name" name="name" required
+                               placeholder="e.g., Medical Image Computing and Computer Assisted Intervention - MICCAI 2026">
+                        <small class="form-text text-muted">Full name of the conference</small>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="conference_acronym">
+                                    <i class="fas fa-tag mr-1"></i>Acronym
+                                </label>
+                                <input type="text" class="form-control" id="conference_acronym" name="acronym"
+                                       placeholder="e.g., MICCAI">
+                                <small class="form-text text-muted">Short name (optional)</small>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="conference_year">
+                                    <i class="fas fa-calendar mr-1"></i>Year
+                                </label>
+                                <input type="number" class="form-control" id="conference_year" name="year"
+                                       min="1900" max="2100" placeholder="e.g., 2026">
+                                <small class="form-text text-muted">Conference year (optional)</small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="website_url">
+                            <i class="fas fa-globe mr-1"></i>Conference Website
+                        </label>
+                        <input type="url" class="form-control" id="website_url" name="website_url"
+                               placeholder="https://conferences.miccai.org/2026/">
+                        <small class="form-text text-muted">Main conference website URL (optional)</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="papers_url">
+                            <i class="fas fa-link mr-1"></i>Papers URL <span class="text-danger">*</span>
+                        </label>
+                        <input type="url" class="form-control" id="papers_url" name="papers_url" required
+                               placeholder="https://papers.miccai.org/miccai-2026/">
+                        <small class="form-text text-muted">URL where the papers are listed</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="conference_logo">
+                            <i class="fas fa-image mr-1"></i>Conference Logo
+                        </label>
+                        <div class="custom-file">
+                            <input type="file" class="custom-file-input" id="conference_logo" name="logo" accept="image/*">
+                            <label class="custom-file-label" for="conference_logo">Choose logo image...</label>
+                        </div>
+                        <small class="form-text text-muted">Upload a logo for the conference (optional, PNG, JPG, or SVG)</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="scraping_schema_select">
+                            <i class="fas fa-code mr-1"></i>Scraping Schema (Optional)
+                        </label>
+                        <select class="form-control mb-2" id="scraping_schema_select">
+                            <option value="">-- Auto-infer schema or select template --</option>
+                            <option value="miccai">MICCAI Template</option>
+                            <option value="custom">Custom JSON</option>
+                        </select>
+                        <textarea class="form-control font-monospace" id="scraping_schema" name="scraping_schema" rows="12"
+                                  placeholder='Leave empty to auto-infer schema, or paste custom JSON here...'></textarea>
+                        <small class="form-text text-muted">
+                            <i class="fas fa-info-circle mr-1"></i>
+                            Leave empty to automatically infer the schema, or select a template/paste custom JSON. 
+                            <a href="#" id="schema-help-link" class="text-primary">
+                                <i class="fas fa-question-circle"></i> Schema format help
+                            </a>
+                        </small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="scraping_limit">
+                            <i class="fas fa-hashtag mr-1"></i>Limit (optional)
+                        </label>
+                        <input type="number" class="form-control" id="scraping_limit" name="limit" min="1"
+                               placeholder="Leave empty to scrape all papers">
+                        <small class="form-text text-muted">Limit the number of papers to scrape (for testing)</small>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">
+                    <i class="fas fa-times mr-1"></i>Cancel
+                </button>
+                <button type="button" class="btn btn-primary" id="submitNewConference">
+                    <i class="fas fa-rocket mr-1"></i>Create & Start Scraping
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Schema Help Modal -->
+<div class="modal fade" id="schemaHelpModal" tabindex="-1" role="dialog" aria-labelledby="schemaHelpModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title" id="schemaHelpModalLabel">
+                    <i class="fas fa-question-circle mr-2"></i>Scraping Schema Format
+                </h5>
+                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info">
+                    <i class="fas fa-magic mr-2"></i><strong>Note:</strong> The scraping schema is optional. 
+                    If left empty, the system will automatically analyze the paper listing page and infer the appropriate schema.
+                </div>
+                <p>If you want to provide a custom schema, it should be a JSON object with the following structure:</p>
+                <pre class="bg-light p-3 rounded"><code>{
+  "name": "Schema Description",
+  "baseSelector": ".container-class",
+  "fields": [
+    {
+      "name": "title",
+      "type": "text",
+      "selector": ".title-class"
+    },
+    {
+      "name": "authors",
+      "type": "list",
+      "selector": ".author-link",
+      "fields": [
+        {
+          "name": "author_name",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "name": "paper_url",
+      "type": "attribute",
+      "selector": "a.paper-link",
+      "attribute": "href"
+    }
+  ]
+}</code></pre>
+                <dl class="mt-3">
+                    <dt><code>name</code></dt>
+                    <dd>Description of the schema</dd>
+                    
+                    <dt><code>baseSelector</code></dt>
+                    <dd>CSS selector for the container of each paper item</dd>
+                    
+                    <dt><code>fields</code></dt>
+                    <dd>Array of field definitions:
+                        <ul class="mt-2">
+                            <li><strong>type: "text"</strong> - Extract text content from element</li>
+                            <li><strong>type: "list"</strong> - Extract multiple items (like authors)</li>
+                            <li><strong>type: "attribute"</strong> - Extract an attribute value (requires <code>attribute</code> field)</li>
+                        </ul>
+                    </dd>
+                </dl>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-info" data-dismiss="modal">
+                    <i class="fas fa-check mr-1"></i>Got it
                 </button>
             </div>
         </div>
@@ -760,6 +954,174 @@ $(document).ready(function() {
                 $conferenceContainer.css('opacity', '1');
             }
         });
+    });
+    
+    // === New Conference functionality ===
+    
+    // MICCAI template
+    const miccaiTemplate = {
+        "name": "MICCAI Paper Listings",
+        "baseSelector": ".posts-list-item",
+        "fields": [
+            {
+                "name": "title",
+                "type": "text",
+                "selector": ".posts-list-item-name b"
+            },
+            {
+                "name": "authors",
+                "type": "list",
+                "selector": "ul li a[href^='/miccai-']",
+                "fields": [
+                    {
+                        "name": "author_name",
+                        "type": "text"
+                    }
+                ]
+            },
+            {
+                "name": "paper_url",
+                "type": "attribute",
+                "selector": "li a[href*='Paper']",
+                "attribute": "href"
+            },
+            {
+                "name": "pdf_url",
+                "type": "attribute",
+                "selector": "a[href*='paper.pdf']",
+                "attribute": "href"
+            }
+        ]
+    };
+    
+    // Handle schema template selection
+    $('#scraping_schema_select').on('change', function() {
+        const value = $(this).val();
+        const $textarea = $('#scraping_schema');
+        
+        if (value === 'miccai') {
+            $textarea.val(JSON.stringify(miccaiTemplate, null, 2));
+        } else if (value === 'custom') {
+            $textarea.val('').focus();
+        }
+    });
+    
+    // Show schema help modal
+    $('#schema-help-link').on('click', function(e) {
+        e.preventDefault();
+        $('#schemaHelpModal').modal('show');
+    });
+    
+    // Update file input label when file is selected
+    $('#conference_logo').on('change', function() {
+        const fileName = $(this).val().split('\\').pop();
+        $(this).next('.custom-file-label').html(fileName || 'Choose logo image...');
+    });
+    
+    // Handle new conference form submission
+    $('#submitNewConference').on('click', function() {
+        const $btn = $(this);
+        const originalHtml = $btn.html();
+        const $form = $('#newConferenceForm');
+        
+        // Get form values
+        const name = $('#conference_name').val().trim();
+        const acronym = $('#conference_acronym').val().trim();
+        const year = $('#conference_year').val();
+        const website_url = $('#website_url').val().trim();
+        const papers_url = $('#papers_url').val().trim();
+        const scraping_schema_raw = $('#scraping_schema').val().trim();
+        const limit = $('#scraping_limit').val();
+        const logo_file = $('#conference_logo')[0].files[0];
+        
+        // Validate required fields
+        if (!name) {
+            showErrorModal('Conference name is required.');
+            return;
+        }
+        
+        if (!papers_url) {
+            showErrorModal('Papers URL is required.');
+            return;
+        }
+        
+        // Validate and prepare scraping schema
+        let scraping_schema = '';
+        if (scraping_schema_raw) {
+            try {
+                // Validate it's valid JSON
+                JSON.parse(scraping_schema_raw);
+                scraping_schema = scraping_schema_raw;
+            } catch (e) {
+                showErrorModal('Scraping schema must be valid JSON. Error: ' + e.message);
+                return;
+            }
+        }
+        
+        // Create FormData object to support file upload
+        const formData = new FormData();
+        formData.append('name', name);
+        if (acronym) formData.append('acronym', acronym);
+        if (year) formData.append('year', year);
+        if (website_url) formData.append('website_url', website_url);
+        formData.append('papers_url', papers_url);
+        if (scraping_schema) formData.append('scraping_schema', scraping_schema);
+        if (limit) formData.append('limit', limit);
+        if (logo_file) formData.append('logo', logo_file);
+        
+        // Disable button
+        $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin mr-1"></i>Creating...');
+        
+        // Submit via AJAX
+        $.ajax({
+            url: '/conference/create-and-scrape/',
+            type: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            success: function(response) {
+                if (response.success) {
+                    // Hide new conference modal
+                    $('#newConferenceModal').modal('hide');
+                    
+                    // Reset form
+                    $form[0].reset();
+                    $('#scraping_schema_select').val('');
+                    
+                    // Show success message
+                    showSuccessModal(response.message);
+                    
+                    // Show log viewer for the new conference
+                    setTimeout(function() {
+                        showLogViewer(response.conference_id, name);
+                    }, 500);
+                    
+                    // Reload page after modal is closed to show new conference
+                    $('#successModal').on('hidden.bs.modal', function() {
+                        location.reload();
+                    });
+                } else {
+                    showErrorModal(response.message);
+                }
+            },
+            error: function(xhr) {
+                const message = xhr.responseJSON?.message || 'Failed to create conference';
+                showErrorModal(message);
+            },
+            complete: function() {
+                $btn.prop('disabled', false).html(originalHtml);
+            }
+        });
+    });
+    
+    // Reset form when modal is closed
+    $('#newConferenceModal').on('hidden.bs.modal', function() {
+        $('#newConferenceForm')[0].reset();
+        $('#scraping_schema_select').val('');
+        $('.custom-file-label').html('Choose logo image...');
     });
 });
 </script>

@@ -44,6 +44,7 @@ from .scraping_views import (
     ScrapingStatusView,
     ScrapingLogView,
     StopScrapingView,
+    CreateAndScrapeConferenceView,
 )
 
 from django.contrib.auth import views as auth_views
@@ -60,6 +61,7 @@ urlpatterns = [
     path("workflow/node/<uuid:node_id>/rerun-from/", RerunFromNodeView.as_view(), name="rerun_from_node"),
     
     # Scraping operations
+    path("conference/create-and-scrape/", CreateAndScrapeConferenceView.as_view(), name="create_and_scrape_conference"),
     path("conference/<int:conference_id>/scrape/start/", StartScrapingView.as_view(), name="start_scraping"),
     path("conference/<int:conference_id>/scrape/status/", ScrapingStatusView.as_view(), name="scraping_status"),
     path("conference/<int:conference_id>/scrape/log/", ScrapingLogView.as_view(), name="scraping_log"),
