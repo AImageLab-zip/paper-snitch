@@ -172,24 +172,37 @@ class ConferenceScraper:
             match = re.search(code_pattern, cleaned["link_to_the_code_repository"])
             cleaned["code_url"] = match.group(1).strip() if match else None
 
-        # Extract paper materials
+        # Extract paper materials (handle both MICCAI 2022 and newer formats)
+        paper_section = None
         if "links_to_paper_and_supplementary_materials" in cleaned:
-            section = cleaned["links_to_paper_and_supplementary_materials"]
-
-            # DOI
+            paper_section = cleaned["links_to_paper_and_supplementary_materials"]
+        elif "link_to_paper" in cleaned:
+            # MICCAI 2022 format
+            paper_section = cleaned["link_to_paper"]
+        
+        if paper_section:
+            # DOI - try multiple patterns
+            # Pattern 1: SpringerLink (DOI): <url> (newer format)
             doi_pattern = r"SpringerLink \(DOI\):\s*(.+?)(?:\n|$)"
-            doi_match = re.search(doi_pattern, section)
+            doi_match = re.search(doi_pattern, paper_section)
             if doi_match:
                 doi_value = doi_match.group(1).strip()
                 # Remove angular brackets if present
                 doi_value = re.sub(r'^<(.+)>$', r'\1', doi_value)
                 cleaned["doi"] = None if doi_value.lower().startswith("not") else doi_value
             else:
-                cleaned["doi"] = None
+                # Pattern 2: DOI: <url> (MICCAI 2022 format)
+                doi_pattern_2 = r"DOI:\s*<([^>]+)>"
+                doi_match_2 = re.search(doi_pattern_2, paper_section)
+                if doi_match_2:
+                    doi_value = doi_match_2.group(1).strip()
+                    cleaned["doi"] = None if doi_value.lower().startswith("not") else doi_value
+                else:
+                    cleaned["doi"] = None
 
             # PDF URL
             pdf_pattern = r"Main Paper \(Open Access Version\):\s*<([^>]+)>"
-            pdf_match = re.search(pdf_pattern, section)
+            pdf_match = re.search(pdf_pattern, paper_section)
             if pdf_match:
                 pdf_value = pdf_match.group(1).strip()
                 cleaned["pdf_url"] = None if pdf_value.lower().startswith("not") else pdf_value
@@ -199,7 +212,7 @@ class ConferenceScraper:
             
             # Supplementary materials PDF
             supp_pattern = r"Supplementary Material:\s*<([^>]+)>"
-            supp_match = re.search(supp_pattern, section)
+            supp_match = re.search(supp_pattern, paper_section)
             if supp_match:
                 supp_value = supp_match.group(1).strip()
                 cleaned["supp_materials_url"] = None if supp_value.lower().startswith("not") else supp_value
