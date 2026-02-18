@@ -25,7 +25,7 @@ from django.utils import timezone
 from openai import OpenAI
 
 # Import the functions we're testing
-from webApp.services.paper_processing_workflow import (
+from webApp.services.graphs.paper_processing_workflow import (
     code_availability_check_node,
     analyze_repository_comprehensive,
     PaperProcessingState,
@@ -57,7 +57,7 @@ async def setup_test_data(test_url: str) -> Dict[str, Any]:
             "abstract": "This paper presents a method for brain age prediction using deep learning, "
             "serving as a pretext task for medical image analysis.",
             "code_url": "https://github.com/TasneemN/BrainAgePrediction_asPretextTask",  # Will be found during test
-            "text": f"This paper introduces a novel approach. Repository: {test_url}",
+            "text": f"This paper introduces a novel approach. Repository: asghggg",
         },
     )
 
