@@ -861,8 +861,9 @@ class RerunWorkflowView(View):
         except Paper.DoesNotExist:
             return JsonResponse({"error": "Paper not found"}, status=404)
 
-        # Get workflow ID from request
+        # Get workflow ID and force_reprocess flag from request
         workflow_id = request.POST.get("workflow_type")
+        force_reprocess = request.POST.get("force_reprocess", "true").lower() == "true"
 
         if not workflow_id:
             return JsonResponse(
@@ -945,7 +946,7 @@ class RerunWorkflowView(View):
             # Submit task to Celery queue with selected workflow
             task = process_paper_workflow_task.delay(
                 paper_id=paper_id,
-                force_reprocess=True,
+                force_reprocess=force_reprocess,
                 model="gpt-4o",
                 workflow_id=workflow_id  # Pass the selected workflow ID
             )
@@ -1427,6 +1428,7 @@ class BulkRerunWorkflowsView(View):
         # Parse request data
         limit = None
         workflow_id = None
+        force_reprocess = True  # Default to True for backward compatibility
         if request.body:
             try:
                 data = json.loads(request.body)
@@ -1434,6 +1436,7 @@ class BulkRerunWorkflowsView(View):
                 if limit:
                     limit = int(limit)
                 workflow_id = data.get('workflow_id')
+                force_reprocess = data.get('force_reprocess', True)
             except (json.JSONDecodeError, ValueError) as e:
                 logger.warning(f"Failed to parse request data: {e}")
 
@@ -1521,7 +1524,7 @@ class BulkRerunWorkflowsView(View):
             try:
                 task = process_paper_workflow_task.delay(
                     paper_id=paper.id,
-                    force_reprocess=True,
+                    force_reprocess=force_reprocess,
                     model="gpt-4o",
                     workflow_id=workflow_id  # Pass the selected workflow ID
                 )

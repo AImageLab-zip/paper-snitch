@@ -599,14 +599,14 @@
         <div class="modal-content">
             <div class="modal-header bg-warning text-dark">
                 <h5 class="modal-title" id="rerunWorkflowModalLabel">
-                    <i class="fas fa-exclamation-triangle mr-2"></i>Confirm Workflow Rerun
+                    <i class="fas fa-exclamation-triangle mr-2"></i>Confirm Workflow Run
                 </h5>
                 <button type="button" class="close" data-dismiss="modal" aria-label="Close">
                     <span aria-hidden="true">&times;</span>
                 </button>
             </div>
             <div class="modal-body">
-                <p class="mb-3">Are you sure you want to rerun the workflow analysis?</p>
+                <p class="mb-3">Are you sure you want to run the workflow analysis?</p>
                 
                 <!-- Workflow Selection -->
                 <div class="form-group">
@@ -621,6 +621,20 @@
                     </small>
                 </div>
                 
+                <!-- Force Reprocess Option -->
+                <div class="form-group">
+                    <div class="custom-control custom-checkbox">
+                        <input type="checkbox" class="custom-control-input" id="force-reprocess-checkbox" checked>
+                        <label class="custom-control-label" for="force-reprocess-checkbox">
+                            <i class="fas fa-sync-alt mr-1"></i>
+                            <strong>Force reprocess</strong>
+                        </label>
+                        <small class="form-text text-muted ml-4">
+                            When checked, all nodes will be reprocessed even if cached results exist. Uncheck to reuse cached data where possible.
+                        </small>
+                    </div>
+                </div>
+                
                 <div class="alert alert-info mb-0">
                     <i class="fas fa-info-circle mr-2"></i>
                     <strong>Note:</strong> This will create a new workflow run and may take several minutes to complete. The analysis will process the paper and repository from scratch.
@@ -631,7 +645,7 @@
                     <i class="fas fa-times mr-1"></i> Cancel
                 </button>
                 <button type="button" class="btn btn-primary" id="confirm-rerun-btn">
-                    <i class="fas fa-redo mr-1"></i> Yes, Rerun Analysis
+                    <i class="fas fa-redo mr-1"></i> Yes, Run Analysis
                 </button>
             </div>
         </div>
@@ -1646,6 +1660,9 @@ $('#confirm-rerun-btn').on('click', function() {
         return;
     }
     
+    // Get force reprocess flag
+    const forceReprocess = $('#force-reprocess-checkbox').is(':checked');
+    
     // Disable button and show loading state
     btn.prop('disabled', true);
     btn.html('<i class="fas fa-spinner fa-spin mr-1"></i> Starting...');
@@ -1663,7 +1680,8 @@ $('#confirm-rerun-btn').on('click', function() {
         url: `/paper/${paperId}/rerun-workflow/`,
         method: 'POST',
         data: {
-            'workflow_type': workflowType
+            'workflow_type': workflowType,
+            'force_reprocess': forceReprocess
         },
         headers: {
             'X-CSRFToken': csrfToken

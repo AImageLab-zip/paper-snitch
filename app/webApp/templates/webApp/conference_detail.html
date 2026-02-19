@@ -289,6 +289,20 @@
                     </small>
                 </div>
                 
+                <!-- Force Reprocess Option -->
+                <div class="form-group">
+                    <div class="custom-control custom-checkbox">
+                        <input type="checkbox" class="custom-control-input" id="bulk-force-reprocess-checkbox" checked>
+                        <label class="custom-control-label" for="bulk-force-reprocess-checkbox">
+                            <i class="fas fa-sync-alt mr-1"></i>
+                            <strong>Force reprocess</strong>
+                        </label>
+                        <small class="form-text text-muted ml-4">
+                            When checked, all nodes will be reprocessed even if cached results exist. Uncheck to reuse cached data where possible.
+                        </small>
+                    </div>
+                </div>
+                
                 <!-- Paper list preview -->
                 <div id="bulk-rerun-paper-list" class="mb-3" style="display: none;">
                     <div class="card">
@@ -554,6 +568,7 @@ $(document).ready(function() {
         const originalHtml = $btn.html();
         const limit = $('#bulk-rerun-limit').val();
         const workflowId = $('#bulk-workflow-type-select').val();
+        const forceReprocess = $('#bulk-force-reprocess-checkbox').is(':checked');
         
         // Validate workflow selection
         if (!workflowId) {
@@ -566,7 +581,8 @@ $(document).ready(function() {
         
         // Prepare request data
         const requestData = {
-            workflow_id: workflowId
+            workflow_id: workflowId,
+            force_reprocess: forceReprocess
         };
         if (limit && limit > 0) {
             requestData.limit = parseInt(limit);
