@@ -68,7 +68,7 @@ services:
   celery-worker:
     build: ./app
     container_name: celery-worker-${STACK_SUFFIX:-dev}
-    command: watchfiles "celery -A web worker --loglevel=info"
+    command: celery -A web worker --loglevel=info
     env_file:
       - .env.${STACK_SUFFIX:-local}
     extra_hosts:
@@ -90,7 +90,7 @@ services:
   celery-beat:
     build: ./app
     container_name: celery-beat-${STACK_SUFFIX:-dev}
-    command: watchfiles "celery -A web beat --loglevel=info"
+    command: celery -A web beat --loglevel=info
     env_file:
       - .env.${STACK_SUFFIX:-local}
     extra_hosts:

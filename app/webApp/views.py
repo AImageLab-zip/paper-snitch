@@ -145,7 +145,9 @@ class CheckPastAnalysesView(LoginRequiredMixin, View):
             pdf_file.seek(0)
             pdf_content = ContentFile(pdf_file.read(), name=filename)
 
-            paper = Paper.objects.create(title=title, text=text, sections=sections, file=pdf_content)
+            paper = Paper.objects.create(
+                title=title, text=text, sections=sections, file=pdf_content
+            )
             paper.save()
 
             paper_id = paper.id
@@ -541,35 +543,34 @@ class ConferenceListView(View):
 
     def get(self, request):
         """Display conferences with search and pagination."""
-        search_query = request.GET.get('q', '').strip()
-        
+        search_query = request.GET.get("q", "").strip()
+
         # Start with all conferences
         conferences = Conference.objects.all()
-        
+
         # Annotate with paper count
-        conferences = conferences.annotate(paper_count=Count('papers'))
-        
+        conferences = conferences.annotate(paper_count=Count("papers"))
+
         # Apply search filter
         if search_query:
             conferences = conferences.filter(
-                Q(name__icontains=search_query) | 
-                Q(year__icontains=search_query)
+                Q(name__icontains=search_query) | Q(year__icontains=search_query)
             )
-        
+
         # Order by year (latest first), then by name
-        conferences = conferences.order_by('-year', 'name')
-        
+        conferences = conferences.order_by("-year", "name")
+
         # Pagination
         paginator = Paginator(conferences, 20)  # 20 conferences per page
-        page_number = request.GET.get('page', 1)
+        page_number = request.GET.get("page", 1)
         page_obj = paginator.get_page(page_number)
-        
+
         context = {
-            'conferences': page_obj,
-            'page_obj': page_obj,
-            'search_query': search_query,
+            "conferences": page_obj,
+            "page_obj": page_obj,
+            "search_query": search_query,
         }
-        
+
         return render(request, self.template_name, context)
 
 
@@ -582,58 +583,56 @@ class ConferenceDetailView(View):
         """Display conference with its papers, search, and pagination."""
         from django.db.models import Count, Prefetch
         from django.core.paginator import Paginator
-        
+
         conference = get_object_or_404(Conference, id=conference_id)
-        search_query = request.GET.get('q', '').strip()
-        
+        search_query = request.GET.get("q", "").strip()
+
         # Get total paper count for this conference (optimized)
         total_papers = Paper.objects.filter(conference=conference).count()
-        
+
         # Prefetch latest workflow run for each paper (single additional query)
         latest_workflow_prefetch = Prefetch(
-            'workflow_runs',
-            queryset=WorkflowRun.objects.order_by('-created_at').only('id', 'status', 'created_at')[:1],
-            to_attr='latest_workflow_list'
+            "workflow_runs",
+            queryset=WorkflowRun.objects.order_by("-created_at").only(
+                "id", "status", "created_at"
+            )[:1],
+            to_attr="latest_workflow_list",
         )
-        
+
         # Get papers for this conference with workflow stats annotated
         # Use only() to fetch only required fields for better performance
-        papers = Paper.objects.filter(
-            conference=conference
-        ).select_related(
-            'conference'
-        ).prefetch_related(
-            latest_workflow_prefetch
-        ).only(
-            'id', 'title', 'doi', 'authors', 'conference__id', 'conference__name'
-        ).annotate(
-            workflow_count=Count('workflow_runs')
+        papers = (
+            Paper.objects.filter(conference=conference)
+            .select_related("conference")
+            .prefetch_related(latest_workflow_prefetch)
+            .only("id", "title", "doi", "authors", "conference__id", "conference__name")
+            .annotate(workflow_count=Count("workflow_runs"))
         )
-        
+
         # Apply search filter
         if search_query:
             papers = papers.filter(
-                Q(title__icontains=search_query) |
-                Q(doi__icontains=search_query) |
-                Q(authors__icontains=search_query)
+                Q(title__icontains=search_query)
+                | Q(doi__icontains=search_query)
+                | Q(authors__icontains=search_query)
             )
-        
+
         # Order by title
-        papers = papers.order_by('title')
-        
+        papers = papers.order_by("title")
+
         # Pagination - paginate BEFORE accessing the data
         paginator = Paginator(papers, 25)  # 25 papers per page
-        page_number = request.GET.get('page', 1)
+        page_number = request.GET.get("page", 1)
         page_obj = paginator.get_page(page_number)
-        
+
         context = {
-            'conference': conference,
-            'papers': page_obj,
-            'page_obj': page_obj,
-            'search_query': search_query,
-            'total_papers': total_papers,  # Pre-calculated count
+            "conference": conference,
+            "papers": page_obj,
+            "page_obj": page_obj,
+            "search_query": search_query,
+            "total_papers": total_papers,  # Pre-calculated count
         }
-        
+
         return render(request, self.template_name, context)
 
 
@@ -645,67 +644,80 @@ class PaperDetailView(View):
     def get(self, request, paper_id):
         """Display paper with workflow diagram and run history."""
         paper = get_object_or_404(Paper, id=paper_id)
-        
+
         # Get all workflow runs for this paper
-        workflow_runs = WorkflowRun.objects.filter(paper=paper).select_related(
-            'workflow_definition', 'created_by'
-        ).order_by('-created_at')
-        
+        workflow_runs = (
+            WorkflowRun.objects.filter(paper=paper)
+            .select_related("workflow_definition", "created_by")
+            .order_by("-created_at")
+        )
+
         # Add progress to each run
         for run in workflow_runs:
             run.progress = run.get_progress()
-        
+
         # Get the workflow run to display (from URL parameter or latest)
-        workflow_run_id = request.GET.get('workflow_run')
+        workflow_run_id = request.GET.get("workflow_run")
         if workflow_run_id:
             try:
-                selected_workflow = WorkflowRun.objects.get(id=workflow_run_id, paper=paper)
+                selected_workflow = WorkflowRun.objects.get(
+                    id=workflow_run_id, paper=paper
+                )
             except WorkflowRun.DoesNotExist:
                 # If invalid ID, fall back to latest
                 selected_workflow = workflow_runs.first()
         else:
             selected_workflow = workflow_runs.first()
-        
+
         # Get latest workflow run for comparison for comparison
         latest_workflow = workflow_runs.first()
         workflow_nodes_json = {}
         workflow_edges = []
-        
+
         if selected_workflow:
             # Get the DAG structure from the workflow definition
             dag_structure = selected_workflow.workflow_definition.dag_structure
-            workflow_edges = dag_structure.get('edges', [])
-            
+            workflow_edges = dag_structure.get("edges", [])
+
             # Get all nodes for this workflow run
             nodes = WorkflowNode.objects.filter(workflow_run=selected_workflow)
-            
+
             # Build nodes dictionary for Mermaid
             for node in nodes:
                 # Get display name from DAG structure
                 node_def = next(
-                    (n for n in dag_structure.get('nodes', []) if n['id'] == node.node_id),
-                    None
+                    (
+                        n
+                        for n in dag_structure.get("nodes", [])
+                        if n["id"] == node.node_id
+                    ),
+                    None,
                 )
-                display_name = node_def['name'] if node_def and 'name' in node_def else node.node_id.replace('_', ' ').title()
-                
+                display_name = (
+                    node_def["name"]
+                    if node_def and "name" in node_def
+                    else node.node_id.replace("_", " ").title()
+                )
+
                 workflow_nodes_json[node.node_id] = {
-                    'id': str(node.id),
-                    'node_id': node.node_id,
-                    'display_name': display_name,
-                    'status': node.status,
-                    'node_type': node.node_type,
+                    "id": str(node.id),
+                    "node_id": node.node_id,
+                    "display_name": display_name,
+                    "status": node.status,
+                    "node_type": node.node_type,
                 }
-        
+
         import json
+
         context = {
-            'paper': paper,
-            'workflow_runs': workflow_runs,
-            'latest_workflow': latest_workflow,
-            'selected_workflow': selected_workflow,
-            'workflow_nodes_json': json.dumps(workflow_nodes_json),
-            'workflow_edges': json.dumps(workflow_edges),
+            "paper": paper,
+            "workflow_runs": workflow_runs,
+            "latest_workflow": latest_workflow,
+            "selected_workflow": selected_workflow,
+            "workflow_nodes_json": json.dumps(workflow_nodes_json),
+            "workflow_edges": json.dumps(workflow_edges),
         }
-        
+
         return render(request, self.template_name, context)
 
 
@@ -717,63 +729,73 @@ class RerunWorkflowView(View):
         from django.utils import timezone
         from datetime import timedelta
         import logging
+
         logger = logging.getLogger(__name__)
-        
+
         try:
             paper = Paper.objects.get(id=paper_id)
         except Paper.DoesNotExist:
-            return JsonResponse({'error': 'Paper not found'}, status=404)
-        
+            return JsonResponse({"error": "Paper not found"}, status=404)
+
         # Import here to avoid circular imports
-        from webApp.services.paper_processing_workflow import process_paper_workflow
+        from webApp.services.graphs.paper_processing_workflow import (
+            process_paper_workflow,
+        )
         import asyncio
-        
+
         # Check if there's already a running workflow (with timeout check)
         running_workflow = WorkflowRun.objects.filter(
-            paper=paper,
-            status__in=['running', 'pending']
+            paper=paper, status__in=["running", "pending"]
         ).first()
-        
+
         if running_workflow:
             # Check how long it's been in this status
             last_update = running_workflow.started_at or running_workflow.created_at
             time_since_update = timezone.now() - last_update
             timeout_minutes = 5  # Allow rerun if stuck for more than 5 minutes
-            
+
             if time_since_update < timedelta(minutes=timeout_minutes):
-                minutes_remaining = timeout_minutes - (time_since_update.total_seconds() / 60)
-                return JsonResponse({
-                    'error': f'A workflow is currently {running_workflow.status}. If stuck, wait {int(minutes_remaining)} more minute(s) and try again.',
-                    'workflow_run_id': str(running_workflow.id),
-                    'status': running_workflow.status
-                }, status=400)
+                minutes_remaining = timeout_minutes - (
+                    time_since_update.total_seconds() / 60
+                )
+                return JsonResponse(
+                    {
+                        "error": f"A workflow is currently {running_workflow.status}. If stuck, wait {int(minutes_remaining)} more minute(s) and try again.",
+                        "workflow_run_id": str(running_workflow.id),
+                        "status": running_workflow.status,
+                    },
+                    status=400,
+                )
             else:
                 # Workflow is stuck, mark it as failed and allow rerun
                 logger.warning(
                     f"Workflow run {running_workflow.id} has been {running_workflow.status} for {time_since_update}. "
                     f"Marking as failed and allowing rerun."
                 )
-                running_workflow.status = 'failed'
+                running_workflow.status = "failed"
                 running_workflow.completed_at = timezone.now()
-                running_workflow.error_message = f"Workflow timeout after {time_since_update}"
+                running_workflow.error_message = (
+                    f"Workflow timeout after {time_since_update}"
+                )
                 running_workflow.save()
-                
+
                 # Also mark all running/pending nodes as failed
                 stuck_nodes = WorkflowNode.objects.filter(
-                    workflow_run=running_workflow,
-                    status__in=['running', 'pending']
+                    workflow_run=running_workflow, status__in=["running", "pending"]
                 )
                 for node in stuck_nodes:
-                    node.status = 'failed'
+                    node.status = "failed"
                     node.completed_at = timezone.now()
                     node.error_message = f"Node timeout after {time_since_update}"
                     node.save()
-                    logger.info(f"Marked stuck node {node.id} ({node.node_id}) as failed")
-        
+                    logger.info(
+                        f"Marked stuck node {node.id} ({node.node_id}) as failed"
+                    )
+
         # Trigger workflow in background (non-blocking)
         try:
             import threading
-            
+
             def run_workflow_in_background():
                 """Run workflow in background thread."""
                 try:
@@ -782,49 +804,58 @@ class RerunWorkflowView(View):
                     asyncio.set_event_loop(loop)
                     loop.run_until_complete(
                         process_paper_workflow(
-                            paper_id=paper_id,
-                            force_reprocess=True,
-                            model='gpt-4o'
+                            paper_id=paper_id, force_reprocess=True, model="gpt-4o"
                         )
                     )
                     loop.close()
                     logger.info(f"Background workflow completed for paper {paper_id}")
                 except Exception as e:
-                    logger.error(f"Background workflow execution failed: {e}", exc_info=True)
-            
+                    logger.error(
+                        f"Background workflow execution failed: {e}", exc_info=True
+                    )
+
             # Start workflow in background thread
-            workflow_thread = threading.Thread(target=run_workflow_in_background, daemon=True)
+            workflow_thread = threading.Thread(
+                target=run_workflow_in_background, daemon=True
+            )
             workflow_thread.start()
             logger.info(f"Background workflow thread started for paper {paper_id}")
-            
+
             # Get the workflow run that will be created (wait a moment for it to be created)
             import time
+
             time.sleep(0.5)  # Brief wait for workflow run to be created
-            
+
             # Get the latest workflow run (should be the one we just started)
-            latest_run = WorkflowRun.objects.filter(paper=paper).order_by('-created_at').first()
-            
+            latest_run = (
+                WorkflowRun.objects.filter(paper=paper).order_by("-created_at").first()
+            )
+
             if latest_run:
-                return JsonResponse({
-                    'success': True,
-                    'message': 'Workflow started successfully',
-                    'workflow_run_id': str(latest_run.id),
-                    'run_number': latest_run.run_number
-                })
+                return JsonResponse(
+                    {
+                        "success": True,
+                        "message": "Workflow started successfully",
+                        "workflow_run_id": str(latest_run.id),
+                        "run_number": latest_run.run_number,
+                    }
+                )
             else:
-                return JsonResponse({
-                    'success': True,
-                    'message': 'Workflow started successfully',
-                    'workflow_run_id': None,
-                    'run_number': None
-                })
-                
+                return JsonResponse(
+                    {
+                        "success": True,
+                        "message": "Workflow started successfully",
+                        "workflow_run_id": None,
+                        "run_number": None,
+                    }
+                )
+
         except Exception as e:
             logger.error(f"Failed to start workflow: {e}", exc_info=True)
-            return JsonResponse({
-                'error': f'Failed to start workflow: {str(e)}',
-                'success': False
-            }, status=500)
+            return JsonResponse(
+                {"error": f"Failed to start workflow: {str(e)}", "success": False},
+                status=500,
+            )
 
 
 class WorkflowStatusView(View):
@@ -835,35 +866,43 @@ class WorkflowStatusView(View):
         try:
             workflow_run = WorkflowRun.objects.get(id=workflow_run_id)
         except WorkflowRun.DoesNotExist:
-            return JsonResponse({'error': 'Workflow run not found'}, status=404)
-        
+            return JsonResponse({"error": "Workflow run not found"}, status=404)
+
         # Get DAG structure
         dag_structure = workflow_run.workflow_definition.dag_structure
-        
+
         # Get all nodes
         nodes = WorkflowNode.objects.filter(workflow_run=workflow_run)
         nodes_data = {}
-        
+
         for node in nodes:
             node_def = next(
-                (n for n in dag_structure.get('nodes', []) if n['id'] == node.node_id),
-                None
+                (n for n in dag_structure.get("nodes", []) if n["id"] == node.node_id),
+                None,
             )
-            display_name = node_def['name'] if node_def and 'name' in node_def else node.node_id.replace('_', ' ').title()
-            
+            display_name = (
+                node_def["name"]
+                if node_def and "name" in node_def
+                else node.node_id.replace("_", " ").title()
+            )
+
             nodes_data[node.node_id] = {
-                'id': str(node.id),
-                'node_id': node.node_id,
-                'display_name': display_name,
-                'status': node.status,
-                'node_type': node.node_type,
+                "id": str(node.id),
+                "node_id": node.node_id,
+                "display_name": display_name,
+                "status": node.status,
+                "node_type": node.node_type,
             }
-        
-        return JsonResponse({
-            'status': workflow_run.status,
-            'nodes': nodes_data,
-            'updated_at': (workflow_run.started_at or workflow_run.created_at).isoformat(),
-        })
+
+        return JsonResponse(
+            {
+                "status": workflow_run.status,
+                "nodes": nodes_data,
+                "updated_at": (
+                    workflow_run.started_at or workflow_run.created_at
+                ).isoformat(),
+            }
+        )
 
 
 class WorkflowNodeDetailView(View):
@@ -874,62 +913,66 @@ class WorkflowNodeDetailView(View):
         try:
             node = WorkflowNode.objects.get(id=node_id)
         except WorkflowNode.DoesNotExist:
-            return JsonResponse({'error': 'Node not found'}, status=404)
+            return JsonResponse({"error": "Node not found"}, status=404)
         except Exception as e:
-            return JsonResponse({'error': f'Server error: {str(e)}'}, status=500)
-        
+            return JsonResponse({"error": f"Server error: {str(e)}"}, status=500)
+
         try:
             # Get node logs
-            logs = node.logs.all().order_by('timestamp')
+            logs = node.logs.all().order_by("timestamp")
             logs_data = [
                 {
-                    'level': log.level,
-                    'message': log.message,
-                    'context': log.context,
-                    'timestamp': log.timestamp.isoformat()
+                    "level": log.level,
+                    "message": log.message,
+                    "context": log.context,
+                    "timestamp": log.timestamp.isoformat(),
                 }
                 for log in logs
             ]
-            
+
             # Get node artifacts
             artifacts = node.artifacts.all()
             artifacts_data = {}
             for artifact in artifacts:
-                if artifact.artifact_type == 'inline':
+                if artifact.artifact_type == "inline":
                     artifacts_data[artifact.name] = artifact.inline_data
                 else:
                     artifacts_data[artifact.name] = {
-                        'type': artifact.artifact_type,
-                        'file_path': artifact.file_path,
-                        'url': artifact.url,
-                        'mime_type': artifact.mime_type,
-                        'size_bytes': artifact.size_bytes,
-                        'metadata': artifact.metadata
+                        "type": artifact.artifact_type,
+                        "file_path": artifact.file_path,
+                        "url": artifact.url,
+                        "mime_type": artifact.mime_type,
+                        "size_bytes": artifact.size_bytes,
+                        "metadata": artifact.metadata,
                     }
-            
+
             data = {
-                'id': str(node.id),
-                'node_id': node.node_id,
-                'node_type': node.node_type,
-                'handler': node.handler,
-                'status': node.status,
-                'attempt_count': node.attempt_count,
-                'max_retries': node.max_retries,
-                'input_data': node.input_data,
-                'output_data': node.output_data,
-                'artifacts': artifacts_data,
-                'error_message': node.error_message,
-                'error_traceback': node.error_traceback,
-                'celery_task_id': node.celery_task_id,
-                'started_at': node.started_at.isoformat() if node.started_at else None,
-                'completed_at': node.completed_at.isoformat() if node.completed_at else None,
-                'duration': node.duration,
-                'logs': logs_data,
+                "id": str(node.id),
+                "node_id": node.node_id,
+                "node_type": node.node_type,
+                "handler": node.handler,
+                "status": node.status,
+                "attempt_count": node.attempt_count,
+                "max_retries": node.max_retries,
+                "input_data": node.input_data,
+                "output_data": node.output_data,
+                "artifacts": artifacts_data,
+                "error_message": node.error_message,
+                "error_traceback": node.error_traceback,
+                "celery_task_id": node.celery_task_id,
+                "started_at": node.started_at.isoformat() if node.started_at else None,
+                "completed_at": (
+                    node.completed_at.isoformat() if node.completed_at else None
+                ),
+                "duration": node.duration,
+                "logs": logs_data,
             }
-            
+
             return JsonResponse(data)
         except Exception as e:
-            return JsonResponse({'error': f'Error serializing data: {str(e)}'}, status=500)
+            return JsonResponse(
+                {"error": f"Error serializing data: {str(e)}"}, status=500
+            )
 
 
 class RerunSingleNodeView(View):
@@ -940,116 +983,151 @@ class RerunSingleNodeView(View):
         from django.utils import timezone
         from datetime import timedelta
         import logging
+
         logger = logging.getLogger(__name__)
-        
+
         try:
             node = WorkflowNode.objects.get(id=node_id)
         except WorkflowNode.DoesNotExist:
-            return JsonResponse({'error': 'Node not found'}, status=404)
-        
+            return JsonResponse({"error": "Node not found"}, status=404)
+
         # Check if node is already running (with timeout check)
-        if node.status in ['running', 'pending']:
+        if node.status in ["running", "pending"]:
             # Check how long it's been in this status
             last_update = node.started_at or node.created_at
             time_since_update = timezone.now() - last_update
             timeout_minutes = 2  # Allow rerun if stuck for more than 2 minutes
-            
+
             if time_since_update < timedelta(minutes=timeout_minutes):
-                minutes_remaining = timeout_minutes - (time_since_update.total_seconds() / 60)
-                return JsonResponse({
-                    'error': f'Node is currently {node.status}. If stuck, wait {int(minutes_remaining)} more minute(s) and try again.',
-                    'node_id': str(node.id),
-                    'status': node.status,
-                    'seconds_elapsed': int(time_since_update.total_seconds())
-                }, status=400)
+                minutes_remaining = timeout_minutes - (
+                    time_since_update.total_seconds() / 60
+                )
+                return JsonResponse(
+                    {
+                        "error": f"Node is currently {node.status}. If stuck, wait {int(minutes_remaining)} more minute(s) and try again.",
+                        "node_id": str(node.id),
+                        "status": node.status,
+                        "seconds_elapsed": int(time_since_update.total_seconds()),
+                    },
+                    status=400,
+                )
             else:
                 # Node is stuck, log warning and allow rerun
                 logger.warning(
                     f"Node {node.id} ({node.node_id}) has been {node.status} for {time_since_update}. "
                     f"Allowing force rerun."
                 )
-        
+
         # Update workflow run status to running (since we're rerunning a node)
         workflow_run = node.workflow_run
         original_status = workflow_run.status
-        if original_status in ['completed', 'failed']:
-            workflow_run.status = 'running'
+        if original_status in ["completed", "failed"]:
+            workflow_run.status = "running"
             workflow_run.completed_at = None
             workflow_run.error_message = None
-            workflow_run.save(update_fields=['status', 'completed_at', 'error_message'])
-            logger.info(f"Workflow run {workflow_run.id} status reset from '{original_status}' to 'running'")
-        
+            workflow_run.save(update_fields=["status", "completed_at", "error_message"])
+            logger.info(
+                f"Workflow run {workflow_run.id} status reset from '{original_status}' to 'running'"
+            )
+
         # Update node status to pending immediately (synchronously)
-        node.status = 'pending'
+        node.status = "pending"
         node.started_at = None
         node.completed_at = None
         node.error_message = None
         node.error_traceback = None
-        node.save(update_fields=['status', 'started_at', 'completed_at', 'error_message', 'error_traceback'])
-        
+        node.save(
+            update_fields=[
+                "status",
+                "started_at",
+                "completed_at",
+                "error_message",
+                "error_traceback",
+            ]
+        )
+
         # Clear previous logs and artifacts
         node.logs.all().delete()
         node.artifacts.all().delete()
-        
-        logger.info(f"Node {node.id} ({node.node_id}) status set to pending, starting background execution")
-        
+
+        logger.info(
+            f"Node {node.id} ({node.node_id}) status set to pending, starting background execution"
+        )
+
         # Import here to avoid circular imports
-        from webApp.services.paper_processing_workflow import execute_single_node_only
+        from webApp.services.graphs.paper_processing_workflow import (
+            execute_single_node_only,
+        )
         import asyncio
         import threading
-        
+
         def run_node_in_background():
             """Run node in background thread."""
             import sys
             from django.utils import timezone
+
             try:
-                logger.info(f"=== Background thread started for node {node.id} ({node.node_id}) ===")
+                logger.info(
+                    f"=== Background thread started for node {node.id} ({node.node_id}) ==="
+                )
                 logger.info(f"Python version: {sys.version}")
                 logger.info(f"Starting asyncio event loop...")
-                
+
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
-                
+
                 logger.info(f"Event loop created, executing node...")
                 result = loop.run_until_complete(
                     execute_single_node_only(
-                        node_uuid=str(node.id),
-                        force_reprocess=True,
-                        model='gpt-4o'
+                        node_uuid=str(node.id), force_reprocess=True, model="gpt-4o"
                     )
                 )
                 logger.info(f"Node execution completed with result: {result}")
                 loop.close()
                 logger.info(f"=== Background thread finished for node {node.id} ===")
             except Exception as e:
-                logger.error(f"=== Background node execution failed: {e} ===", exc_info=True)
+                logger.error(
+                    f"=== Background node execution failed: {e} ===", exc_info=True
+                )
                 # Ensure node status is updated to failed
                 try:
                     # Get a fresh connection
                     from django.db import connection
+
                     connection.close_if_unusable_or_obsolete()
-                    
+
                     failed_node = WorkflowNode.objects.get(id=node.id)
-                    failed_node.status = 'failed'
+                    failed_node.status = "failed"
                     failed_node.completed_at = timezone.now()
                     failed_node.error_message = f"Background execution failed: {str(e)}"
                     failed_node.save()
-                    logger.info(f"Node {node.id} status updated to 'failed' after exception")
+                    logger.info(
+                        f"Node {node.id} status updated to 'failed' after exception"
+                    )
                 except Exception as inner_e:
-                    logger.error(f"Failed to update node status after error: {inner_e}", exc_info=True)
-        
+                    logger.error(
+                        f"Failed to update node status after error: {inner_e}",
+                        exc_info=True,
+                    )
+
         # Start node execution in background thread
-        logger.info(f"Starting background thread for node {node.id} ({node.node_id})...")
+        logger.info(
+            f"Starting background thread for node {node.id} ({node.node_id})..."
+        )
         node_thread = threading.Thread(target=run_node_in_background, daemon=True)
         node_thread.start()
-        logger.info(f"Background thread started successfully, thread name: {node_thread.name}")
-        
-        return JsonResponse({
-            'success': True,
-            'message': 'Node execution started',
-            'node_id': str(node.id),
-            'node_name': node.node_id
-        })
+        logger.info(
+            f"Background thread started successfully, thread name: {node_thread.name}"
+        )
+
+        return JsonResponse(
+            {
+                "success": True,
+                "message": "Node execution started",
+                "node_id": str(node.id),
+                "node_name": node.node_id,
+            }
+        )
 
 
 class RerunFromNodeView(View):
@@ -1058,74 +1136,89 @@ class RerunFromNodeView(View):
     def post(self, request, node_id):
         """Rerun workflow from the specified node onwards."""
         import logging
+
         logger = logging.getLogger(__name__)
-        
+
         try:
             node = WorkflowNode.objects.get(id=node_id)
         except WorkflowNode.DoesNotExist:
-            return JsonResponse({'error': 'Node not found'}, status=404)
-        
+            return JsonResponse({"error": "Node not found"}, status=404)
+
         # Get the paper from the workflow run
         paper = node.workflow_run.paper
-        
+
         # Check if there's already a running workflow for this paper
         running_workflow = WorkflowRun.objects.filter(
-            paper=paper,
-            status__in=['running', 'pending']
+            paper=paper, status__in=["running", "pending"]
         ).first()
-        
+
         if running_workflow:
-            return JsonResponse({
-                'error': 'A workflow is already running for this paper',
-                'workflow_run_id': str(running_workflow.id)
-            }, status=400)
-        
-        logger.info(f"Starting workflow rerun from node {node.id} ({node.node_id}) for paper {paper.id}")
-        
+            return JsonResponse(
+                {
+                    "error": "A workflow is already running for this paper",
+                    "workflow_run_id": str(running_workflow.id),
+                },
+                status=400,
+            )
+
+        logger.info(
+            f"Starting workflow rerun from node {node.id} ({node.node_id}) for paper {paper.id}"
+        )
+
         # Import here to avoid circular imports
-        from webApp.services.paper_processing_workflow import execute_workflow_from_node
+        from webApp.services.graphs.paper_processing_workflow import (
+            execute_workflow_from_node,
+        )
         import asyncio
         import threading
-        
+
         def run_workflow_from_node_in_background():
             """Run workflow from node in background thread."""
             try:
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 loop.run_until_complete(
-                    execute_workflow_from_node(
-                        node_uuid=str(node.id),
-                        model='gpt-4o'
-                    )
+                    execute_workflow_from_node(node_uuid=str(node.id), model="gpt-4o")
                 )
                 loop.close()
             except Exception as e:
-                logger.error(f"Background workflow execution failed: {e}", exc_info=True)
-        
+                logger.error(
+                    f"Background workflow execution failed: {e}", exc_info=True
+                )
+
         # Start workflow in background thread
-        workflow_thread = threading.Thread(target=run_workflow_from_node_in_background, daemon=True)
+        workflow_thread = threading.Thread(
+            target=run_workflow_from_node_in_background, daemon=True
+        )
         workflow_thread.start()
-        
+
         # Wait briefly for workflow run to be created
         import time
+
         time.sleep(0.5)
-        
+
         # Get the latest workflow run
-        latest_run = WorkflowRun.objects.filter(paper=paper).order_by('-created_at').first()
-        
+        latest_run = (
+            WorkflowRun.objects.filter(paper=paper).order_by("-created_at").first()
+        )
+
         if latest_run:
-            return JsonResponse({
-                'success': True,
-                'message': f'Workflow started from node {node.node_id}',
-                'workflow_run_id': str(latest_run.id),
-                'run_number': latest_run.run_number,
-                'started_from_node': node.node_id
-            })
+            return JsonResponse(
+                {
+                    "success": True,
+                    "message": f"Workflow started from node {node.node_id}",
+                    "workflow_run_id": str(latest_run.id),
+                    "run_number": latest_run.run_number,
+                    "started_from_node": node.node_id,
+                }
+            )
         else:
-            return JsonResponse({
-                'success': True,
-                'message': f'Workflow started from node {node.node_id}',
-                'workflow_run_id': None,
-                'run_number': None,
-                'started_from_node': node.node_id
-            })
+            return JsonResponse(
+                {
+                    "success": True,
+                    "message": f"Workflow started from node {node.node_id}",
+                    "workflow_run_id": None,
+                    "run_number": None,
+                    "started_from_node": node.node_id,
+                }
+            )
