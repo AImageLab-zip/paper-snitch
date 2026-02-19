@@ -607,6 +607,20 @@
             </div>
             <div class="modal-body">
                 <p class="mb-3">Are you sure you want to rerun the workflow analysis?</p>
+                
+                <!-- Workflow Selection -->
+                <div class="form-group">
+                    <label for="workflow-type-select" class="font-weight-bold">
+                        <i class="fas fa-project-diagram mr-1"></i>Select Workflow:
+                    </label>
+                    <select class="form-control" id="workflow-type-select">
+                        <option value="" disabled>Loading workflows...</option>
+                    </select>
+                    <small class="form-text text-muted" id="workflow-description">
+                        Select a workflow to run
+                    </small>
+                </div>
+                
                 <div class="alert alert-info mb-0">
                     <i class="fas fa-info-circle mr-2"></i>
                     <strong>Note:</strong> This will create a new workflow run and may take several minutes to complete. The analysis will process the paper and repository from scratch.
@@ -1566,15 +1580,71 @@ function rerunWorkflow(paperId) {
     // Store paper ID for later use
     $('#rerunWorkflowModal').data('paperId', paperId);
     
+    // Load available workflows
+    loadAvailableWorkflows(paperId);
+    
     // Show confirmation modal
     $('#rerunWorkflowModal').modal('show');
 }
 
+// Function to load available workflows
+function loadAvailableWorkflows(paperId) {
+    const select = $('#workflow-type-select');
+    select.html('<option value="" disabled selected>Loading workflows...</option>');
+    
+    $.ajax({
+        url: `/paper/${paperId}/rerun-workflow/`,
+        method: 'GET',
+        success: function(response) {
+            select.empty();
+            
+            // Add workflow options
+            if (response.workflows) {
+                Object.keys(response.workflows).forEach(function(key) {
+                    const workflow = response.workflows[key];
+                    const option = $('<option></option>')
+                        .attr('value', key)
+                        .text(workflow.name);
+                    
+                    // Select default workflow
+                    if (workflow.default || key === response.default_workflow) {
+                        option.attr('selected', 'selected');
+                        $('#workflow-description').text(workflow.name);
+                    }
+                    
+                    select.append(option);
+                });
+            }
+            
+            // Enable the confirm button
+            $('#confirm-rerun-btn').prop('disabled', false);
+        },
+        error: function(xhr) {
+            console.error('Failed to load workflows:', xhr);
+            select.html('<option value="" disabled selected>Error loading workflows</option>');
+            $('#confirm-rerun-btn').prop('disabled', true);
+        }
+    });
+}
+
+// Update workflow description when selection changes
+$('#workflow-type-select').on('change', function() {
+    const selectedOption = $(this).find('option:selected');
+    $('#workflow-description').text(selectedOption.text());
+});
+
 // Handle confirmation button click
 $('#confirm-rerun-btn').on('click', function() {
     const paperId = $('#rerunWorkflowModal').data('paperId');
+    const workflowType = $('#workflow-type-select').val();
     const btn = $(this);
     const originalHtml = btn.html();
+    
+    // Validate workflow selection
+    if (!workflowType) {
+        alert('Please select a workflow to run');
+        return;
+    }
     
     // Disable button and show loading state
     btn.prop('disabled', true);
@@ -1588,10 +1658,13 @@ $('#confirm-rerun-btn').on('click', function() {
                       document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
                       getCookie('csrftoken');
     
-    // Make AJAX request
+    // Make AJAX request with selected workflow type
     $.ajax({
         url: `/paper/${paperId}/rerun-workflow/`,
         method: 'POST',
+        data: {
+            'workflow_type': workflowType
+        },
         headers: {
             'X-CSRFToken': csrfToken
         },

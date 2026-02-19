@@ -99,7 +99,7 @@ async def code_availability_check_node(
                 await async_ops.create_node_log(
                     node,
                     "INFO",
-                    f"Found {len(matches)} repository URLs - checking each to find the correct one",
+                    f"Found {len(matches)} repository URLs - checking for the correctness",
                 )
 
                 class RepoVerification(BaseModel):
@@ -139,6 +139,8 @@ async def code_availability_check_node(
 
 Paper Title: {paper.title}
 Paper Authors: {getattr(paper, 'authors', 'Unknown')}
+Abstract: {paper.abstract or 'Not available'}
+Text: {paper.text or 'Not available'}
 
 Repository URL: {candidate_url}
 Repository README excerpt:
@@ -248,22 +250,6 @@ Respond with your assessment."""
                         },
                     )
 
-                    # Save to database
-                    from asgiref.sync import sync_to_async
-
-                    @sync_to_async
-                    def update_paper_code_url(paper_id, url):
-                        paper = Paper.objects.get(id=paper_id)
-                        paper.code_url = url
-                        paper.save()
-
-                    await update_paper_code_url(state["paper_id"], code_url)
-                    logger.info(
-                        f"Saved code URL to database for paper {state['paper_id']}"
-                    )
-                    await async_ops.create_node_log(
-                        node, "INFO", "Code URL saved to paper database"
-                    )
                 else:
                     search_notes = search_result.notes
                     logger.info(f"Online search unsuccessful: {search_notes}")
@@ -392,6 +378,25 @@ Respond with your assessment."""
                                 "INFO",
                                 f"Repository verified: contains code ({len(content)//4} tokens).",
                             )
+
+                            if code_url != paper.code_url:
+                                # Save to database
+                                from asgiref.sync import sync_to_async
+
+                                @sync_to_async
+                                def update_paper_code_url(paper_id, url):
+                                    paper = Paper.objects.get(id=paper_id)
+                                    paper.code_url = url
+                                    paper.save()
+
+                                await update_paper_code_url(state["paper_id"], code_url)
+                                logger.info(
+                                    f"Saved code URL to database for paper {state['paper_id']}"
+                                )
+                                await async_ops.create_node_log(
+                                    node, "INFO", "Code URL saved to paper database"
+                                )
+
                             result = CodeAvailabilityCheck(
                                 code_available=True,
                                 code_url=code_url,
@@ -451,8 +456,8 @@ Respond with your assessment."""
         await async_ops.create_node_log(
             node,
             "INFO",
-            f"Code availability check complete: {'Found' if code_url else 'Not found'}",
-            {"code_url": code_url, "found_online": found_online},
+            {"code_url": result.code_url, "found_online": found_online},
+            f"Code availability check complete: {'Found' if result.code_available else 'Not found'}",
         )
 
         # Update node status
@@ -462,7 +467,7 @@ Respond with your assessment."""
             completed_at=timezone.now(),
             output_data={
                 "code_available": result.code_available,
-                "code_url": code_url,
+                "code_url": result.code_url if result.code_available else None,
                 "found_online": found_online,
             },
         )

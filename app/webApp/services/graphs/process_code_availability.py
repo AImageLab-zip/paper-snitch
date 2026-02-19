@@ -1,10 +1,9 @@
 """
-Paper Processing Workflow - Integrated with Workflow Engine
+Process Code Availability Workflow - Simplified Two-Node Pipeline
 
-This module implements a three-node workflow for analyzing papers:
+This module implements a simplified two-node workflow for analyzing papers:
 - Node A: Paper Type Classification (dataset vs method vs both)
 - Node B: Code Availability Check (agentic analysis of code availability and quality)
-- Node C: Code Repository Analysis (comprehensive analysis of repository structure, documentation, and reproducibility)
 
 Properly integrated with the workflow_engine models for:
 - History tracking
@@ -15,9 +14,8 @@ Properly integrated with the workflow_engine models for:
 
 import os
 import logging
-import asyncio
 
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
 
 from django.utils import timezone
 
@@ -29,7 +27,6 @@ from workflow_engine.services.async_orchestrator import async_ops
 from webApp.services.nodes.paper_type_classification import (
     paper_type_classification_node,
 )
-from webApp.services.nodes.code_repository_analysis import code_repository_analysis_node
 from webApp.services.nodes.code_availability_check import code_availability_check_node
 
 from ..pydantic_schemas import (
@@ -41,45 +38,36 @@ from .base_workflow_graph import BaseWorkflowGraph
 
 logger = logging.getLogger(__name__)
 
+
 # ============================================================================
 # Workflow Class Definition
 # ============================================================================
 
 
-class PaperProcessingWorkflow(BaseWorkflowGraph):
+class CodeAvailabilityWorkflow(BaseWorkflowGraph):
     """
-    Three-node workflow for comprehensive paper processing with conditional routing.
+    Two-node workflow for code availability analysis.
 
     Nodes:
     1. paper_type_classification: Classify paper type
     2. code_availability_check: Check code availability
-    3. code_repository_analysis: Comprehensive code analysis (conditional)
     """
 
-    WORKFLOW_NAME = "reduced_paper_processing_pipeline"
-    WORKFLOW_VERSION = "2"
-    NODE_ORDER = [
-        "paper_type_classification",
-        "code_availability_check",
-        "code_repository_analysis",
-    ]
+    WORKFLOW_NAME = "code_availability_pipeline"
+    WORKFLOW_VERSION = "1"
+    NODE_ORDER = ["paper_type_classification", "code_availability_check"]
 
     def build_workflow(self) -> StateGraph:
         """
-        Build the LangGraph workflow for paper processing with conditional routing.
+        Build the LangGraph workflow for code availability processing.
 
-        Workflow structure (sequential with conditional routing):
+        Workflow structure (sequential):
         - Node A (paper_type_classification): Classify paper type
         - Node B (code_availability_check): Check code availability and verify accessibility
-        - Node C (code_repository_analysis): Comprehensive code analysis (conditional)
 
         Flow:
         1. paper_type_classification runs first
-        2. code_availability_check runs second
-        3. After code_availability_check, route to:
-           * END if paper is 'theoretical' or 'dataset'
-           * END if no code found (code_available=False)
-           * code_repository_analysis if code found AND paper is 'method', 'both', or 'unknown'
+        2. code_availability_check runs second and completes the workflow
         """
 
         workflow = StateGraph(PaperProcessingState)
@@ -87,55 +75,11 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
         # Add nodes
         workflow.add_node("paper_type_classification", paper_type_classification_node)
         workflow.add_node("code_availability_check", code_availability_check_node)
-        workflow.add_node("code_repository_analysis", code_repository_analysis_node)
-
-        # Define routing function
-        def route_after_checks(state: PaperProcessingState) -> str:
-            """
-            Route after both paper type classification and code availability check.
-
-            Returns:
-                - "code_repository_analysis" if should analyze code
-                - END if should skip analysis
-            """
-            paper_type_result = state.get("paper_type_result")
-            code_availability = state.get("code_availability_result")
-
-            # Skip if theoretical or dataset paper
-            if paper_type_result and paper_type_result.paper_type in [
-                "theoretical",
-                "dataset",
-            ]:
-                logger.info(
-                    f"Skipping code analysis for {paper_type_result.paper_type} paper"
-                )
-                return END
-
-            # Skip if no code available
-            if not code_availability or not code_availability.code_available:
-                logger.info("Skipping code analysis - no code available")
-                return END
-
-            # Proceed to repository analysis for method/both/unknown papers with code
-            logger.info("Proceeding to code repository analysis")
-            return "code_repository_analysis"
 
         # Set entry point and sequential flow
         workflow.set_entry_point("paper_type_classification")
         workflow.add_edge("paper_type_classification", "code_availability_check")
-
-        # Conditional routing after both checks complete
-        workflow.add_conditional_edges(
-            "code_availability_check",
-            route_after_checks,
-            {
-                "code_repository_analysis": "code_repository_analysis",
-                END: END,
-            },
-        )
-
-        # Code repository analysis always ends
-        workflow.add_edge("code_repository_analysis", END)
+        workflow.add_edge("code_availability_check", END)
 
         return workflow.compile()
 
@@ -154,6 +98,7 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
                 str(workflow_run.id), "paper_type_classification"
             )
             if prev_node and prev_node.status == "completed":
+                # Get the result artifact
                 artifacts = await async_ops.get_node_artifacts(prev_node)
                 for artifact in artifacts:
                     if artifact.name == "result":
@@ -162,38 +107,6 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
                         )
                         logger.info(
                             f"Loaded paper_type_result from previous node: {state['paper_type_result'].paper_type}"
-                        )
-                        break
-
-        elif node.node_id == "code_repository_analysis":
-            # Need both paper_type_result and code_availability_result from previous nodes
-            paper_type_node = await async_ops.get_workflow_node(
-                str(workflow_run.id), "paper_type_classification"
-            )
-            if paper_type_node and paper_type_node.status == "completed":
-                artifacts = await async_ops.get_node_artifacts(paper_type_node)
-                for artifact in artifacts:
-                    if artifact.name == "result":
-                        state["paper_type_result"] = PaperTypeClassification(
-                            **artifact.inline_data
-                        )
-                        logger.info(
-                            f"Loaded paper_type_result: {state['paper_type_result'].paper_type}"
-                        )
-                        break
-
-            code_avail_node = await async_ops.get_workflow_node(
-                str(workflow_run.id), "code_availability_check"
-            )
-            if code_avail_node and code_avail_node.status == "completed":
-                artifacts = await async_ops.get_node_artifacts(code_avail_node)
-                for artifact in artifacts:
-                    if artifact.name == "result":
-                        state["code_availability_result"] = CodeAvailabilityCheck(
-                            **artifact.inline_data
-                        )
-                        logger.info(
-                            f"Loaded code_availability_result: code_available={state['code_availability_result'].code_available}"
                         )
                         break
 
@@ -208,8 +121,6 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
             return await paper_type_classification_node(state)
         elif node_id == "code_availability_check":
             return await code_availability_check_node(state)
-        elif node_id == "code_repository_analysis":
-            return await code_repository_analysis_node(state)
         else:
             raise ValueError(f"Unknown node_id: {node_id}")
 
@@ -228,7 +139,6 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
                     state["code_availability_result"] = CodeAvailabilityCheck(
                         **artifact.inline_data
                     )
-                # Note: code_repository_analysis result is stored as code_reproducibility_result
 
         return state
 
@@ -238,54 +148,53 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
         force_reprocess: bool = False,
         openai_api_key: Optional[str] = None,
         model: str = "gpt-4o",
-        user_id: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
-        Execute the complete paper processing workflow using workflow_engine.
+        Execute the code availability workflow for a paper.
 
         Args:
-            paper_id: Database ID of paper to process
-            force_reprocess: If True, reprocess even if already analyzed
+            paper_id: Database ID of the paper to process
+            force_reprocess: If True, bypass cache and reprocess all nodes
             openai_api_key: OpenAI API key (uses env var if not provided)
-            model: OpenAI model to use
-            user_id: Optional user ID for tracking
+            model: OpenAI model to use (default: gpt-4o)
 
         Returns:
-            Dictionary with workflow results and statistics
+            Dictionary with workflow results including:
+            - success: bool
+            - workflow_run_id: UUID
+            - run_number: int
+            - paper_type_result: PaperTypeClassification or None
+            - code_availability_result: CodeAvailabilityCheck or None
+            - errors: list of error messages
         """
-        logger.info(f"Starting paper processing workflow for paper ID {paper_id}")
+        logger.info(
+            f"Starting code availability workflow for paper {paper_id} with force_reprocess={force_reprocess}"
+        )
 
         try:
-            # Get or create workflow definition
-            workflow_def = await async_ops.get_or_create_workflow_definition(
+            # Ensure workflow definition exists
+            await async_ops.get_or_create_workflow_definition(
                 name=self.WORKFLOW_NAME,
                 version=self.WORKFLOW_VERSION,
-                description="Three-node workflow: paper type classification, code availability check, and conditional code repository analysis",
+                description="Two-node workflow: paper type classification and code availability check",
                 dag_structure={
                     "workflow_handler": {
-                        "module": "webApp.services.graphs.paper_processing_workflow",
-                        "function": "process_paper_workflow",
+                        "module": "webApp.services.graphs.process_code_availability",
+                        "function": "execute_workflow",
                     },
                     "nodes": [
                         {
                             "id": "paper_type_classification",
                             "type": "python",
-                            "handler": "webApp.services.graphs.paper_processing_workflow.paper_type_classification_node",
+                            "handler": "webApp.services.graphs.process_code_availability.paper_type_classification_node",
                             "description": "Classify paper type (dataset/method/both/theoretical/unknown)",
                             "config": {},
                         },
                         {
                             "id": "code_availability_check",
                             "type": "python",
-                            "handler": "webApp.services.graphs.paper_processing_workflow.code_availability_check_node",
+                            "handler": "webApp.services.graphs.process_code_availability.code_availability_check_node",
                             "description": "Check if code repository exists (database/text/online search)",
-                            "config": {},
-                        },
-                        {
-                            "id": "code_repository_analysis",
-                            "type": "python",
-                            "handler": "webApp.services.graphs.paper_processing_workflow.code_repository_analysis_node",
-                            "description": "Comprehensive analysis of code repository structure, documentation, and reproducibility",
                             "config": {},
                         },
                     ],
@@ -294,11 +203,6 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
                             "from": "paper_type_classification",
                             "to": "code_availability_check",
                             "type": "sequential",
-                        },
-                        {
-                            "from": "code_availability_check",
-                            "to": "code_repository_analysis",
-                            "type": "conditional",
                         },
                     ],
                 },
@@ -365,46 +269,28 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
                         if final_state.get("code_availability_result")
                         else None
                     ),
-                    "code_reproducibility": (
-                        final_state.get("code_reproducibility_result").model_dump()
-                        if final_state.get("code_reproducibility_result")
-                        else None
-                    ),
                 },
                 error_message="; ".join(errors) if errors else None,
             )
 
-            # Get token usage from artifacts
-            input_tokens, output_tokens = await async_ops.get_token_stats(
-                str(workflow_run.id)
+            logger.info(
+                f"Workflow completed for paper {paper_id}. Success: {success}, Run ID: {workflow_run.id}"
             )
 
-            # Compile results
-            results = {
+            return {
                 "success": success,
                 "workflow_run_id": str(workflow_run.id),
                 "run_number": workflow_run.run_number,
                 "paper_id": paper_id,
-                "paper_title": (await async_ops.get_paper(paper_id)).title,
-                "paper_type": final_state.get("paper_type_result"),
-                "code_availability": final_state.get("code_availability_result"),
-                "code_reproducibility": final_state.get("code_reproducibility_result"),
-                "total_input_tokens": input_tokens,
-                "total_output_tokens": output_tokens,
+                "paper_type_result": final_state.get("paper_type_result"),
+                "code_availability_result": final_state.get("code_availability_result"),
                 "errors": errors,
             }
 
-            logger.info(
-                f"Workflow run {workflow_run.id} completed. Status: {'success' if success else 'failed'}"
-            )
-            logger.info(f"Tokens used: {input_tokens} input, {output_tokens} output")
-
-            return results
-
         except Exception as e:
-            logger.error(f"Workflow execution failed: {e}", exc_info=True)
+            logger.error(f"Workflow failed for paper {paper_id}: {e}", exc_info=True)
 
-            # Try to update workflow run status
+            # Try to update workflow run status to failed
             try:
                 if "workflow_run" in locals():
                     await async_ops.update_workflow_run_status(
@@ -413,15 +299,14 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
                         completed_at=timezone.now(),
                         error_message=str(e),
                     )
-            except:
-                pass
+            except Exception as inner_e:
+                logger.error(f"Failed to update workflow run status: {inner_e}")
 
             return {
                 "success": False,
-                "paper_id": paper_id,
                 "error": str(e),
-                "total_input_tokens": 0,
-                "total_output_tokens": 0,
+                "paper_id": paper_id,
+                "errors": [str(e)],
             }
 
 
@@ -430,23 +315,22 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
 # ============================================================================
 
 # Create singleton instance
-_workflow_instance = PaperProcessingWorkflow()
+_workflow_instance = CodeAvailabilityWorkflow()
 
 
-async def process_paper_workflow(
+async def execute_workflow(
     paper_id: int,
     force_reprocess: bool = False,
     openai_api_key: Optional[str] = None,
     model: str = "gpt-4o",
-    user_id: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
-    Execute the complete paper processing workflow.
+    Execute the code availability workflow for a paper.
 
     Convenience function that uses the singleton workflow instance.
     """
     return await _workflow_instance.execute_workflow(
-        paper_id, force_reprocess, openai_api_key, model, user_id
+        paper_id, force_reprocess, openai_api_key, model
     )
 
 
@@ -477,34 +361,3 @@ async def execute_from_node(
     Convenience function that uses the singleton workflow instance.
     """
     return await _workflow_instance.execute_from_node(node_uuid, openai_api_key, model)
-
-
-# ============================================================================
-# Convenience Functions
-# ============================================================================
-
-
-async def process_multiple_papers(
-    paper_ids: List[int], force_reprocess: bool = False, max_concurrent: int = 3
-) -> List[Dict[str, Any]]:
-    """
-    Process multiple papers concurrently.
-
-    Args:
-        paper_ids: List of paper IDs to process
-        force_reprocess: If True, reprocess even if already analyzed
-        max_concurrent: Maximum number of concurrent processing tasks
-
-    Returns:
-        List of results for each paper
-    """
-    semaphore = asyncio.Semaphore(max_concurrent)
-
-    async def process_with_limit(paper_id):
-        async with semaphore:
-            return await process_paper_workflow(paper_id, force_reprocess)
-
-    tasks = [process_with_limit(pid) for pid in paper_ids]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-
-    return results

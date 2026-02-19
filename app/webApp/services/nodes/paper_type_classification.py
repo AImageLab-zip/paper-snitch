@@ -59,16 +59,11 @@ async def paper_type_classification_node(state: PaperProcessingState) -> Dict[st
 
         # Get paper from database
         paper = await async_ops.get_paper(state["paper_id"])
-        # TODO da fixare per avere tutto il paper
 
-        # Use title + abstract for efficiency (or full text if abstract unavailable)
-        if paper.abstract:
+        if paper.text and paper.abstract:
+            paper_content = f"Title: {paper.title}\n\nAbstract: {paper.abstract}\n\nText: {paper.text}"
+        elif paper.abstract:
             paper_content = f"Title: {paper.title}\n\nAbstract: {paper.abstract}"
-        elif paper.text:
-            # Use first 3000 characters of full text if no abstract
-            paper_content = (
-                f"Title: {paper.title}\n\nText excerpt:\n{paper.text[:3000]}"
-            )
         else:
             paper_content = (
                 f"Title: {paper.title}\n\n(No abstract or full text available)"
