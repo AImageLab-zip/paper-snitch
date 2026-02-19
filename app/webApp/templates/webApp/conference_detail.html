@@ -257,6 +257,20 @@
             <div class="modal-body">
                 <p>Restart workflows for papers in <strong id="bulk-rerun-conference-name"></strong></p>
                 
+                <!-- Workflow Selection -->
+                <div class="form-group">
+                    <label for="bulk-workflow-type-select" class="font-weight-bold">
+                        <i class="fas fa-project-diagram mr-1"></i>
+                        Select Workflow:
+                    </label>
+                    <select class="form-control" id="bulk-workflow-type-select">
+                        <option value="" disabled selected>Loading workflows...</option>
+                    </select>
+                    <small class="form-text text-muted">
+                        Choose which workflow to run for all papers.
+                    </small>
+                </div>
+                
                 <div class="form-group">
                     <label for="bulk-rerun-limit">Number of papers to rerun:</label>
                     <div class="input-group">
@@ -373,6 +387,10 @@ $(document).ready(function() {
         const conferenceName = $(this).data('conference-name');
         $('#bulk-rerun-conference-name').text(conferenceName);
         $('#bulk-rerun-limit').val('');
+        
+        // Load available workflows
+        loadBulkRerunWorkflows();
+        
         $('#bulkRerunModal').modal('show');
     });
     
@@ -465,17 +483,91 @@ $(document).ready(function() {
         }
     }
     
+    // Function to load available workflows for bulk rerun
+    function loadBulkRerunWorkflows() {
+        const $select = $('#bulk-workflow-type-select');
+        $select.html('<option value="" disabled selected>Loading workflows...</option>');
+        
+        // Get the first paper ID from the conference to load workflows
+        // We can use any paper since workflows are defined at the application level
+        $.ajax({
+            url: `{% url 'bulk_rerun_preview' conference.id %}`,
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}',
+                'Content-Type': 'application/json'
+            },
+            data: JSON.stringify({limit: 1}),  // Just get one paper to fetch workflows
+            success: function(response) {
+                if (response.success && response.papers && response.papers.length > 0) {
+                    const firstPaperId = response.papers[0].id;
+                    
+                    // Load workflows using the rerun workflow endpoint
+                    $.ajax({
+                        url: `/paper/${firstPaperId}/rerun-workflow/`,
+                        method: 'GET',
+                        success: function(workflowResponse) {
+                            $select.empty();
+                            
+                            // Add workflow options
+                            if (workflowResponse.workflows) {
+                                Object.keys(workflowResponse.workflows).forEach(function(key) {
+                                    const workflow = workflowResponse.workflows[key];
+                                    const option = $('<option></option>')
+                                        .attr('value', key)
+                                        .text(workflow.name);
+                                    
+                                    // Select default workflow
+                                    if (workflow.default || key === workflowResponse.default_workflow) {
+                                        option.attr('selected', 'selected');
+                                    }
+                                    
+                                    $select.append(option);
+                                });
+                            }
+                            
+                            // Enable the confirm button
+                            $('#confirm-bulk-rerun').prop('disabled', false);
+                        },
+                        error: function(xhr) {
+                            console.error('Failed to load workflows:', xhr);
+                            $select.html('<option value="" disabled selected>Error loading workflows</option>');
+                            $('#confirm-bulk-rerun').prop('disabled', true);
+                        }
+                    });
+                } else {
+                    $select.html('<option value="" disabled selected>No papers found</option>');
+                    $('#confirm-bulk-rerun').prop('disabled', true);
+                }
+            },
+            error: function(xhr) {
+                console.error('Failed to fetch papers:', xhr);
+                $select.html('<option value="" disabled selected>Error loading workflows</option>');
+                $('#confirm-bulk-rerun').prop('disabled', true);
+            }
+        });
+    }
+    
     // Confirm bulk rerun
     $('#confirm-bulk-rerun').on('click', function() {
         const $btn = $(this);
         const originalHtml = $btn.html();
         const limit = $('#bulk-rerun-limit').val();
+        const workflowId = $('#bulk-workflow-type-select').val();
+        
+        // Validate workflow selection
+        if (!workflowId) {
+            alert('Please select a workflow to run');
+            return;
+        }
         
         // Disable button and show loading
         $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin mr-1"></i>Starting...');
         
         // Prepare request data
-        const requestData = {};
+        const requestData = {
+            workflow_id: workflowId
+        };
         if (limit && limit > 0) {
             requestData.limit = parseInt(limit);
         }

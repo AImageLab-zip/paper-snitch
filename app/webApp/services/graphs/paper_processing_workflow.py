@@ -1,7 +1,8 @@
 """
 Paper Processing Workflow - Integrated with Workflow Engine
 
-This module implements a three-node workflow for analyzing papers:
+This module implements a four-node workflow for analyzing papers:
+- Node S: Section Embeddings (compute vector embeddings for paper sections)
 - Node A: Paper Type Classification (dataset vs method vs both)
 - Node B: Code Availability Check (agentic analysis of code availability and quality)
 - Node C: Code Repository Analysis (comprehensive analysis of repository structure, documentation, and reproducibility)
@@ -16,12 +17,10 @@ Properly integrated with the workflow_engine models for:
 import os
 import logging
 import asyncio
-import threading
 
 from typing import Optional, Dict, Any, List
 
 from django.utils import timezone
-from asgiref.sync import sync_to_async
 
 from langgraph.graph import StateGraph, END
 from openai import OpenAI
@@ -40,106 +39,16 @@ from ..pydantic_schemas import (
     CodeAvailabilityCheck,
 )
 from ..graphs_state import PaperProcessingState
-from .base_workflow_graph import BaseWorkflowGraph
+from .base_workflow_graph import (
+    BaseWorkflowGraph,
+    _workflow_semaphore,
+    get_active_workflow_count,
+    _register_workflow,
+    _unregister_workflow,
+    MAX_CONCURRENT_WORKFLOWS,
+)
 
 logger = logging.getLogger(__name__)
-
-# ============================================================================
-# Global Concurrency Control
-# ============================================================================
-
-# Global semaphore to limit concurrent workflow executions (per worker process)
-# This prevents system overload when multiple workflows are triggered simultaneously
-MAX_CONCURRENT_WORKFLOWS = 8
-_workflow_semaphore = threading.Semaphore(MAX_CONCURRENT_WORKFLOWS)
-
-
-@sync_to_async
-def get_active_workflow_count() -> int:
-    """Get the current number of active workflows by querying database."""
-    # Import here to avoid circular imports
-    from workflow_engine.models import WorkflowRun
-    
-    # Count workflows with running or pending status
-    return WorkflowRun.objects.filter(status__in=['running', 'pending']).count()
-
-
-@sync_to_async
-def get_active_workflows() -> Dict[int, Dict[str, Any]]:
-    """Get information about currently active workflows from database."""
-    from workflow_engine.models import WorkflowRun
-    
-    active_runs = WorkflowRun.objects.filter(
-        status__in=['running', 'pending']
-    ).select_related('paper').values(
-        'paper__id', 'id', 'status', 'started_at', 'created_at'
-    )
-    
-    workflows = {}
-    for run in active_runs:
-        paper_id = run['paper__id']
-        workflows[paper_id] = {
-            'workflow_run_id': str(run['id']),
-            'status': run['status'],
-            'started_at': (run['started_at'] or run['created_at']).isoformat(),
-        }
-    
-    return workflows
-
-
-async def _register_workflow(paper_id: int, workflow_run_id: str):
-    """Register a workflow as active (logging only, tracking via DB)."""
-    active_count = await get_active_workflow_count()
-    logger.info(f"Workflow started for paper {paper_id}. Active workflows: {active_count}/{MAX_CONCURRENT_WORKFLOWS}")
-
-
-async def _unregister_workflow(paper_id: int):
-    """Unregister a workflow (logging only, tracking via DB)."""
-    active_count = await get_active_workflow_count()
-    logger.info(f"Workflow finished for paper {paper_id}. Active workflows: {active_count}/{MAX_CONCURRENT_WORKFLOWS}")
-
-
-@sync_to_async
-def cleanup_stale_workflows(max_age_minutes: int = 30):
-    """Clean up workflows that have been active for too long (likely crashed)."""
-    from datetime import timedelta
-    from workflow_engine.models import WorkflowRun, WorkflowNode
-    
-    cutoff_time = timezone.now() - timedelta(minutes=max_age_minutes)
-    
-    #Find stale workflows
-    stale_runs = WorkflowRun.objects.filter(
-        status__in=['running', 'pending'],
-        started_at__lt=cutoff_time
-    )
-    
-    stale_count = 0
-    for run in stale_runs:
-        logger.warning(
-            f"Marking stale workflow {run.id} for paper {run.paper_id} as failed "
-            f"(started: {run.started_at})"
-        )
-        run.status = 'failed'
-        run.completed_at = timezone.now()
-        run.error_message = f'Workflow timeout after {max_age_minutes} minutes'
-        run.save()
-        
-        # Also mark running/pending nodes as failed
-        WorkflowNode.objects.filter(
-            workflow_run=run,
-            status__in=['running', 'pending']
-        ).update(
-            status='failed',
-            completed_at=timezone.now(),
-            error_message=f'Node timeout after {max_age_minutes} minutes'
-        )
-        
-        stale_count += 1
-    
-    if stale_count > 0:
-        logger.info(f"Cleaned up {stale_count} stale workflows")
-    
-    return stale_count
 
 
 # ============================================================================
@@ -158,9 +67,10 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
     """
 
     WORKFLOW_NAME = "reduced_paper_processing_pipeline"
-    WORKFLOW_VERSION = "2"
+    WORKFLOW_VERSION = "3"
     NODE_ORDER = [
         "paper_type_classification",
+        "section_embeddings",
         "code_availability_check",
         "code_repository_analysis",
     ]
@@ -253,7 +163,21 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
     ) -> PaperProcessingState:
         """Load dependencies for a specific node from previous nodes."""
 
-        if node.node_id == "code_availability_check":
+        if node.node_id == "section_embeddings":
+            # Need paper_type_result from previous node (though not strictly required)
+            prev_node = await async_ops.get_workflow_node(
+                str(workflow_run.id), "paper_type_classification"
+            )
+            if prev_node and prev_node.status == "completed":
+                artifacts = await async_ops.get_node_artifacts(prev_node)
+                for artifact in artifacts:
+                    if artifact.name == "result":
+                        state["paper_type_result"] = PaperTypeClassification(
+                            **artifact.inline_data
+                        )
+                        break
+
+        elif node.node_id == "code_availability_check":
             # Need paper_type_result from previous node
             prev_node = await async_ops.get_workflow_node(
                 str(workflow_run.id), "paper_type_classification"
@@ -311,6 +235,8 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
 
         if node_id == "paper_type_classification":
             return await paper_type_classification_node(state)
+        elif node_id == "section_embeddings":
+            return await section_embeddings_node(state)
         elif node_id == "code_availability_check":
             return await code_availability_check_node(state)
         elif node_id == "code_repository_analysis":
@@ -329,6 +255,9 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
                     state["paper_type_result"] = PaperTypeClassification(
                         **artifact.inline_data
                     )
+                elif node_id == "section_embeddings":
+                    # Section embeddings result is typically a dict with embedding info
+                    state["section_embeddings_result"] = artifact.inline_data
                 elif node_id == "code_availability_check":
                     state["code_availability_result"] = CodeAvailabilityCheck(
                         **artifact.inline_data
@@ -373,6 +302,10 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
                 version=3,  # Version 3 with 4-node architecture including embeddings
                 description="Four-node workflow: paper type classification, section embeddings, code availability check, and conditional code repository analysis",
                 dag_structure={
+                "workflow_handler": {
+                    "module": "webApp.services.graphs.paper_processing_workflow",
+                    "function": "execute_workflow",
+                },
                 "nodes": [
                     {
                         "id": "paper_type_classification",
@@ -565,6 +498,23 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
 _workflow_instance = PaperProcessingWorkflow()
 
 
+async def execute_workflow(
+    paper_id: int,
+    force_reprocess: bool = False,
+    openai_api_key: Optional[str] = None,
+    model: str = "gpt-4o",
+) -> Dict[str, Any]:
+    """
+    Execute the complete paper processing workflow.
+
+    Convenience function for workflow_handler - uses the singleton workflow instance.
+    Note: This matches the naming convention in process_code_availability.py
+    """
+    return await _workflow_instance.execute_workflow(
+        paper_id, force_reprocess, openai_api_key, model
+    )
+
+
 async def process_paper_workflow(
     paper_id: int,
     force_reprocess: bool = False,
@@ -576,6 +526,7 @@ async def process_paper_workflow(
     Execute the complete paper processing workflow.
 
     Convenience function that uses the singleton workflow instance.
+    Kept for backward compatibility.
     """
     return await _workflow_instance.execute_workflow(
         paper_id, force_reprocess, openai_api_key, model, user_id
@@ -614,7 +565,6 @@ async def execute_from_node(
 # ============================================================================
 # Convenience Functions
 # ============================================================================
-
 
 async def process_multiple_papers(
     paper_ids: List[int], force_reprocess: bool = False, max_concurrent: int = 3

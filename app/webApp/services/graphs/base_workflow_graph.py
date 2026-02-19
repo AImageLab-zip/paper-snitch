@@ -11,16 +11,116 @@ Subclasses must implement:
 
 import os
 import logging
+import threading
 from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any
 
 from django.utils import timezone
+from asgiref.sync import sync_to_async
 from openai import OpenAI
 
 from workflow_engine.services.async_orchestrator import async_ops
 from ..graphs_state import PaperProcessingState
 
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# Global Concurrency Control
+# ============================================================================
+
+# Global semaphore to limit concurrent workflow executions (per worker process)
+# This prevents system overload when multiple workflows are triggered simultaneously
+MAX_CONCURRENT_WORKFLOWS = 8
+_workflow_semaphore = threading.Semaphore(MAX_CONCURRENT_WORKFLOWS)
+
+
+@sync_to_async
+def get_active_workflow_count() -> int:
+    """Get the current number of active workflows by querying database."""
+    # Import here to avoid circular imports
+    from workflow_engine.models import WorkflowRun
+    
+    # Count workflows with running or pending status
+    return WorkflowRun.objects.filter(status__in=['running', 'pending']).count()
+
+
+@sync_to_async
+def get_active_workflows() -> Dict[int, Dict[str, Any]]:
+    """Get information about currently active workflows from database."""
+    from workflow_engine.models import WorkflowRun
+    
+    active_runs = WorkflowRun.objects.filter(
+        status__in=['running', 'pending']
+    ).select_related('paper').values(
+        'paper__id', 'id', 'status', 'started_at', 'created_at'
+    )
+    
+    workflows = {}
+    for run in active_runs:
+        paper_id = run['paper__id']
+        workflows[paper_id] = {
+            'workflow_run_id': str(run['id']),
+            'status': run['status'],
+            'started_at': (run['started_at'] or run['created_at']).isoformat(),
+        }
+    
+    return workflows
+
+
+async def _register_workflow(paper_id: int, workflow_run_id: str):
+    """Register a workflow as active (logging only, tracking via DB)."""
+    active_count = await get_active_workflow_count()
+    logger.info(f"Workflow started for paper {paper_id}. Active workflows: {active_count}/{MAX_CONCURRENT_WORKFLOWS}")
+
+
+async def _unregister_workflow(paper_id: int):
+    """Unregister a workflow (logging only, tracking via DB)."""
+    active_count = await get_active_workflow_count()
+    logger.info(f"Workflow finished for paper {paper_id}. Active workflows: {active_count}/{MAX_CONCURRENT_WORKFLOWS}")
+
+
+@sync_to_async
+def cleanup_stale_workflows(max_age_minutes: int = 30):
+    """Clean up workflows that have been active for too long (likely crashed)."""
+    from datetime import timedelta
+    from workflow_engine.models import WorkflowRun, WorkflowNode
+    
+    cutoff_time = timezone.now() - timedelta(minutes=max_age_minutes)
+    
+    # Find stale workflows
+    stale_runs = WorkflowRun.objects.filter(
+        status__in=['running', 'pending'],
+        started_at__lt=cutoff_time
+    )
+    
+    stale_count = 0
+    for run in stale_runs:
+        logger.warning(
+            f"Marking stale workflow {run.id} for paper {run.paper_id} as failed "
+            f"(started: {run.started_at})"
+        )
+        run.status = 'failed'
+        run.completed_at = timezone.now()
+        run.error_message = f'Workflow timeout after {max_age_minutes} minutes'
+        run.save()
+        
+        # Also mark running/pending nodes as failed
+        WorkflowNode.objects.filter(
+            workflow_run=run,
+            status__in=['running', 'pending']
+        ).update(
+            status='failed',
+            completed_at=timezone.now(),
+            error_message=f'Node timeout after {max_age_minutes} minutes'
+        )
+        
+        stale_count += 1
+    
+    if stale_count > 0:
+        logger.info(f"Cleaned up {stale_count} stale workflows")
+    
+    return stale_count
 
 
 class BaseWorkflowGraph(ABC):

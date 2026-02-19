@@ -190,6 +190,8 @@ async def section_embeddings_node(state: PaperProcessingState) -> Dict[str, Any]
                 if section_text and len(str(section_text).strip()) > 100:
                     # Normalize section name (lowercase, replace spaces with underscores)
                     normalized_name = section_name.lower().replace(' ', '_').replace('-', '_')
+                    # Truncate to 50 chars to fit database column limit
+                    normalized_name = normalized_name[:50]
                     # Limit to ~8000 chars per section
                     text = str(section_text).strip()[:8000]
                     sections.append((normalized_name, text))

@@ -696,7 +696,7 @@ class ActiveWorkflowsView(View):
     def get(self, request):
         """Return current active workflow count and limit."""
         from asgiref.sync import async_to_sync
-        from webApp.services.graphs.paper_processing_workflow import (
+        from webApp.services.graphs.base_workflow_graph import (
             get_active_workflow_count,
             get_active_workflows,
             MAX_CONCURRENT_WORKFLOWS,
@@ -1426,14 +1426,32 @@ class BulkRerunWorkflowsView(View):
 
         # Parse request data
         limit = None
+        workflow_id = None
         if request.body:
             try:
                 data = json.loads(request.body)
                 limit = data.get('limit')
                 if limit:
                     limit = int(limit)
+                workflow_id = data.get('workflow_id')
             except (json.JSONDecodeError, ValueError) as e:
-                logger.warning(f"Failed to parse limit: {e}")
+                logger.warning(f"Failed to parse request data: {e}")
+
+        # Validate workflow_id is provided
+        if not workflow_id:
+            return JsonResponse(
+                {"error": "workflow_id is required"}, status=400
+            )
+
+        # Validate workflow exists and is active
+        try:
+            workflow_definition = WorkflowDefinition.objects.get(
+                id=workflow_id, is_active=True
+            )
+        except WorkflowDefinition.DoesNotExist:
+            return JsonResponse(
+                {"error": f"Workflow not found or not active"}, status=404
+            )
 
         # Get papers for this conference
         papers = Paper.objects.filter(conference=conference)
@@ -1494,7 +1512,8 @@ class BulkRerunWorkflowsView(View):
         
         paper_ids = [p.id for p in papers]
         logger.info(
-            f"Enqueueing {total_papers} workflow tasks for conference {conference_id}: {paper_ids}"
+            f"Enqueueing {total_papers} workflow tasks for conference {conference_id}: {paper_ids} "
+            f"(workflow: {workflow_definition.name} v{workflow_definition.version})"
         )
         
         task_ids = []
@@ -1503,11 +1522,12 @@ class BulkRerunWorkflowsView(View):
                 task = process_paper_workflow_task.delay(
                     paper_id=paper.id,
                     force_reprocess=True,
-                    model="gpt-4o"
+                    model="gpt-4o",
+                    workflow_id=workflow_id  # Pass the selected workflow ID
                 )
                 task_ids.append(str(task.id))
                 logger.info(
-                    f"[{idx}/{total_papers}] Enqueued workflow task for paper {paper.id}: {task.id}"
+                    f"[{idx}/{total_papers}] Enqueued workflow task for paper {paper.id}: {task.id} (workflow: {workflow_id})"
                 )
             except Exception as e:
                 logger.error(
@@ -1516,10 +1536,12 @@ class BulkRerunWorkflowsView(View):
                 )
         
         logger.info(
-            f"Successfully enqueued {len(task_ids)} workflow tasks for conference {conference_id}"
+            f"Successfully enqueued {len(task_ids)} workflow tasks for conference {conference_id} "
+            f"(workflow: {workflow_definition.name} v{workflow_definition.version})"
         )
 
         message = f"{len(task_ids)} workflow task{'s' if len(task_ids) != 1 else ''} queued for processing"
+        message += f" using '{workflow_definition.description or workflow_definition.name}'"
         if limit and limit > 0:
             message += f" (limited to {limit})"
         
