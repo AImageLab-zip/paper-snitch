@@ -143,104 +143,6 @@ def cleanup_stale_workflows(max_age_minutes: int = 30):
 
 
 # ============================================================================
-# Global Concurrency Control
-# ============================================================================
-
-# Global semaphore to limit concurrent workflow executions (per worker process)
-# This prevents system overload when multiple workflows are triggered simultaneously
-MAX_CONCURRENT_WORKFLOWS = 8
-_workflow_semaphore = threading.Semaphore(MAX_CONCURRENT_WORKFLOWS)
-
-
-@sync_to_async
-def get_active_workflow_count() -> int:
-    """Get the current number of active workflows by querying database."""
-    # Import here to avoid circular imports
-    from workflow_engine.models import WorkflowRun
-    
-    # Count workflows with running or pending status
-    return WorkflowRun.objects.filter(status__in=['running', 'pending']).count()
-
-
-@sync_to_async
-def get_active_workflows() -> Dict[int, Dict[str, Any]]:
-    """Get information about currently active workflows from database."""
-    from workflow_engine.models import WorkflowRun
-    
-    active_runs = WorkflowRun.objects.filter(
-        status__in=['running', 'pending']
-    ).select_related('paper').values(
-        'paper__id', 'id', 'status', 'started_at', 'created_at'
-    )
-    
-    workflows = {}
-    for run in active_runs:
-        paper_id = run['paper__id']
-        workflows[paper_id] = {
-            'workflow_run_id': str(run['id']),
-            'status': run['status'],
-            'started_at': (run['started_at'] or run['created_at']).isoformat(),
-        }
-    
-    return workflows
-
-
-async def _register_workflow(paper_id: int, workflow_run_id: str):
-    """Register a workflow as active (logging only, tracking via DB)."""
-    active_count = await get_active_workflow_count()
-    logger.info(f"Workflow started for paper {paper_id}. Active workflows: {active_count}/{MAX_CONCURRENT_WORKFLOWS}")
-
-
-async def _unregister_workflow(paper_id: int):
-    """Unregister a workflow (logging only, tracking via DB)."""
-    active_count = await get_active_workflow_count()
-    logger.info(f"Workflow finished for paper {paper_id}. Active workflows: {active_count}/{MAX_CONCURRENT_WORKFLOWS}")
-
-
-@sync_to_async
-def cleanup_stale_workflows(max_age_minutes: int = 30):
-    """Clean up workflows that have been active for too long (likely crashed)."""
-    from datetime import timedelta
-    from workflow_engine.models import WorkflowRun, WorkflowNode
-    
-    cutoff_time = timezone.now() - timedelta(minutes=max_age_minutes)
-    
-    #Find stale workflows
-    stale_runs = WorkflowRun.objects.filter(
-        status__in=['running', 'pending'],
-        started_at__lt=cutoff_time
-    )
-    
-    stale_count = 0
-    for run in stale_runs:
-        logger.warning(
-            f"Marking stale workflow {run.id} for paper {run.paper_id} as failed "
-            f"(started: {run.started_at})"
-        )
-        run.status = 'failed'
-        run.completed_at = timezone.now()
-        run.error_message = f'Workflow timeout after {max_age_minutes} minutes'
-        run.save()
-        
-        # Also mark running/pending nodes as failed
-        WorkflowNode.objects.filter(
-            workflow_run=run,
-            status__in=['running', 'pending']
-        ).update(
-            status='failed',
-            completed_at=timezone.now(),
-            error_message=f'Node timeout after {max_age_minutes} minutes'
-        )
-        
-        stale_count += 1
-    
-    if stale_count > 0:
-        logger.info(f"Cleaned up {stale_count} stale workflows")
-    
-    return stale_count
-
-
-# ============================================================================
 # Workflow Class Definition
 # ============================================================================
 
@@ -267,29 +169,29 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
         """
         Build the LangGraph workflow for paper processing with conditional routing.
 
-    Workflow structure (sequential with conditional routing):
-    - Node A (paper_type_classification): Classify paper type
-    - Node D (section_embeddings): Compute embeddings for paper sections
-    - Node B (code_availability_check): Check code availability and verify accessibility
-    - Node C (code_repository_analysis): Comprehensive code analysis (conditional)
+        Workflow structure (sequential with conditional routing):
+        - Node A (paper_type_classification): Classify paper type
+        - Node D (section_embeddings): Compute embeddings for paper sections
+        - Node B (code_availability_check): Check code availability and verify accessibility
+        - Node C (code_repository_analysis): Comprehensive code analysis (conditional)
 
-    Flow:
-    1. paper_type_classification runs first
-    2. section_embeddings runs second (computes embeddings for sections)
-    3. code_availability_check runs third
-    4. After code_availability_check, route to:
-       * END if paper is 'theoretical' or 'dataset'
-       * END if no code found (code_available=False)
-       * code_repository_analysis if code found AND paper is 'method', 'both', or 'unknown'
-    """
+        Flow:
+        1. paper_type_classification runs first
+        2. section_embeddings runs second (computes embeddings for sections)
+        3. code_availability_check runs third
+        4. After code_availability_check, route to:
+        * END if paper is 'theoretical' or 'dataset'
+        * END if no code found (code_available=False)
+        * code_repository_analysis if code found AND paper is 'method', 'both', or 'unknown'
+        """
 
         workflow = StateGraph(PaperProcessingState)
 
-    # Add nodes
-    workflow.add_node("paper_type_classification", paper_type_classification_node)
-    workflow.add_node("section_embeddings", section_embeddings_node)
-    workflow.add_node("code_availability_check", code_availability_check_node)
-    workflow.add_node("code_repository_analysis", code_repository_analysis_node)
+        # Add nodes
+        workflow.add_node("paper_type_classification", paper_type_classification_node)
+        workflow.add_node("section_embeddings", section_embeddings_node)
+        workflow.add_node("code_availability_check", code_availability_check_node)
+        workflow.add_node("code_repository_analysis", code_repository_analysis_node)
 
         # Define routing function
         def route_after_checks(state: PaperProcessingState) -> str:
@@ -322,10 +224,10 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
             logger.info("Proceeding to code repository analysis")
             return "code_repository_analysis"
 
-    # Set entry point and sequential flow
-    workflow.set_entry_point("paper_type_classification")
-    workflow.add_edge("paper_type_classification", "section_embeddings")
-    workflow.add_edge("section_embeddings", "code_availability_check")
+        # Set entry point and sequential flow
+        workflow.set_entry_point("paper_type_classification")
+        workflow.add_edge("paper_type_classification", "section_embeddings")
+        workflow.add_edge("section_embeddings", "code_availability_check")
 
         # Conditional routing after both checks complete
         workflow.add_conditional_edges(
@@ -453,24 +355,24 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
             model: OpenAI model to use
             user_id: Optional user ID for tracking
 
-    Returns:
-        Dictionary with workflow results and statistics
-    """
-    logger.info(f"Starting paper processing workflow for paper ID {paper_id}")
-    
-    # Acquire semaphore (blocks until available - no timeout when running in Celery)
-    # This ensures worker-level concurrency control
-    _workflow_semaphore.acquire()
-    active_count = await get_active_workflow_count()
-    logger.info(f"Acquired workflow slot for paper {paper_id}. Active: {active_count + 1}/{MAX_CONCURRENT_WORKFLOWS}")
+        Returns:
+            Dictionary with workflow results and statistics
+        """
+        logger.info(f"Starting paper processing workflow for paper ID {paper_id}")
+        
+        # Acquire semaphore (blocks until available - no timeout when running in Celery)
+        # This ensures worker-level concurrency control
+        _workflow_semaphore.acquire()
+        active_count = await get_active_workflow_count()
+        logger.info(f"Acquired workflow slot for paper {paper_id}. Active: {active_count + 1}/{MAX_CONCURRENT_WORKFLOWS}")
 
-    try:
-        # Get or create workflow definition
-        workflow_def = await async_ops.get_or_create_workflow_definition(
-            name="reduced_paper_processing_pipeline",
-            version=3,  # Version 3 with 4-node architecture including embeddings
-            description="Four-node workflow: paper type classification, section embeddings, code availability check, and conditional code repository analysis",
-            dag_structure={
+        try:
+            # Get or create workflow definition
+            workflow_def = await async_ops.get_or_create_workflow_definition(
+                name="reduced_paper_processing_pipeline",
+                version=3,  # Version 3 with 4-node architecture including embeddings
+                description="Four-node workflow: paper type classification, section embeddings, code availability check, and conditional code repository analysis",
+                dag_structure={
                 "nodes": [
                     {
                         "id": "paper_type_classification",
@@ -520,7 +422,7 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
                     },
                 ],
             },
-        )
+            )
 
             # Create workflow run using orchestrator
             config = {
@@ -534,32 +436,32 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
                 input_data=config,
             )
 
-        # Update workflow run status to running
-        await async_ops.update_workflow_run_status(
-            workflow_run.id, "running", started_at=timezone.now()
-        )
-        
-        # Register this workflow as active
-        await _register_workflow(paper_id, str(workflow_run.id))
+            # Update workflow run status to running
+            await async_ops.update_workflow_run_status(
+                workflow_run.id, "running", started_at=timezone.now()
+            )
+            
+            # Register this workflow as active
+            await _register_workflow(paper_id, str(workflow_run.id))
 
             # Initialize OpenAI client
             api_key = openai_api_key or os.getenv("OPENAI_API_KEY")
             client = OpenAI(api_key=api_key)
 
-        # Initialize state
-        initial_state: PaperProcessingState = {
-            "workflow_run_id": str(workflow_run.id),
-            "paper_id": paper_id,
-            "current_node_id": None,
-            "client": client,
-            "model": model,
-            "force_reprocess": force_reprocess,
-            "paper_type_result": None,
-            "section_embeddings_result": None,
-            "code_availability_result": None,
-            "code_reproducibility_result": None,
-            "errors": [],
-        }
+            # Initialize state
+            initial_state: PaperProcessingState = {
+                "workflow_run_id": str(workflow_run.id),
+                "paper_id": paper_id,
+                "current_node_id": None,
+                "client": client,
+                "model": model,
+                "force_reprocess": force_reprocess,
+                "paper_type_result": None,
+                "section_embeddings_result": None,
+                "code_availability_result": None,
+                "code_reproducibility_result": None,
+                "errors": [],
+            }
 
             # Build and run workflow
             workflow = self.build_workflow()
@@ -570,53 +472,53 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
             errors = final_state.get("errors", [])
             success = len(errors) == 0
 
-        # Update workflow run status
-        await async_ops.update_workflow_run_status(
-            workflow_run.id,
-            "completed" if success else "failed",
-            completed_at=timezone.now(),
-            output_data={
-                "success": success,
-                "paper_type": (
-                    final_state.get("paper_type_result").model_dump()
-                    if final_state.get("paper_type_result")
-                    else None
-                ),
-                "section_embeddings": final_state.get("section_embeddings_result"),
-                "code_availability": (
-                    final_state.get("code_availability_result").model_dump()
-                    if final_state.get("code_availability_result")
-                    else None
-                ),
-                "code_reproducibility": (
-                    final_state.get("code_reproducibility_result").model_dump()
-                    if final_state.get("code_reproducibility_result")
-                    else None
-                ),
-            },
-            error_message="; ".join(errors) if errors else None,
-        )
+            # Update workflow run status
+            await async_ops.update_workflow_run_status(
+                workflow_run.id,
+                "completed" if success else "failed",
+                completed_at=timezone.now(),
+                output_data={
+                    "success": success,
+                    "paper_type": (
+                        final_state.get("paper_type_result").model_dump()
+                        if final_state.get("paper_type_result")
+                        else None
+                    ),
+                    "section_embeddings": final_state.get("section_embeddings_result"),
+                    "code_availability": (
+                        final_state.get("code_availability_result").model_dump()
+                        if final_state.get("code_availability_result")
+                        else None
+                    ),
+                    "code_reproducibility": (
+                        final_state.get("code_reproducibility_result").model_dump()
+                        if final_state.get("code_reproducibility_result")
+                        else None
+                    ),
+                },
+                error_message="; ".join(errors) if errors else None,
+            )
 
             # Get token usage from artifacts
             input_tokens, output_tokens = await async_ops.get_token_stats(
                 str(workflow_run.id)
             )
 
-        # Compile results
-        results = {
-            "success": success,
-            "workflow_run_id": str(workflow_run.id),
-            "run_number": workflow_run.run_number,
-            "paper_id": paper_id,
-            "paper_title": (await async_ops.get_paper(paper_id)).title,
-            "paper_type": final_state.get("paper_type_result"),
-            "section_embeddings": final_state.get("section_embeddings_result"),
-            "code_availability": final_state.get("code_availability_result"),
-            "code_reproducibility": final_state.get("code_reproducibility_result"),
-            "total_input_tokens": input_tokens,
-            "total_output_tokens": output_tokens,
-            "errors": errors,
-        }
+            # Compile results
+            results = {
+                "success": success,
+                "workflow_run_id": str(workflow_run.id),
+                "run_number": workflow_run.run_number,
+                "paper_id": paper_id,
+                "paper_title": (await async_ops.get_paper(paper_id)).title,
+                "paper_type": final_state.get("paper_type_result"),
+                "section_embeddings": final_state.get("section_embeddings_result"),
+                "code_availability": final_state.get("code_availability_result"),
+                "code_reproducibility": final_state.get("code_reproducibility_result"),
+                "total_input_tokens": input_tokens,
+                "total_output_tokens": output_tokens,
+                "errors": errors,
+            }
 
             logger.info(
                 f"Workflow run {workflow_run.id} completed. Status: {'success' if success else 'failed'}"
@@ -640,19 +542,19 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
             except:
                 pass
 
-        return {
-            "success": False,
-            "paper_id": paper_id,
-            "error": str(e),
-            "total_input_tokens": 0,
-            "total_output_tokens": 0,
-        }
-    finally:
-        # Always unregister workflow and release semaphore
-        await _unregister_workflow(paper_id)
-        _workflow_semaphore.release()
-        active_count = await get_active_workflow_count()
-        logger.info(f"Released workflow slot for paper {paper_id}. Active: {active_count}/{MAX_CONCURRENT_WORKFLOWS}")
+            return {
+                "success": False,
+                "paper_id": paper_id,
+                "error": str(e),
+                "total_input_tokens": 0,
+                "total_output_tokens": 0,
+            }
+        finally:
+            # Always unregister workflow and release semaphore
+            await _unregister_workflow(paper_id)
+            _workflow_semaphore.release()
+            active_count = await get_active_workflow_count()
+            logger.info(f"Released workflow slot for paper {paper_id}. Active: {active_count}/{MAX_CONCURRENT_WORKFLOWS}")
 
 
 # ============================================================================
