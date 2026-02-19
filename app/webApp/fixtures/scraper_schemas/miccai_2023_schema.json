@@ -1,17 +1,17 @@
 {
   "name": "MICCAI 2023 Paper Listings",
-  "baseSelector": "div.posts-list-item",
   "fields": [
     {
       "name": "title",
-      "selector": "a",
-      "type": "text"
+      "type": "text",
+      "selector": "a"
     },
     {
       "name": "paper_url",
-      "selector": "a",
       "type": "attribute",
+      "selector": "a",
       "attribute": "href"
     }
-  ]
+  ],
+  "baseSelector": "div.posts-list-item"
 }

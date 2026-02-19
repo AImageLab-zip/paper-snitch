@@ -50,23 +50,19 @@ class StartScrapingView(UserPassesTestMixin, View):
                 'message': 'Conference does not have a papers URL configured.'
             }, status=400)
         
-        if not conference.scraping_schema:
-            return JsonResponse({
-                'success': False,
-                'message': 'Conference does not have a scraping schema configured.'
-            }, status=400)
-        
-        # Save schema to file so scraper can find it
-        schema_dir = '/app/webApp/fixtures/scraper_schemas'
-        os.makedirs(schema_dir, exist_ok=True)
-        schema_filename = f"{conference.name.lower().replace(' ', '_')}_schema.json"
-        schema_path = os.path.join(schema_dir, schema_filename)
-        try:
-            with open(schema_path, 'w') as f:
-                json.dump(conference.scraping_schema, f, indent=2)
-        except Exception as e:
-            # Log but don't fail - scraper will try to use existing file or auto-generate
-            print(f"Warning: Could not save schema to file: {e}")
+        # Save schema to file if it exists in database
+        # If no schema exists, the scraper will try file or auto-generate with LLM
+        if conference.scraping_schema:
+            schema_dir = '/app/webApp/fixtures/scraper_schemas'
+            os.makedirs(schema_dir, exist_ok=True)
+            schema_filename = f"{conference.name.lower().replace(' ', '_')}_schema.json"
+            schema_path = os.path.join(schema_dir, schema_filename)
+            try:
+                with open(schema_path, 'w') as f:
+                    json.dump(conference.scraping_schema, f, indent=2)
+            except Exception as e:
+                # Log but don't fail - scraper will try to use existing file or auto-generate
+                print(f"Warning: Could not save schema to file: {e}")
         
         # Mark as scraping
         conference.is_scraping = True

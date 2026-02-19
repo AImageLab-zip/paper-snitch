@@ -10,6 +10,7 @@ import httpx
 from pathlib import Path
 from copy import deepcopy
 from typing import Dict, List, Optional
+from urllib.parse import urljoin
 from django.core.files.base import ContentFile
 from django.db import transaction
 
@@ -264,7 +265,7 @@ class ConferenceScraper:
             return None
 
         if not paper_url.startswith("https://"):
-            paper_url = self.base_url + paper_url
+            paper_url = urljoin(self.base_url + "/", paper_url)
             paper["paper_url"] = paper_url
 
         try:

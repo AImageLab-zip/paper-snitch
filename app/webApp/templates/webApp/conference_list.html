@@ -331,7 +331,7 @@
 
 <!-- Error Modal -->
 <div class="modal fade" id="errorModal" tabindex="-1" role="dialog" aria-labelledby="errorModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered" role="document">
+    <div class="modal-dialog modal-dialog-centered modal-sm" role="document">
         <div class="modal-content">
             <div class="modal-header bg-danger text-white">
                 <h5 class="modal-title" id="errorModalLabel">
@@ -672,12 +672,20 @@ $(document).ready(function() {
                               .attr('title', 'Scraping in progress')
                               .html('<i class="fas fa-spinner fa-spin"></i>');
                 } else {
-                    showErrorModal(response.message);
+                    // Close scraping modal first
+                    $('#scrapingModal').modal('hide');
+                    setTimeout(function() {
+                        showErrorModal(response.message);
+                    }, 300);
                 }
             },
             error: function(xhr) {
                 const message = xhr.responseJSON?.message || 'Failed to start scraping';
-                showErrorModal(message);
+                // Close scraping modal first
+                $('#scrapingModal').modal('hide');
+                setTimeout(function() {
+                    showErrorModal(message);
+                }, 300);
             },
             complete: function() {
                 $btn.prop('disabled', false).html(originalHtml);
@@ -1036,12 +1044,18 @@ $(document).ready(function() {
         
         // Validate required fields
         if (!name) {
-            showErrorModal('Conference name is required.');
+            $('#newConferenceModal').modal('hide');
+            setTimeout(function() {
+                showErrorModal('Conference name is required.');
+            }, 300);
             return;
         }
         
         if (!papers_url) {
-            showErrorModal('Papers URL is required.');
+            $('#newConferenceModal').modal('hide');
+            setTimeout(function() {
+                showErrorModal('Papers URL is required.');
+            }, 300);
             return;
         }
         
@@ -1053,7 +1067,10 @@ $(document).ready(function() {
                 JSON.parse(scraping_schema_raw);
                 scraping_schema = scraping_schema_raw;
             } catch (e) {
-                showErrorModal('Scraping schema must be valid JSON. Error: ' + e.message);
+                $('#newConferenceModal').modal('hide');
+                setTimeout(function() {
+                    showErrorModal('Scraping schema must be valid JSON. Error: ' + e.message);
+                }, 300);
                 return;
             }
         }
@@ -1104,12 +1121,38 @@ $(document).ready(function() {
                         location.reload();
                     });
                 } else {
-                    showErrorModal(response.message);
+                    // Close creation modal first to ensure error is visible
+                    $('#newConferenceModal').modal('hide');
+                    setTimeout(function() {
+                        showErrorModal(response.message || 'Failed to create conference');
+                    }, 300);
                 }
             },
             error: function(xhr) {
-                const message = xhr.responseJSON?.message || 'Failed to create conference';
-                showErrorModal(message);
+                // Extract detailed error information
+                let errorMsg = 'Failed to create conference';
+                
+                if (xhr.responseJSON && xhr.responseJSON.message) {
+                    errorMsg = xhr.responseJSON.message;
+                } else if (xhr.responseText) {
+                    try {
+                        const errorData = JSON.parse(xhr.responseText);
+                        errorMsg = errorData.message || errorData.error || xhr.statusText;
+                    } catch (e) {
+                        errorMsg = xhr.statusText || errorMsg;
+                    }
+                }
+                
+                // Add HTTP status if available
+                if (xhr.status && xhr.status !== 200) {
+                    errorMsg = `Error ${xhr.status}: ${errorMsg}`;
+                }
+                
+                // Close creation modal first to ensure error is visible
+                $('#newConferenceModal').modal('hide');
+                setTimeout(function() {
+                    showErrorModal(errorMsg);
+                }, 300);
             },
             complete: function() {
                 $btn.prop('disabled', false).html(originalHtml);
