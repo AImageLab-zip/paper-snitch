@@ -612,3 +612,88 @@ class AnalysisTask(models.Model):
 
     def __str__(self):
         return f"Task {self.id} - {self.status}"
+
+
+class PaperSectionEmbedding(models.Model):
+    """
+    Stores vector embeddings for paper sections.
+    Used for semantic similarity search and section-based analysis.
+    """
+    paper = models.ForeignKey(
+        Paper, 
+        on_delete=models.CASCADE, 
+        related_name='section_embeddings',
+        help_text='Paper this embedding belongs to'
+    )
+    section_type = models.CharField(
+        max_length=50,
+        help_text='Section type: abstract, introduction, methods, results, discussion, conclusion, etc.'
+    )
+    section_text = models.TextField(
+        help_text='Text content of the section'
+    )
+    embedding = models.JSONField(
+        help_text='Vector embedding as JSON array'
+    )
+    embedding_model = models.CharField(
+        max_length=50,
+        default='text-embedding-3-small',
+        help_text='OpenAI model used for embedding'
+    )
+    embedding_dimension = models.IntegerField(
+        default=1536,
+        help_text='Dimension of the embedding vector'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'paper_section_embeddings'
+        indexes = [
+            models.Index(fields=['paper', 'section_type'], name='idx_paper_section'),
+            models.Index(fields=['section_type'], name='idx_section_type'),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['paper', 'section_type', 'embedding_model'],
+                name='unique_paper_section_embedding'
+            )
+        ]
+        verbose_name = 'Paper Section Embedding'
+        verbose_name_plural = 'Paper Section Embeddings'
+
+    def __str__(self):
+        return f"Embedding: {self.paper.title[:50]} - {self.section_type}"
+    
+    def compute_cosine_similarity(self, other_embedding: list) -> float:
+        """
+        Compute cosine similarity between this embedding and another.
+        
+        Args:
+            other_embedding: List of floats representing another embedding
+            
+        Returns:
+            Cosine similarity score (0 to 1)
+        """
+        import numpy as np
+        
+        if not isinstance(self.embedding, list) or not isinstance(other_embedding, list):
+            raise ValueError("Embeddings must be lists")
+        
+        if len(self.embedding) != len(other_embedding):
+            raise ValueError(f"Embedding dimensions must match: {len(self.embedding)} vs {len(other_embedding)}")
+        
+        # Convert to numpy arrays
+        a = np.array(self.embedding)
+        b = np.array(other_embedding)
+        
+        # Compute cosine similarity
+        dot_product = np.dot(a, b)
+        norm_a = np.linalg.norm(a)
+        norm_b = np.linalg.norm(b)
+        
+        if norm_a == 0 or norm_b == 0:
+            return 0.0
+        
+        return float(dot_product / (norm_a * norm_b))
+

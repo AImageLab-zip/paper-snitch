@@ -31,6 +31,7 @@ from workflow_engine.services.async_orchestrator import async_ops
 from webApp.services.nodes.paper_type_classification import (
     paper_type_classification_node,
 )
+from webApp.services.nodes.section_embeddings import section_embeddings_node
 from webApp.services.nodes.code_repository_analysis import code_repository_analysis_node
 from webApp.services.nodes.code_availability_check import code_availability_check_node
 
@@ -151,13 +152,15 @@ def build_paper_processing_workflow() -> StateGraph:
 
     Workflow structure (sequential with conditional routing):
     - Node A (paper_type_classification): Classify paper type
+    - Node D (section_embeddings): Compute embeddings for paper sections
     - Node B (code_availability_check): Check code availability and verify accessibility
     - Node C (code_repository_analysis): Comprehensive code analysis (conditional)
 
     Flow:
     1. paper_type_classification runs first
-    2. code_availability_check runs second
-    3. After code_availability_check, route to:
+    2. section_embeddings runs second (computes embeddings for sections)
+    3. code_availability_check runs third
+    4. After code_availability_check, route to:
        * END if paper is 'theoretical' or 'dataset'
        * END if no code found (code_available=False)
        * code_repository_analysis if code found AND paper is 'method', 'both', or 'unknown'
@@ -167,6 +170,7 @@ def build_paper_processing_workflow() -> StateGraph:
 
     # Add nodes
     workflow.add_node("paper_type_classification", paper_type_classification_node)
+    workflow.add_node("section_embeddings", section_embeddings_node)
     workflow.add_node("code_availability_check", code_availability_check_node)
     workflow.add_node("code_repository_analysis", code_repository_analysis_node)
 
@@ -203,7 +207,8 @@ def build_paper_processing_workflow() -> StateGraph:
 
     # Set entry point and sequential flow
     workflow.set_entry_point("paper_type_classification")
-    workflow.add_edge("paper_type_classification", "code_availability_check")
+    workflow.add_edge("paper_type_classification", "section_embeddings")
+    workflow.add_edge("section_embeddings", "code_availability_check")
 
     # Conditional routing after both checks complete
     workflow.add_conditional_edges(
@@ -702,8 +707,8 @@ async def process_paper_workflow(
         # Get or create workflow definition
         workflow_def = await async_ops.get_or_create_workflow_definition(
             name="reduced_paper_processing_pipeline",
-            version=2,  # Version 2 with sequential 3-node architecture
-            description="Three-node workflow: paper type classification, code availability check, and conditional code repository analysis",
+            version=3,  # Version 3 with 4-node architecture including embeddings
+            description="Four-node workflow: paper type classification, section embeddings, code availability check, and conditional code repository analysis",
             dag_structure={
                 "nodes": [
                     {
@@ -711,6 +716,13 @@ async def process_paper_workflow(
                         "type": "python",
                         "handler": "webApp.services.paper_processing_workflow.paper_type_classification_node",
                         "description": "Classify paper type (dataset/method/both/theoretical/unknown)",
+                        "config": {},
+                    },
+                    {
+                        "id": "section_embeddings",
+                        "type": "python",
+                        "handler": "webApp.services.paper_processing_workflow.section_embeddings_node",
+                        "description": "Compute and store vector embeddings for paper sections",
                         "config": {},
                     },
                     {
@@ -731,6 +743,11 @@ async def process_paper_workflow(
                 "edges": [
                     {
                         "from": "paper_type_classification",
+                        "to": "section_embeddings",
+                        "type": "sequential",
+                    },
+                    {
+                        "from": "section_embeddings",
                         "to": "code_availability_check",
                         "type": "sequential",
                     },
@@ -773,6 +790,7 @@ async def process_paper_workflow(
             "model": model,
             "force_reprocess": force_reprocess,
             "paper_type_result": None,
+            "section_embeddings_result": None,
             "code_availability_result": None,
             "code_reproducibility_result": None,
             "errors": [],
@@ -799,6 +817,7 @@ async def process_paper_workflow(
                     if final_state.get("paper_type_result")
                     else None
                 ),
+                "section_embeddings": final_state.get("section_embeddings_result"),
                 "code_availability": (
                     final_state.get("code_availability_result").model_dump()
                     if final_state.get("code_availability_result")
@@ -826,6 +845,7 @@ async def process_paper_workflow(
             "paper_id": paper_id,
             "paper_title": (await async_ops.get_paper(paper_id)).title,
             "paper_type": final_state.get("paper_type_result"),
+            "section_embeddings": final_state.get("section_embeddings_result"),
             "code_availability": final_state.get("code_availability_result"),
             "code_reproducibility": final_state.get("code_reproducibility_result"),
             "total_input_tokens": input_tokens,

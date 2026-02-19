@@ -55,6 +55,22 @@ def generate_schema_diagram(sender, **kwargs):
         with open(dot_file, "r") as f:
             dot_content = f.read()
 
+        # Check if graphviz 'dot' command is available
+        try:
+            dot_check = subprocess.run(
+                ["which", "dot"],
+                capture_output=True,
+                timeout=5,
+            )
+            if dot_check.returncode != 0:
+                print(f"⚠️  Graphviz 'dot' command not found. Rebuild container to enable schema diagrams.")
+                dot_file.unlink(missing_ok=True)
+                return
+        except Exception as check_error:
+            print(f"⚠️  Cannot check for 'dot' command: {check_error}")
+            dot_file.unlink(missing_ok=True)
+            return
+
         # Generate PNG from DOT using graphviz
         result = subprocess.run(
             ["dot", "-Tpng", str(dot_file), "-o", str(png_file)],
@@ -63,7 +79,7 @@ def generate_schema_diagram(sender, **kwargs):
         )
 
         if result.returncode != 0:
-            print(f"⚠️  Failed to generate schema PNG")
+            print(f"⚠️  Failed to generate schema PNG: {result.stderr.decode() if result.stderr else 'Unknown error'}")
             dot_file.unlink(missing_ok=True)
             return
 
