@@ -391,7 +391,7 @@ def run_analysis_celery_task(self, task_id):
 
 
 @shared_task(bind=True, max_retries=0, time_limit=600, ignore_result=True)
-def process_paper_workflow_task(self, paper_id: int, force_reprocess: bool = True, model: str = "gpt-4o"):
+def process_paper_workflow_task(self, paper_id: int, force_reprocess: bool = True, model: str = "gpt-4o", workflow_id: int = None):
     """
     Celery task to process a paper workflow.
     
@@ -402,14 +402,15 @@ def process_paper_workflow_task(self, paper_id: int, force_reprocess: bool = Tru
         paper_id: Database ID of paper to process
         force_reprocess: If True, reprocess even if already analyzed
         model: OpenAI model to use
+        workflow_id: Optional workflow definition ID. If provided, uses specific workflow; otherwise uses default
         
     Returns:
         Dictionary with workflow results (not stored in backend due to ignore_result=True)
     """
     import asyncio
-    from webApp.services.graphs.paper_processing_workflow import process_paper_workflow
+    import importlib
     
-    logger.info(f"Celery task started for paper {paper_id}")
+    logger.info(f"Celery task started for paper {paper_id}, workflow_id={workflow_id}")
     
     try:
         # Run async workflow in this thread's event loop
@@ -417,13 +418,54 @@ def process_paper_workflow_task(self, paper_id: int, force_reprocess: bool = Tru
         asyncio.set_event_loop(loop)
         
         try:
-            result = loop.run_until_complete(
-                process_paper_workflow(
-                    paper_id=paper_id,
-                    force_reprocess=force_reprocess,
-                    model=model
+            # If workflow_id is specified, load the workflow dynamically
+            if workflow_id:
+                from workflow_engine.models import WorkflowDefinition
+                
+                try:
+                    workflow_def = WorkflowDefinition.objects.get(id=workflow_id, is_active=True)
+                except WorkflowDefinition.DoesNotExist:
+                    error_msg = f"Workflow {workflow_id} not found or not active"
+                    logger.error(error_msg)
+                    return {"success": False, "error": error_msg}
+                
+                # Get handler information from dag_structure
+                handler_info = workflow_def.dag_structure.get("workflow_handler")
+                if not handler_info:
+                    error_msg = f"Workflow {workflow_id} does not have handler information configured"
+                    logger.error(error_msg)
+                    return {"success": False, "error": error_msg}
+                
+                # Dynamically import and execute the workflow
+                try:
+                    workflow_module = importlib.import_module(handler_info["module"])
+                    execute_workflow_func = getattr(workflow_module, handler_info["function"])
+                    logger.info(f"Loaded workflow handler: {handler_info['module']}.{handler_info['function']}")
+                except (ImportError, AttributeError) as e:
+                    error_msg = f"Failed to load workflow handler: {str(e)}"
+                    logger.error(error_msg)
+                    return {"success": False, "error": error_msg}
+                
+                # Execute the dynamically loaded workflow
+                result = loop.run_until_complete(
+                    execute_workflow_func(
+                        paper_id=paper_id,
+                        force_reprocess=force_reprocess,
+                        model=model
+                    )
                 )
-            )
+            else:
+                # Use default workflow
+                from webApp.services.graphs.paper_processing_workflow import process_paper_workflow
+                
+                result = loop.run_until_complete(
+                    process_paper_workflow(
+                        paper_id=paper_id,
+                        force_reprocess=force_reprocess,
+                        model=model
+                    )
+                )
+            
             logger.info(f"Celery task completed for paper {paper_id}: {result.get('success')}")
             return result
         finally:

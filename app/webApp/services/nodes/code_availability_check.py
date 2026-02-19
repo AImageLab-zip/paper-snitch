@@ -99,11 +99,26 @@ async def code_availability_check_node(
                 await async_ops.create_node_log(
                     node,
                     "INFO",
-                    f"Found {len(matches)} repository URLs - checking each to find the correct one",
+                    f"Found {len(matches)} repository URLs - checking for the correctness",
                 )
 
-                best_match = None
-                best_confidence = 0.0
+                class RepoVerification(BaseModel):
+                    is_official_repo: bool = Field(
+                        description="True if this is the official code repo for the paper"
+                    )
+                    confidence: float = Field(
+                        description="Confidence score 0.0-1.0",
+                        ge=0.0,
+                        le=1.0,
+                    )
+                    reasoning: str = Field(
+                        description="Brief explanation of the decision"
+                    )
+
+                best_match = RepoVerification(
+                    is_official_repo=False, confidence=0.0, reasoning=""
+                )
+                best_match_url = None
 
                 for candidate_url in matches:
                     try:
@@ -124,6 +139,8 @@ async def code_availability_check_node(
 
 Paper Title: {paper.title}
 Paper Authors: {getattr(paper, 'authors', 'Unknown')}
+Abstract: {paper.abstract or 'Not available'}
+Text: {paper.text or 'Not available'}
 
 Repository URL: {candidate_url}
 Repository README excerpt:
@@ -144,19 +161,6 @@ Indicators that it is NOT the official repo:
 - No mention of this specific paper
 
 Respond with your assessment."""
-
-                            class RepoVerification(BaseModel):
-                                is_official_repo: bool = Field(
-                                    description="True if this is the official code repo for the paper"
-                                )
-                                confidence: float = Field(
-                                    description="Confidence score 0.0-1.0",
-                                    ge=0.0,
-                                    le=1.0,
-                                )
-                                reasoning: str = Field(
-                                    description="Brief explanation of the decision"
-                                )
 
                             response = client.responses.parse(
                                 model=model,
@@ -182,10 +186,10 @@ Respond with your assessment."""
 
                             if (
                                 verification.is_official_repo
-                                and verification.confidence > best_confidence
+                                and verification.confidence > best_match.confidence
                             ):
-                                best_match = candidate_url
-                                best_confidence = verification.confidence
+                                best_match = verification
+                                best_match_url = candidate_url
 
                     except Exception as e:
                         logger.warning(
@@ -197,26 +201,22 @@ Respond with your assessment."""
                             f"Could not verify {candidate_url}: {str(e)}",
                         )
 
-                    if best_match:
-                        code_url = best_match
-                        search_notes = f"Found in paper text (verified from {len(matches)} candidates, confidence: {best_confidence})"
-                        logger.info(
-                            f"Selected repository: {code_url} (confidence: {best_confidence})"
-                        )
-                        await async_ops.create_node_log(
-                            node, "INFO", f"Selected verified repository: {code_url}"
-                        )
-                    else:
-                        # No match found
-                        search_notes = f"Not found in paper text (unverified - None of {len(matches)} candidates has been selected)"
-                        logger.info(
-                            f"No verified match found, using first URL: {code_url}"
-                        )
-                        await async_ops.create_node_log(
-                            node,
-                            "WARNING",
-                            f"Could not verify any repository - using first match: {code_url}",
-                        )
+                # After checking all candidates, select the best match
+                if best_match.is_official_repo and best_match_url:
+                    code_url = best_match_url
+                    search_notes = f"Found in paper text (verified from {len(matches)} candidates, confidence: {best_match.confidence})"
+                    logger.info(
+                        f"Selected repository: {code_url} (confidence: {best_match.confidence})"
+                    )
+                    await async_ops.create_node_log(
+                        node, "INFO", f"Selected verified repository: {code_url}"
+                    )
+                else:
+                    # No match found
+                    search_notes = f"Not found in paper text (unverified - None of {len(matches)} candidates has been selected)"
+                    logger.info(
+                        f"No verified match found among {len(matches)} candidates"
+                    )
 
         # Step 3: If still not found, perform LLM-powered online search (last resort)
         if not code_url:
@@ -230,7 +230,7 @@ Respond with your assessment."""
             )
 
             try:
-                search_result = await search_code_online(paper, client, model)
+                search_result = await search_code_online(paper, client, model, node)
 
                 if search_result.repository_url and search_result.confidence >= 0.7:
                     code_url = search_result.repository_url
@@ -250,22 +250,6 @@ Respond with your assessment."""
                         },
                     )
 
-                    # Save to database
-                    from asgiref.sync import sync_to_async
-
-                    @sync_to_async
-                    def update_paper_code_url(paper_id, url):
-                        paper = Paper.objects.get(id=paper_id)
-                        paper.code_url = url
-                        paper.save()
-
-                    await update_paper_code_url(state["paper_id"], code_url)
-                    logger.info(
-                        f"Saved code URL to database for paper {state['paper_id']}"
-                    )
-                    await async_ops.create_node_log(
-                        node, "INFO", "Code URL saved to paper database"
-                    )
                 else:
                     search_notes = search_result.notes
                     logger.info(f"Online search unsuccessful: {search_notes}")
@@ -394,6 +378,25 @@ Respond with your assessment."""
                                 "INFO",
                                 f"Repository verified: contains code ({len(content)//4} tokens).",
                             )
+
+                            if code_url != paper.code_url:
+                                # Save to database
+                                from asgiref.sync import sync_to_async
+
+                                @sync_to_async
+                                def update_paper_code_url(paper_id, url):
+                                    paper = Paper.objects.get(id=paper_id)
+                                    paper.code_url = url
+                                    paper.save()
+
+                                await update_paper_code_url(state["paper_id"], code_url)
+                                logger.info(
+                                    f"Saved code URL to database for paper {state['paper_id']}"
+                                )
+                                await async_ops.create_node_log(
+                                    node, "INFO", "Code URL saved to paper database"
+                                )
+
                             result = CodeAvailabilityCheck(
                                 code_available=True,
                                 code_url=code_url,
@@ -453,8 +456,8 @@ Respond with your assessment."""
         await async_ops.create_node_log(
             node,
             "INFO",
-            f"Code availability check complete: {'Found' if code_url else 'Not found'}",
-            {"code_url": code_url, "found_online": found_online},
+            {"code_url": result.code_url, "found_online": found_online},
+            f"Code availability check complete: {'Found' if result.code_available else 'Not found'}",
         )
 
         # Update node status
@@ -464,7 +467,7 @@ Respond with your assessment."""
             completed_at=timezone.now(),
             output_data={
                 "code_available": result.code_available,
-                "code_url": code_url,
+                "code_url": result.code_url if result.code_available else None,
                 "found_online": found_online,
             },
         )
@@ -488,7 +491,7 @@ Respond with your assessment."""
 
 
 async def search_code_online(
-    paper: Paper, client: OpenAI, model: str
+    paper: Paper, client: OpenAI, model: str, node: Any = None
 ) -> OnlineCodeSearch:
     """
     Use LLM to search for code repository online with structured output.
@@ -536,7 +539,7 @@ Provide:
 4. Notes about the search process"""
 
     try:
-        response = client.responses.create(
+        response = client.responses.parse(
             model=model,
             input=[
                 {
@@ -555,12 +558,23 @@ Provide:
         logger.info(
             f"Online search result: {result.repository_url or 'Not found'} (confidence: {result.confidence})"
         )
+        await async_ops.create_node_log(
+            node,
+            "INFO",
+            f"Online search result: {result.repository_url or 'Not found'} (confidence: {result.confidence}, input tokens: {response.usage.input_tokens}, output tokens: {response.usage.output_tokens})",
+        )
+
         logger.info(f"Search strategy: {result.search_strategy}")
 
         return result
 
     except Exception as e:
         logger.error(f"Error in online code search: {e}")
+        await async_ops.create_node_log(
+            node,
+            "INFO",
+            f"Error in online code search: {e}",
+        )
         return OnlineCodeSearch(
             repository_url=None,
             confidence=0.0,

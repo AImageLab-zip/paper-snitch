@@ -27,7 +27,7 @@ from .tasks import (
 )
 
 # Import workflow models
-from workflow_engine.models import WorkflowRun, WorkflowNode
+from workflow_engine.models import WorkflowRun, WorkflowNode, WorkflowDefinition
 
 
 class PaperSnitchLoginView(LoginView):
@@ -806,6 +806,48 @@ class PaperDetailView(View):
 class RerunWorkflowView(View):
     """API view to trigger workflow rerun for a paper."""
 
+    def get(self, request, paper_id):
+        """Get available workflows for this paper from database."""
+        try:
+            paper = Paper.objects.get(id=paper_id)
+        except Paper.DoesNotExist:
+            return JsonResponse({"error": "Paper not found"}, status=404)
+
+        # Query all active workflow definitions from database
+        active_workflows = WorkflowDefinition.objects.filter(is_active=True).order_by(
+            "name"
+        )
+
+        # Build workflows dict from database
+        workflows = {}
+        default_workflow_id = None
+
+        for idx, workflow_def in enumerate(active_workflows):
+            # Check if workflow has handler information in dag_structure
+            handler_info = workflow_def.dag_structure.get("workflow_handler")
+            if not handler_info:
+                continue  # Skip workflows without handler info
+
+            workflow_id = str(workflow_def.id)
+            workflows[workflow_id] = {
+                "name": workflow_def.description or workflow_def.name,
+                "workflow_name": workflow_def.name,
+                "version": workflow_def.version,
+                "default": idx == 0,  # First workflow is default
+            }
+
+            if idx == 0:
+                default_workflow_id = workflow_id
+
+        return JsonResponse(
+            {
+                "paper_id": paper_id,
+                "paper_title": paper.title,
+                "workflows": workflows,
+                "default_workflow": default_workflow_id,
+            }
+        )
+
     def post(self, request, paper_id):
         """Trigger workflow rerun for the specified paper."""
         from django.utils import timezone
@@ -817,7 +859,35 @@ class RerunWorkflowView(View):
         try:
             paper = Paper.objects.get(id=paper_id)
         except Paper.DoesNotExist:
-            return JsonResponse({"error": "Paper not found"})
+            return JsonResponse({"error": "Paper not found"}, status=404)
+
+        # Get workflow ID from request
+        workflow_id = request.POST.get("workflow_type")
+
+        if not workflow_id:
+            return JsonResponse(
+                {"error": "workflow_type is required"},
+                status=400,
+            )
+
+        # Get workflow definition from database
+        try:
+            workflow_definition = WorkflowDefinition.objects.get(
+                id=workflow_id, is_active=True
+            )
+        except WorkflowDefinition.DoesNotExist:
+            return JsonResponse(
+                {"error": f"Workflow not found or not active"},
+                status=404,
+            )
+
+        # Get handler information from dag_structure
+        handler_info = workflow_definition.dag_structure.get("workflow_handler")
+        if not handler_info:
+            return JsonResponse(
+                {"error": "Workflow does not have handler information configured"},
+                status=500,
+            )
 
         # Check if there's already a running workflow (with timeout check)
         running_workflow = WorkflowRun.objects.filter(
@@ -872,21 +942,28 @@ class RerunWorkflowView(View):
         try:
             from webApp.tasks import process_paper_workflow_task
             
-            # Submit task to Celery queue
+            # Submit task to Celery queue with selected workflow
             task = process_paper_workflow_task.delay(
                 paper_id=paper_id,
                 force_reprocess=True,
-                model="gpt-4o"
+                model="gpt-4o",
+                workflow_id=workflow_id  # Pass the selected workflow ID
             )
             
-            logger.info(f"Workflow task enqueued for paper {paper_id}, task_id: {task.id}")
+            logger.info(
+                f"Workflow task enqueued for paper {paper_id}, "
+                f"workflow: {workflow_definition.description or workflow_definition.name}, "
+                f"task_id: {task.id}"
+            )
 
             return JsonResponse(
                 {
                     "success": True,
-                    "message": "Workflow queued successfully",
+                    "message": f"{workflow_definition.description or workflow_definition.name} queued successfully",
                     "task_id": task.id,
                     "paper_id": paper_id,
+                    "workflow_id": str(workflow_definition.id),
+                    "workflow_name": workflow_definition.name,
                 }
             )
 
@@ -1096,7 +1173,7 @@ class RerunSingleNodeView(View):
 
         # Import here to avoid circular imports
         from webApp.services.graphs.paper_processing_workflow import (
-            execute_single_node_only,
+            _workflow_instance,
         )
         import asyncio
         import threading
@@ -1118,7 +1195,7 @@ class RerunSingleNodeView(View):
 
                 logger.info(f"Event loop created, executing node...")
                 result = loop.run_until_complete(
-                    execute_single_node_only(
+                    _workflow_instance.execute_a_node(
                         node_uuid=str(node.id), force_reprocess=True, model="gpt-4o"
                     )
                 )
@@ -1207,7 +1284,7 @@ class RerunFromNodeView(View):
 
         # Import here to avoid circular imports
         from webApp.services.graphs.paper_processing_workflow import (
-            execute_workflow_from_node,
+            _workflow_instance,
         )
         import asyncio
         import threading
@@ -1218,7 +1295,9 @@ class RerunFromNodeView(View):
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 loop.run_until_complete(
-                    execute_workflow_from_node(node_uuid=str(node.id), model="gpt-4o")
+                    _workflow_instance.execute_from_node(
+                        node_uuid=str(node.id), model="gpt-4o"
+                    )
                 )
                 loop.close()
             except Exception as e:
