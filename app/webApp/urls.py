@@ -31,12 +31,16 @@ from .views import (
     AnnotatePaperView,
     ConferenceListView,
     ConferenceDetailView,
+    ConferencePaperStatusView,
+    ActiveWorkflowsView,
     PaperDetailView,
     RerunWorkflowView,
     WorkflowStatusView,
     WorkflowNodeDetailView,
     RerunSingleNodeView,
     RerunFromNodeView,
+    BulkRerunWorkflowsView,
+    BulkRerunPreviewView,
 )
 
 from .scraping_views import (
@@ -53,6 +57,10 @@ urlpatterns = [
     path("", ConferenceListView.as_view(), name="home"),
     path("conferences/", ConferenceListView.as_view(), name="conference_list"),
     path("conference/<int:conference_id>/", ConferenceDetailView.as_view(), name="conference_detail"),
+    path("conference/<int:conference_id>/paper-statuses/", ConferencePaperStatusView.as_view(), name="conference_paper_statuses"),
+    path("workflows/active/", ActiveWorkflowsView.as_view(), name="active_workflows"),
+    path("conference/<int:conference_id>/bulk-rerun-workflows/", BulkRerunWorkflowsView.as_view(), name="bulk_rerun_workflows"),
+    path("conference/<int:conference_id>/bulk-rerun-preview/", BulkRerunPreviewView.as_view(), name="bulk_rerun_preview"),
     path("paper/<int:paper_id>/", PaperDetailView.as_view(), name="paper_detail"),
     path("paper/<int:paper_id>/rerun-workflow/", RerunWorkflowView.as_view(), name="rerun_workflow"),
     path("workflow/status/<uuid:workflow_run_id>/", WorkflowStatusView.as_view(), name="workflow_status"),

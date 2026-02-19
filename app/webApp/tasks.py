@@ -390,6 +390,50 @@ def run_analysis_celery_task(self, task_id):
         AnalysisTask.objects.filter(id=task_id).update(status="error", error=str(e))
 
 
+@shared_task(bind=True, max_retries=0, time_limit=600, ignore_result=True)
+def process_paper_workflow_task(self, paper_id: int, force_reprocess: bool = True, model: str = "gpt-4o"):
+    """
+    Celery task to process a paper workflow.
+    
+    This task is picked up by Celery workers when capacity is available.
+    Workers are configured with concurrency limits to prevent overload.
+    
+    Args:
+        paper_id: Database ID of paper to process
+        force_reprocess: If True, reprocess even if already analyzed
+        model: OpenAI model to use
+        
+    Returns:
+        Dictionary with workflow results (not stored in backend due to ignore_result=True)
+    """
+    import asyncio
+    from webApp.services.graphs.paper_processing_workflow import process_paper_workflow
+    
+    logger.info(f"Celery task started for paper {paper_id}")
+    
+    try:
+        # Run async workflow in this thread's event loop
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        try:
+            result = loop.run_until_complete(
+                process_paper_workflow(
+                    paper_id=paper_id,
+                    force_reprocess=force_reprocess,
+                    model=model
+                )
+            )
+            logger.info(f"Celery task completed for paper {paper_id}: {result.get('success')}")
+            return result
+        finally:
+            loop.close()
+            
+    except Exception as e:
+        logger.exception(f"Celery task failed for paper {paper_id}: {str(e)}")
+        # Re-raise will be logged by Celery but not stored (ignore_result=True)
+        raise
+
 @shared_task(bind=True)
 def run_old_celery_task(self, task_id):
     """

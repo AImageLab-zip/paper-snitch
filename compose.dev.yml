@@ -68,7 +68,7 @@ services:
   celery-worker:
     build: ./app
     container_name: celery-worker-${STACK_SUFFIX:-dev}
-    command: celery -A web worker --loglevel=info
+    command: celery -A web worker --loglevel=info --concurrency=8 --max-tasks-per-child=1
     env_file:
       - .env.${STACK_SUFFIX:-local}
     extra_hosts:

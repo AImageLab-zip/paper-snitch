@@ -636,6 +636,88 @@ class ConferenceDetailView(View):
         return render(request, self.template_name, context)
 
 
+class ConferencePaperStatusView(View):
+    """API view to get current status of papers in a conference (for auto-refresh)."""
+
+    def get(self, request, conference_id):
+        """Return current workflow statuses for papers in the conference."""
+        from django.db.models import Count, Prefetch
+
+        conference = get_object_or_404(Conference, id=conference_id)
+        
+        # Get paper IDs from query parameter (for pagination support)
+        paper_ids_param = request.GET.get('paper_ids', '')
+        
+        # Prefetch latest workflow run for each paper
+        latest_workflow_prefetch = Prefetch(
+            "workflow_runs",
+            queryset=WorkflowRun.objects.order_by("-created_at").only(
+                "id", "status", "created_at"
+            )[:1],
+            to_attr="latest_workflow_list",
+        )
+
+        # Get papers for this conference
+        papers = (
+            Paper.objects.filter(conference=conference)
+            .prefetch_related(latest_workflow_prefetch)
+            .only("id")
+            .annotate(workflow_count=Count("workflow_runs"))
+        )
+        
+        # Filter by paper IDs if provided
+        if paper_ids_param:
+            try:
+                paper_ids = [int(id.strip()) for id in paper_ids_param.split(',') if id.strip()]
+                papers = papers.filter(id__in=paper_ids)
+            except ValueError:
+                pass  # Ignore invalid paper IDs
+
+        # Build status response
+        statuses = {}
+        for paper in papers:
+            status = 'none'
+            workflow_count = paper.workflow_count
+            
+            if paper.latest_workflow_list:
+                status = paper.latest_workflow_list[0].status
+            
+            statuses[str(paper.id)] = {
+                'status': status,
+                'workflow_count': workflow_count
+            }
+
+        return JsonResponse({'statuses': statuses})
+
+
+class ActiveWorkflowsView(View):
+    """API view to get currently active workflows (for monitoring concurrency)."""
+
+    def get(self, request):
+        """Return current active workflow count and limit."""
+        from asgiref.sync import async_to_sync
+        from webApp.services.graphs.paper_processing_workflow import (
+            get_active_workflow_count,
+            get_active_workflows,
+            MAX_CONCURRENT_WORKFLOWS,
+            cleanup_stale_workflows,
+        )
+        
+        # Clean up stale workflows (older than 30 minutes) - now async
+        async_to_sync(cleanup_stale_workflows)(max_age_minutes=30)
+        
+        # Get counts and workflows - now async
+        active_count = async_to_sync(get_active_workflow_count)()
+        active_workflows = async_to_sync(get_active_workflows)()
+        
+        return JsonResponse({
+            'active_count': active_count,
+            'max_concurrent': MAX_CONCURRENT_WORKFLOWS,
+            'available_slots': MAX_CONCURRENT_WORKFLOWS - active_count,
+            'workflows': active_workflows
+        })
+
+
 class PaperDetailView(View):
     """View for paper details with workflow visualization (public, no auth required)."""
 
@@ -735,13 +817,7 @@ class RerunWorkflowView(View):
         try:
             paper = Paper.objects.get(id=paper_id)
         except Paper.DoesNotExist:
-            return JsonResponse({"error": "Paper not found"}, status=404)
-
-        # Import here to avoid circular imports
-        from webApp.services.graphs.paper_processing_workflow import (
-            process_paper_workflow,
-        )
-        import asyncio
+            return JsonResponse({"error": "Paper not found"})
 
         # Check if there's already a running workflow (with timeout check)
         running_workflow = WorkflowRun.objects.filter(
@@ -792,68 +868,32 @@ class RerunWorkflowView(View):
                         f"Marked stuck node {node.id} ({node.node_id}) as failed"
                     )
 
-        # Trigger workflow in background (non-blocking)
+        # Enqueue workflow as Celery task (non-blocking, queued for processing)
         try:
-            import threading
-
-            def run_workflow_in_background():
-                """Run workflow in background thread."""
-                try:
-                    logger.info(f"Starting background workflow for paper {paper_id}")
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    loop.run_until_complete(
-                        process_paper_workflow(
-                            paper_id=paper_id, force_reprocess=True, model="gpt-4o"
-                        )
-                    )
-                    loop.close()
-                    logger.info(f"Background workflow completed for paper {paper_id}")
-                except Exception as e:
-                    logger.error(
-                        f"Background workflow execution failed: {e}", exc_info=True
-                    )
-
-            # Start workflow in background thread
-            workflow_thread = threading.Thread(
-                target=run_workflow_in_background, daemon=True
+            from webApp.tasks import process_paper_workflow_task
+            
+            # Submit task to Celery queue
+            task = process_paper_workflow_task.delay(
+                paper_id=paper_id,
+                force_reprocess=True,
+                model="gpt-4o"
             )
-            workflow_thread.start()
-            logger.info(f"Background workflow thread started for paper {paper_id}")
+            
+            logger.info(f"Workflow task enqueued for paper {paper_id}, task_id: {task.id}")
 
-            # Get the workflow run that will be created (wait a moment for it to be created)
-            import time
-
-            time.sleep(0.5)  # Brief wait for workflow run to be created
-
-            # Get the latest workflow run (should be the one we just started)
-            latest_run = (
-                WorkflowRun.objects.filter(paper=paper).order_by("-created_at").first()
+            return JsonResponse(
+                {
+                    "success": True,
+                    "message": "Workflow queued successfully",
+                    "task_id": task.id,
+                    "paper_id": paper_id,
+                }
             )
-
-            if latest_run:
-                return JsonResponse(
-                    {
-                        "success": True,
-                        "message": "Workflow started successfully",
-                        "workflow_run_id": str(latest_run.id),
-                        "run_number": latest_run.run_number,
-                    }
-                )
-            else:
-                return JsonResponse(
-                    {
-                        "success": True,
-                        "message": "Workflow started successfully",
-                        "workflow_run_id": None,
-                        "run_number": None,
-                    }
-                )
 
         except Exception as e:
-            logger.error(f"Failed to start workflow: {e}", exc_info=True)
+            logger.error(f"Failed to enqueue workflow: {e}", exc_info=True)
             return JsonResponse(
-                {"error": f"Failed to start workflow: {str(e)}", "success": False},
+                {"error": f"Failed to queue workflow: {str(e)}", "success": False},
                 status=500,
             )
 
@@ -1222,3 +1262,201 @@ class RerunFromNodeView(View):
                     "started_from_node": node.node_id,
                 }
             )
+
+
+class BulkRerunPreviewView(View):
+    """API view to preview papers that will be affected by bulk rerun."""
+
+    def post(self, request, conference_id):
+        """Return list of papers that would be affected by bulk rerun."""
+        import json
+        from django.db.models import Prefetch
+
+        try:
+            conference = Conference.objects.get(id=conference_id)
+        except Conference.DoesNotExist:
+            return JsonResponse({"error": "Conference not found"}, status=404)
+
+        # Parse request data
+        limit = None
+        if request.body:
+            try:
+                data = json.loads(request.body)
+                limit = data.get('limit')
+                if limit:
+                    limit = int(limit)
+            except (json.JSONDecodeError, ValueError):
+                pass
+
+        # Get papers for this conference with latest workflow status
+        latest_workflow_prefetch = Prefetch(
+            "workflow_runs",
+            queryset=WorkflowRun.objects.order_by("-created_at").only(
+                "id", "status", "created_at"
+            )[:1],
+            to_attr="latest_workflow_list",
+        )
+        
+        papers = Paper.objects.filter(conference=conference).prefetch_related(
+            latest_workflow_prefetch
+        ).order_by('id')
+        
+        # Apply limit if specified
+        if limit and limit > 0:
+            papers = papers[:limit]
+            
+        # Build paper list
+        paper_list = []
+        for paper in papers:
+            status = 'none'
+            if paper.latest_workflow_list:
+                status = paper.latest_workflow_list[0].status
+            
+            paper_list.append({
+                'id': paper.id,
+                'title': paper.title,
+                'authors': paper.authors[:100] + '...' if paper.authors and len(paper.authors) > 100 else paper.authors,
+                'status': status
+            })
+
+        return JsonResponse({
+            'success': True,
+            'papers': paper_list,
+            'total': len(paper_list)
+        })
+
+
+class BulkRerunWorkflowsView(View):
+    """API view to trigger workflow reruns for all papers in a conference."""
+
+    def post(self, request, conference_id):
+        """Trigger workflow reruns for all papers in the specified conference."""
+        from django.utils import timezone
+        from datetime import timedelta
+        import logging
+        import threading
+        import asyncio
+        import json
+
+        logger = logging.getLogger(__name__)
+
+        try:
+            conference = Conference.objects.get(id=conference_id)
+        except Conference.DoesNotExist:
+            return JsonResponse({"error": "Conference not found"}, status=404)
+
+        # Parse request data
+        limit = None
+        if request.body:
+            try:
+                data = json.loads(request.body)
+                limit = data.get('limit')
+                if limit:
+                    limit = int(limit)
+            except (json.JSONDecodeError, ValueError) as e:
+                logger.warning(f"Failed to parse limit: {e}")
+
+        # Get papers for this conference
+        papers = Paper.objects.filter(conference=conference)
+        
+        # Apply limit if specified
+        if limit and limit > 0:
+            papers = papers[:limit]
+            
+        papers = list(papers)  # Convert to list for iteration
+        total_papers = len(papers)
+
+        if total_papers == 0:
+            return JsonResponse(
+                {"error": "No papers found for this conference"}, status=400
+            )
+
+        # Clean up ALL running/pending workflows for these papers (forced cleanup for bulk rerun)
+        stuck_workflows_cleaned = 0
+        for paper in papers:
+            # Get ALL running or pending workflows for this paper
+            running_workflows = WorkflowRun.objects.filter(
+                paper=paper, status__in=["running", "pending"]
+            )
+
+            for running_workflow in running_workflows:
+                last_update = (
+                    running_workflow.started_at or running_workflow.created_at
+                )
+                time_since_update = timezone.now() - last_update
+                
+                # Force cleanup for bulk rerun (mark as cancelled regardless of time)
+                logger.warning(
+                    f"Cancelling workflow {running_workflow.id} for paper {paper.id} "
+                    f"(time since update: {time_since_update}) for bulk rerun"
+                )
+                running_workflow.status = "failed"
+                running_workflow.completed_at = timezone.now()
+                running_workflow.error_message = (
+                    f"Workflow cancelled for bulk rerun"
+                )
+                running_workflow.save()
+
+                # Also mark all running/pending nodes as failed
+                stuck_nodes = WorkflowNode.objects.filter(
+                    workflow_run=running_workflow,
+                    status__in=["running", "pending"],
+                )
+                for node in stuck_nodes:
+                    node.status = "failed"
+                    node.completed_at = timezone.now()
+                    node.error_message = "Node cancelled for bulk rerun"
+                    node.save()
+
+                stuck_workflows_cleaned += 1
+
+        # Enqueue all workflow tasks to Celery (they'll be processed when workers are available)
+        from webApp.tasks import process_paper_workflow_task
+        
+        paper_ids = [p.id for p in papers]
+        logger.info(
+            f"Enqueueing {total_papers} workflow tasks for conference {conference_id}: {paper_ids}"
+        )
+        
+        task_ids = []
+        for idx, paper in enumerate(papers, 1):
+            try:
+                task = process_paper_workflow_task.delay(
+                    paper_id=paper.id,
+                    force_reprocess=True,
+                    model="gpt-4o"
+                )
+                task_ids.append(str(task.id))
+                logger.info(
+                    f"[{idx}/{total_papers}] Enqueued workflow task for paper {paper.id}: {task.id}"
+                )
+            except Exception as e:
+                logger.error(
+                    f"[{idx}/{total_papers}] Failed to enqueue task for paper {paper.id}: {e}",
+                    exc_info=True
+                )
+        
+        logger.info(
+            f"Successfully enqueued {len(task_ids)} workflow tasks for conference {conference_id}"
+        )
+
+        message = f"{len(task_ids)} workflow task{'s' if len(task_ids) != 1 else ''} queued for processing"
+        if limit and limit > 0:
+            message += f" (limited to {limit})"
+        
+        # Get concurrency info
+        from webApp.services.graphs.paper_processing_workflow import MAX_CONCURRENT_WORKFLOWS
+        message += f". Celery workers will process {MAX_CONCURRENT_WORKFLOWS} at a time."
+        
+        return JsonResponse(
+            {
+                "success": True,
+                "message": message,
+                "total_papers": total_papers,
+                "tasks_enqueued": len(task_ids),
+                "task_ids": task_ids,
+                "stuck_cleaned": stuck_workflows_cleaned,
+                "limit": limit,
+                "max_concurrent": MAX_CONCURRENT_WORKFLOWS,
+            }
+        )

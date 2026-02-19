@@ -31,6 +31,14 @@
                                 <i class="fas fa-external-link-alt mr-1"></i> Website
                             </a>
                             {% endif %}
+                            {% if user.is_staff %}
+                            <button class="btn btn-warning btn-sm" id="bulk-rerun-btn" data-conference-id="{{ conference.id }}" data-conference-name="{{ conference.name }}" title="Restart workflows for all papers">
+                                <i class="fas fa-redo-alt mr-1"></i> Restart All Workflows
+                            </button>
+                            <span id="active-workflows-badge" class="badge badge-secondary ml-2" style="font-size: 0.9rem; padding: 0.4rem 0.7rem;" title="Active workflows / Maximum concurrent">
+                                <i class="fas fa-sync fa-spin"></i> Loading...
+                            </span>
+                            {% endif %}
                         </div>
                     </div>
                 </div>
@@ -88,7 +96,7 @@
                             </thead>
                             <tbody>
                                 {% for paper in papers %}
-                                <tr>
+                                <tr data-paper-id="{{ paper.id }}">
                                     <td>
                                         <div>
                                             <strong>{{ paper.title }}</strong>
@@ -109,40 +117,40 @@
                                             {% endif %}
                                         </small>
                                     </td>
-                                    <td class="text-center">
+                                    <td class="text-center" data-status-cell>
                                         {% if paper.workflow_count > 0 %}
                                         <div class="d-flex justify-content-center align-items-center">
                                             {% with latest=paper.latest_workflow_list.0 %}
                                             {% if latest.status == 'completed' %}
-                                            <span class="badge badge-success">
+                                            <span class="badge badge-success" data-workflow-status="{{ latest.status }}">
                                                 <i class="fas fa-check-circle"></i> Completed
                                             </span>
                                             {% elif latest.status == 'running' %}
-                                            <span class="badge badge-info">
+                                            <span class="badge badge-info" data-workflow-status="{{ latest.status }}">
                                                 <i class="fas fa-spinner fa-spin"></i> Running
                                             </span>
                                             {% elif latest.status == 'failed' %}
-                                            <span class="badge badge-danger">
+                                            <span class="badge badge-danger" data-workflow-status="{{ latest.status }}">
                                                 <i class="fas fa-times-circle"></i> Failed
                                             </span>
                                             {% elif latest.status == 'pending' %}
-                                            <span class="badge badge-warning">
+                                            <span class="badge badge-warning" data-workflow-status="{{ latest.status }}">
                                                 <i class="fas fa-clock"></i> Pending
                                             </span>
                                             {% else %}
-                                            <span class="badge badge-secondary">
+                                            <span class="badge badge-secondary" data-workflow-status="{{ latest.status }}">
                                                 <i class="fas fa-minus-circle"></i> {{ latest.status|title }}
                                             </span>
                                             {% endif %}
                                             {% endwith %}
                                         </div>
                                         {% else %}
-                                        <span class="text-muted">
+                                        <span class="text-muted" data-workflow-status="none">
                                             <i class="fas fa-minus"></i> Not analyzed
                                         </span>
                                         {% endif %}
                                     </td>
-                                    <td class="text-center">
+                                    <td class="text-center" data-count-cell>
                                         {% if paper.workflow_count > 0 %}
                                         <span class="badge badge-primary" style="font-size: 1rem;">
                                             {{ paper.workflow_count }}
@@ -234,6 +242,121 @@
     </div>
 </div>
 
+<!-- Bulk Rerun Confirmation Modal -->
+<div class="modal fade" id="bulkRerunModal" tabindex="-1" role="dialog" aria-labelledby="bulkRerunModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+        <div class="modal-content">
+            <div class="modal-header bg-warning text-dark">
+                <h5 class="modal-title" id="bulkRerunModalLabel">
+                    <i class="fas fa-redo-alt mr-2"></i>Restart All Workflows
+                </h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p>Restart workflows for papers in <strong id="bulk-rerun-conference-name"></strong></p>
+                
+                <div class="form-group">
+                    <label for="bulk-rerun-limit">Number of papers to rerun:</label>
+                    <div class="input-group">
+                        <input type="number" class="form-control" id="bulk-rerun-limit" placeholder="Leave empty for all papers" min="1" max="{{ total_papers }}">
+                        <div class="input-group-append">
+                            <button class="btn btn-outline-secondary" type="button" id="bulk-rerun-all-btn" title="Rerun all papers">
+                                <i class="fas fa-infinity"></i> All
+                            </button>
+                            <button class="btn btn-primary" type="button" id="bulk-rerun-preview-btn" title="Preview papers">
+                                <i class="fas fa-eye"></i> Preview
+                            </button>
+                        </div>
+                    </div>
+                    <small class="form-text text-muted">
+                        Specify a number to limit papers rerun, or leave empty to rerun all {{ total_papers }} paper{{ total_papers|pluralize }}.
+                    </small>
+                </div>
+                
+                <!-- Paper list preview -->
+                <div id="bulk-rerun-paper-list" class="mb-3" style="display: none;">
+                    <div class="card">
+                        <div class="card-header bg-light">
+                            <strong><i class="fas fa-list mr-2"></i>Papers to be restarted:</strong>
+                            <span id="bulk-rerun-count" class="badge badge-primary float-right"></span>
+                        </div>
+                        <div class="card-body" style="max-height: 300px; overflow-y: auto;">
+                            <div id="bulk-rerun-papers-loading" class="text-center py-3">
+                                <i class="fas fa-spinner fa-spin"></i> Loading papers...
+                            </div>
+                            <ul id="bulk-rerun-papers" class="list-unstyled mb-0" style="display: none;"></ul>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="alert alert-info mb-0">
+                    <i class="fas fa-info-circle mr-2"></i>
+                    <strong>Note:</strong> Workflows will be queued and processed by Celery workers when capacity is available.
+                    <br><small class="mt-1 d-block"><i class="fas fa-cogs mr-1"></i>Up to 8 workflows process simultaneously. Additional tasks wait in queue.</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">
+                    <i class="fas fa-times mr-1"></i>Cancel
+                </button>
+                <button type="button" class="btn btn-warning" id="confirm-bulk-rerun">
+                    <i class="fas fa-redo-alt mr-1"></i>Restart All Workflows
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Success Modal -->
+<div class="modal fade" id="successModal" tabindex="-1" role="dialog" aria-labelledby="successModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title" id="successModalLabel">
+                    <i class="fas fa-check-circle mr-2"></i>Success
+                </h5>
+                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-0" id="success-message"></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-success" data-dismiss="modal">
+                    <i class="fas fa-check mr-1"></i>Ok
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Error Modal -->
+<div class="modal fade" id="errorModal" tabindex="-1" role="dialog" aria-labelledby="errorModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-sm" role="document">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="errorModalLabel">
+                    <i class="fas fa-exclamation-circle mr-2"></i>Error
+                </h5>
+                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-0" id="error-message"></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-danger" data-dismiss="modal">
+                    <i class="fas fa-times mr-1"></i>Close
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 $(document).ready(function() {
     let filterTimeout;
@@ -242,6 +365,163 @@ $(document).ready(function() {
     const $papersContainer = $('#papers-container');
     const $paginationContainer = $('#pagination-container');
     const conferenceId = {{ conference.id }};
+    
+    // === Bulk Workflow Rerun ===
+    
+    // Show bulk rerun confirmation modal
+    $('#bulk-rerun-btn').on('click', function() {
+        const conferenceName = $(this).data('conference-name');
+        $('#bulk-rerun-conference-name').text(conferenceName);
+        $('#bulk-rerun-limit').val('');
+        $('#bulkRerunModal').modal('show');
+    });
+    
+    // Clear limit when clicking "All" button
+    $('#bulk-rerun-all-btn').on('click', function() {
+        $('#bulk-rerun-limit').val('');
+    });
+    
+    // Preview papers when clicking Preview button
+    $('#bulk-rerun-preview-btn').on('click', function() {
+        const limit = $('#bulk-rerun-limit').val();
+        loadPaperPreview(limit);
+    });
+    
+    // Also load preview when limit changes
+    $('#bulk-rerun-limit').on('change', function() {
+        const limit = $(this).val();
+        if (limit) {
+            loadPaperPreview(limit);
+        } else {
+            $('#bulk-rerun-paper-list').hide();
+        }
+    });
+    
+    // Function to load paper preview
+    function loadPaperPreview(limit) {
+        $('#bulk-rerun-paper-list').show();
+        $('#bulk-rerun-papers-loading').show();
+        $('#bulk-rerun-papers').hide().empty();
+        
+        const requestData = {};
+        if (limit && limit > 0) {
+            requestData.limit = parseInt(limit);
+        }
+        
+        $.ajax({
+            url: `{% url 'bulk_rerun_preview' conference.id %}`,
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}',
+                'Content-Type': 'application/json'
+            },
+            data: JSON.stringify(requestData),
+            success: function(response) {
+                $('#bulk-rerun-papers-loading').hide();
+                
+                if (response.success && response.papers) {
+                    const $papersList = $('#bulk-rerun-papers');
+                    $('#bulk-rerun-count').text(response.papers.length);
+                    
+                    response.papers.forEach(function(paper) {
+                        const statusBadge = getStatusBadgeHtml(paper.status);
+                        const $item = $('<li class="mb-2 pb-2 border-bottom">');
+                        $item.html(`
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div class="flex-grow-1">
+                                    <strong>${paper.title}</strong>
+                                    ${paper.authors ? '<br><small class="text-muted">' + paper.authors + '</small>' : ''}
+                                </div>
+                                <div class="ml-2">${statusBadge}</div>
+                            </div>
+                        `);
+                        $papersList.append($item);
+                    });
+                    
+                    $papersList.show();
+                } else {
+                    $('#bulk-rerun-papers').html('<li class="text-muted">No papers found</li>').show();
+                }
+            },
+            error: function(xhr) {
+                $('#bulk-rerun-papers-loading').hide();
+                $('#bulk-rerun-papers').html('<li class="text-danger">Failed to load papers</li>').show();
+            }
+        });
+    }
+    
+    // Helper function to get status badge HTML
+    function getStatusBadgeHtml(status) {
+        if (status === 'completed') {
+            return '<span class="badge badge-success"><i class="fas fa-check-circle"></i> Completed</span>';
+        } else if (status === 'running') {
+            return '<span class="badge badge-info"><i class="fas fa-spinner fa-spin"></i> Running</span>';
+        } else if (status === 'failed') {
+            return '<span class="badge badge-danger"><i class="fas fa-times-circle"></i> Failed</span>';
+        } else if (status === 'pending') {
+            return '<span class="badge badge-warning"><i class="fas fa-clock"></i> Pending</span>';
+        } else {
+            return '<span class="text-muted"><i class="fas fa-minus"></i> Not analyzed</span>';
+        }
+    }
+    
+    // Confirm bulk rerun
+    $('#confirm-bulk-rerun').on('click', function() {
+        const $btn = $(this);
+        const originalHtml = $btn.html();
+        const limit = $('#bulk-rerun-limit').val();
+        
+        // Disable button and show loading
+        $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin mr-1"></i>Starting...');
+        
+        // Prepare request data
+        const requestData = {};
+        if (limit && limit > 0) {
+            requestData.limit = parseInt(limit);
+        }
+        
+        $.ajax({
+            url: `{% url 'bulk_rerun_workflows' conference.id %}`,
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}',
+                'Content-Type': 'application/json'
+            },
+            data: JSON.stringify(requestData),
+            success: function(response) {
+                $('#bulkRerunModal').modal('hide');
+                
+                if (response.success) {
+                    let message = response.message;
+                    if (response.stuck_cleaned > 0) {
+                        message += ` (${response.stuck_cleaned} stuck workflow${response.stuck_cleaned !== 1 ? 's' : ''} cleaned up)`;
+                    }
+                    $('#success-message').text(message);
+                    $('#successModal').modal('show');
+                    
+                    // Reload page after modal closes to show updated statuses
+                    $('#successModal').on('hidden.bs.modal', function() {
+                        location.reload();
+                    });
+                } else {
+                    $('#error-message').text(response.message || 'Failed to start workflows');
+                    $('#errorModal').modal('show');
+                }
+            },
+            error: function(xhr) {
+                $('#bulkRerunModal').modal('hide');
+                
+                const message = xhr.responseJSON?.error || 'Failed to start workflows. Please try again.';
+                $('#error-message').text(message);
+                $('#errorModal').modal('show');
+            },
+            complete: function() {
+                $btn.prop('disabled', false).html(originalHtml);
+            }
+        });
+    });
+    
+    // === Filter and Pagination ===
     
     // Auto-filter on input with debouncing
     $filterInput.on('input', function() {
@@ -305,6 +585,9 @@ $(document).ready(function() {
                 // Update URL without page reload
                 const newUrl = query ? `${url}?q=${encodeURIComponent(query)}` : url;
                 window.history.pushState({}, '', newUrl);
+                
+                // Refresh statuses immediately after filter
+                refreshPaperStatuses();
             },
             error: function() {
                 $papersContainer.css('opacity', '1');
@@ -340,12 +623,219 @@ $(document).ready(function() {
                 $('html, body').animate({
                     scrollTop: $('#papers-container').offset().top - 100
                 }, 300);
+                
+                // Refresh statuses immediately after pagination
+                refreshPaperStatuses();
             },
             error: function() {
                 $papersContainer.css('opacity', '1');
             }
         });
     });
-});
+    
+    // === Auto-refresh Paper Statuses ===
+    
+    let statusRefreshInterval;
+    
+    function refreshPaperStatuses() {
+        // Get all visible paper IDs
+        const paperIds = [];
+        $('tr[data-paper-id]').each(function() {
+            paperIds.push($(this).data('paper-id'));
+        });
+        
+        if (paperIds.length === 0) {
+            console.log('No papers found to refresh');
+            return;
+        }
+        
+        console.log('Refreshing statuses for papers:', paperIds);
+        
+        $.ajax({
+            url: `{% url 'conference_paper_statuses' conference.id %}`,
+            method: 'GET',
+            data: {
+                paper_ids: paperIds.join(',')
+            },
+            success: function(response) {
+                console.log('Paper statuses response:', response);
+                if (response.statuses) {
+                    updatePaperStatuses(response.statuses);
+                } else {
+                    console.warn('No statuses in response');
+                }
+            },
+            error: function(xhr, status, error) {
+                // Silently fail to not disrupt user experience
+                console.error('Failed to refresh paper statuses:', status, error);
+            }
+        });
+    }
+    
+    function updatePaperStatuses(statuses) {
+        console.log('Updating paper statuses:', Object.keys(statuses).length, 'papers');
+        let updatedCount = 0;
+        
+        $.each(statuses, function(paperId, data) {
+            const $row = $(`tr[data-paper-id="${paperId}"]`);
+            if ($row.length === 0) {
+                console.warn('Row not found for paper:', paperId);
+                return;
+            }
+            
+            const currentStatus = $row.find('[data-workflow-status]').data('workflow-status');
+            const newStatus = data.status;
+            const newCount = data.workflow_count;
+            
+            // Update status badge only if changed
+            if (currentStatus !== newStatus) {
+                console.log(`Paper ${paperId}: ${currentStatus} -> ${newStatus}`);
+                updatedCount++;
+                const $statusCell = $row.find('[data-status-cell]');
+                let statusHtml = '';
+                
+                if (newStatus === 'completed') {
+                    statusHtml = `
+                        <div class="d-flex justify-content-center align-items-center">
+                            <span class="badge badge-success" data-workflow-status="completed">
+                                <i class="fas fa-check-circle"></i> Completed
+                            </span>
+                        </div>`;
+                } else if (newStatus === 'running') {
+                    statusHtml = `
+                        <div class="d-flex justify-content-center align-items-center">
+                            <span class="badge badge-info" data-workflow-status="running">
+                                <i class="fas fa-spinner fa-spin"></i> Running
+                            </span>
+                        </div>`;
+                } else if (newStatus === 'failed') {
+                    statusHtml = `
+                        <div class="d-flex justify-content-center align-items-center">
+                            <span class="badge badge-danger" data-workflow-status="failed">
+                                <i class="fas fa-times-circle"></i> Failed
+                            </span>
+                        </div>`;
+                } else if (newStatus === 'pending') {
+                    statusHtml = `
+                        <div class="d-flex justify-content-center align-items-center">
+                            <span class="badge badge-warning" data-workflow-status="pending">
+                                <i class="fas fa-clock"></i> Pending
+                            </span>
+                        </div>`;
+                } else if (newStatus === 'none') {
+                    statusHtml = `
+                        <span class="text-muted" data-workflow-status="none">
+                            <i class="fas fa-minus"></i> Not analyzed
+                        </span>`;
+                } else {
+                    statusHtml = `
+                        <div class="d-flex justify-content-center align-items-center">
+                            <span class="badge badge-secondary" data-workflow-status="${newStatus}">
+                                <i class="fas fa-minus-circle"></i> ${newStatus.charAt(0).toUpperCase() + newStatus.slice(1)}
+                            </span>
+                        </div>`;
+                }
+                
+                $statusCell.html(statusHtml);
+            }
+            
+            // Update workflow count
+            const $countCell = $row.find('[data-count-cell]');
+            if (newCount > 0) {
+                $countCell.html(`<span class="badge badge-primary" style="font-size: 1rem;">${newCount}</span>`);
+            } else {
+                $countCell.html('<span class="text-muted">0</span>');
+            }
+        });
+        
+        console.log(`Status update complete: ${updatedCount} papers updated`);
+    }
+    
+    // Initial load and start auto-refresh (every 5 seconds)
+    console.log('Starting paper status auto-refresh...');
+    refreshPaperStatuses(); // Call immediately on page load
+    statusRefreshInterval = setInterval(refreshPaperStatuses, 5000);
+    console.log('Paper status auto-refresh started (interval ID:', statusRefreshInterval, ')');
+    
+    // Stop auto-refresh when modal is open to avoid updates while user is interacting
+    $('.modal').on('show.bs.modal', function() {
+        if (statusRefreshInterval) {
+            clearInterval(statusRefreshInterval);
+        }
+    });
+    
+    // Resume auto-refresh when modal is closed
+    $('.modal').on('hidden.bs.modal', function() {
+        statusRefreshInterval = setInterval(refreshPaperStatuses, 5000);
+        // Immediately refresh after modal closes
+        refreshPaperStatuses();
+    });
+    
+    // === Active Workflows Status Badge ===
+    
+    {% if user.is_staff %}
+    let activeWorkflowsInterval;
+    
+    function updateActiveWorkflowsBadge() {
+        console.log('Updating active workflows badge...');
+        $.ajax({
+            url: '{% url "active_workflows" %}',
+            method: 'GET',
+            success: function(response) {
+                console.log('Active workflows response:', response);
+                const $badge = $('#active-workflows-badge');
+                const activeCount = response.active_count;
+                const maxConcurrent = response.max_concurrent;
+                
+                // Update badge content
+                $badge.html(`<i class="fas fa-cogs mr-1"></i>${activeCount}/${maxConcurrent}`);
+                
+                // Update badge color based on load
+                $badge.removeClass('badge-secondary badge-success badge-warning badge-danger');
+                if (activeCount === 0) {
+                    $badge.addClass('badge-success');
+                } else if (activeCount < maxConcurrent * 0.7) {
+                    $badge.addClass('badge-info');
+                } else if (activeCount < maxConcurrent) {
+                    $badge.addClass('badge-warning');
+                } else {
+                    $badge.addClass('badge-danger');
+                }
+                
+                // Update tooltip
+                $badge.attr('title', `${activeCount} active workflow${activeCount !== 1 ? 's' : ''} (${response.available_slots} slot${response.available_slots !== 1 ? 's' : ''} available)`);
+                
+                console.log(`Badge updated: ${activeCount}/${maxConcurrent} active workflows`);
+            },
+            error: function(xhr, status, error) {
+                console.error('Failed to update active workflows badge:', status, error);
+                const $badge = $('#active-workflows-badge');
+                $badge.html('<i class="fas fa-exclamation-triangle"></i>');
+                $badge.removeClass('badge-secondary badge-success badge-warning badge-danger badge-info').addClass('badge-secondary');
+            }
+        });
+    }
+    
+    // Initial load
+    console.log('Starting active workflows badge updates...');
+    updateActiveWorkflowsBadge();
+    
+    // Update every 3 seconds
+    activeWorkflowsInterval = setInterval(updateActiveWorkflowsBadge, 3000);
+    console.log('Active workflows badge auto-refresh started (interval ID:', activeWorkflowsInterval, ')');
+    {% endif %}
+    
+    // Cleanup on page unload
+    $(window).on('beforeunload', function() {
+        if (statusRefreshInterval) {
+            clearInterval(statusRefreshInterval);
+        }
+        {% if user.is_staff %}
+        if (activeWorkflowsInterval) {
+            clearInterval(activeWorkflowsInterval);
+        }
+        {% endif %}
+    });
+}); // Close $(document).ready()
 </script>
 {% endblock %}
