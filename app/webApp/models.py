@@ -802,3 +802,82 @@ class CodeFileEmbedding(models.Model):
             return 0.0
         
         return float(dot_product / (norm_a * norm_b))
+
+
+class ReproducibilityAspectEmbedding(models.Model):
+    """
+    Stores permanent vector embeddings for reproducibility analysis aspects.
+    These are global embeddings used to retrieve relevant sections/code for each aspect.
+    """
+    aspect_id = models.CharField(
+        max_length=50,
+        unique=True,
+        help_text='Unique identifier for the aspect (e.g., methodology, structure, components)'
+    )
+    aspect_name = models.CharField(
+        max_length=200,
+        help_text='Human-readable name of the aspect'
+    )
+    aspect_description = models.TextField(
+        help_text='Detailed description of what this aspect analyzes'
+    )
+    aspect_context = models.TextField(
+        help_text='Full context text used to generate the embedding'
+    )
+    embedding = models.JSONField(
+        help_text='Vector embedding as JSON array'
+    )
+    embedding_model = models.CharField(
+        max_length=50,
+        default='text-embedding-3-small',
+        help_text='OpenAI model used for embedding'
+    )
+    embedding_dimension = models.IntegerField(
+        default=1536,
+        help_text='Dimension of the embedding vector'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'reproducibility_aspect_embeddings'
+        indexes = [
+            models.Index(fields=['aspect_id'], name='idx_aspect_id'),
+        ]
+        verbose_name = 'Reproducibility Aspect Embedding'
+        verbose_name_plural = 'Reproducibility Aspect Embeddings'
+
+    def __str__(self):
+        return f"Aspect: {self.aspect_name}"
+    
+    def compute_cosine_similarity(self, other_embedding: list) -> float:
+        """
+        Compute cosine similarity between this aspect embedding and another.
+        
+        Args:
+            other_embedding: List of floats representing another embedding
+            
+        Returns:
+            Cosine similarity score (0 to 1)
+        """
+        import numpy as np
+        
+        if not isinstance(self.embedding, list) or not isinstance(other_embedding, list):
+            raise ValueError("Embeddings must be lists")
+        
+        if len(self.embedding) != len(other_embedding):
+            raise ValueError(f"Embedding dimensions must match: {len(self.embedding)} vs {len(other_embedding)}")
+        
+        # Convert to numpy arrays
+        a = np.array(self.embedding)
+        b = np.array(other_embedding)
+        
+        # Compute cosine similarity
+        dot_product = np.dot(a, b)
+        norm_a = np.linalg.norm(a)
+        norm_b = np.linalg.norm(b)
+        
+        if norm_a == 0 or norm_b == 0:
+            return 0.0
+        
+        return float(dot_product / (norm_a * norm_b))

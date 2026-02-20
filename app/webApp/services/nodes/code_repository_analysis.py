@@ -8,6 +8,7 @@ from pathlib import Path as PathlibPath
 
 from workflow_engine.services.async_orchestrator import async_ops
 from .shared_helpers import analyze_repository_comprehensive
+from .shared_helpers_v2 import analyze_repository_with_aspects
 
 from webApp.services.pydantic_schemas import (
     CodeAvailabilityCheck,
@@ -146,8 +147,9 @@ async def code_repository_analysis_node(
 
         logger.info(f"Analyzing repository: {source}")
 
-        repo_analysis = await analyze_repository_comprehensive(
-            source, paper, client, model, node=node
+        # Use new aspect-based analysis that leverages section and code embeddings
+        repo_analysis = await analyze_repository_with_aspects(
+            code_url, paper, client, model, node=node
         )
 
         # Step 2: Compile complete analysis

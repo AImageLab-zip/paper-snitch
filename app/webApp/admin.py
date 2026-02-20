@@ -17,6 +17,7 @@ from .models import (
     Prompt,
     PaperSectionEmbedding,
     CodeFileEmbedding,
+    ReproducibilityAspectEmbedding,
 )
 from .models_schema import DatabaseSchema
 
@@ -493,6 +494,47 @@ class CodeFileEmbeddingAdmin(admin.ModelAdmin):
         }),
         ('Embedding Information', {
             'fields': ('embedding_model', 'embedding_dimension', 'tokens_used', 'embedding_preview')
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def embedding_preview(self, obj):
+        """Show first few and last few dimensions of embedding."""
+        if not obj.embedding:
+            return "No embedding"
+        
+        embedding = obj.embedding
+        if len(embedding) > 10:
+            preview = embedding[:5] + ['...'] + embedding[-5:]
+        else:
+            preview = embedding
+        
+        return format_html(
+            '<div style="font-family: monospace; font-size: 11px;">'
+            'Dimension: {} | Preview: {}'
+            '</div>',
+            len(embedding),
+            str(preview)
+        )
+    embedding_preview.short_description = "Embedding Preview"
+
+
+@admin.register(ReproducibilityAspectEmbedding)
+class ReproducibilityAspectEmbeddingAdmin(admin.ModelAdmin):
+    list_display = ('aspect_id', 'aspect_name', 'embedding_model', 'embedding_dimension', 'created_at')
+    list_filter = ('embedding_model', 'created_at')
+    search_fields = ('aspect_id', 'aspect_name', 'aspect_description')
+    readonly_fields = ('created_at', 'updated_at', 'embedding_dimension', 'embedding_preview')
+    
+    fieldsets = (
+        ('Aspect Information', {
+            'fields': ('aspect_id', 'aspect_name', 'aspect_description', 'aspect_context')
+        }),
+        ('Embedding Information', {
+            'fields': ('embedding_model',  'embedding_dimension', 'embedding_preview')
         }),
         ('Timestamps', {
             'fields': ('created_at', 'updated_at'),

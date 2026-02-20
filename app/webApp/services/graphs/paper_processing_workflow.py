@@ -712,13 +712,14 @@ async def execute_from_node(
     node_uuid: str,
     openai_api_key: Optional[str] = None,
     model: str = "gpt-4o",
+    force_reprocess: bool = True,
 ) -> Dict[str, Any]:
     """
     Execute workflow from a specific node onwards.
 
     Convenience function that uses the singleton workflow instance.
     """
-    return await _workflow_instance.execute_from_node(node_uuid, openai_api_key, model)
+    return await _workflow_instance.execute_from_node(node_uuid, openai_api_key, model, force_reprocess)
 
 
 # ============================================================================

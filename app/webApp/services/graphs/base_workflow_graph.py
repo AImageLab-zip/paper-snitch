@@ -332,6 +332,7 @@ class BaseWorkflowGraph(ABC):
         node_uuid: str,
         openai_api_key: Optional[str] = None,
         model: str = "gpt-4o",
+        force_reprocess: bool = True,
     ) -> Dict[str, Any]:
         """
         Execute workflow from a specific node onwards using the original workflow run.
@@ -339,12 +340,13 @@ class BaseWorkflowGraph(ABC):
         This does NOT create a new workflow run. Instead, it:
         1. Resets the target node and all downstream nodes to 'pending'
         2. Executes from the target node onwards in the same workflow run
-        3. Preserves all upstream completed nodes
+        3. Preserves all upcoming completed nodes
 
         Args:
             node_uuid: UUID of the node to start from
             openai_api_key: OpenAI API key (uses env var if not provided)
             model: OpenAI model to use
+            force_reprocess: If True, reprocess even if data already exists
 
         Returns:
             Dictionary with execution results
@@ -409,7 +411,7 @@ class BaseWorkflowGraph(ABC):
                 "current_node_id": None,
                 "client": client,
                 "model": model,
-                "force_reprocess": False,
+                "force_reprocess": force_reprocess,
                 "paper_type_result": None,
                 "code_availability_result": None,
                 "code_reproducibility_result": None,

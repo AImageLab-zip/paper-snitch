@@ -1497,8 +1497,17 @@ class RerunFromNodeView(View):
     def post(self, request, node_id):
         """Rerun workflow from the specified node onwards."""
         import logging
+        import json
 
         logger = logging.getLogger(__name__)
+
+        # Get force_reprocess flag from request (default to True)
+        force_reprocess = True
+        try:
+            body = json.loads(request.body) if request.body else {}
+            force_reprocess = body.get('force_reprocess', True)
+        except json.JSONDecodeError:
+            pass
 
         try:
             node = WorkflowNode.objects.get(id=node_id)
@@ -1540,7 +1549,7 @@ class RerunFromNodeView(View):
                 asyncio.set_event_loop(loop)
                 loop.run_until_complete(
                     _workflow_instance.execute_from_node(
-                        node_uuid=str(node.id), model="gpt-4o"
+                        node_uuid=str(node.id), model="gpt-4o", force_reprocess=force_reprocess
                     )
                 )
                 loop.close()

@@ -711,12 +711,23 @@
             </div>
             <div class="modal-body">
                 <p class="mb-3">Are you sure you want to rerun the workflow from this node onwards?</p>
+                
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="forceReprocessCheckbox" checked>
+                    <label class="form-check-label" for="forceReprocessCheckbox">
+                        <strong>Force reprocess</strong> - Recompute all data even if it already exists
+                    </label>
+                    <small class="form-text text-muted">
+                        If unchecked, nodes will skip processing if data already exists in the database.
+                    </small>
+                </div>
+                
                 <div class="alert alert-info mb-0">
                     <i class="fas fa-info-circle mr-2"></i>
-                    <strong>Note:</strong> This will create a new workflow run that:
+                    <strong>Note:</strong> This will:
                     <ul class="mb-0 mt-2">
-                        <li>Keeps the results of all previous nodes (copied from current run)</li>
-                        <li>Re-executes this node and all subsequent nodes</li>
+                        <li>Keep the results of all previous nodes</li>
+                        <li>Re-execute this node and all subsequent nodes</li>
                         <li>May take several minutes to complete</li>
                     </ul>
                 </div>
@@ -1888,12 +1899,19 @@ $('#confirm-rerun-from-node-btn').on('click', function() {
     
     console.log('Making AJAX request to:', `/workflow/node/${currentNodeId}/rerun-from/`);
     
+    // Get force_reprocess checkbox value
+    const forceReprocess = $('#forceReprocessCheckbox').is(':checked');
+    
     $.ajax({
         url: `/workflow/node/${currentNodeId}/rerun-from/`,
         method: 'POST',
         headers: {
-            'X-CSRFToken': csrfToken
+            'X-CSRFToken': csrfToken,
+            'Content-Type': 'application/json'
         },
+        data: JSON.stringify({
+            force_reprocess: forceReprocess
+        }),
         success: function(response) {
             console.log('Rerun from node response:', response);
             if (response.success) {
