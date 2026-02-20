@@ -404,6 +404,9 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
             # Check for errors
             errors = final_state.get("errors", [])
             success = len(errors) == 0
+            
+            # Aggregate token counts from all nodes
+            await async_ops.aggregate_workflow_run_tokens(workflow_run.id)
 
             # Update workflow run status
             await async_ops.update_workflow_run_status(
@@ -431,11 +434,9 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
                 },
                 error_message="; ".join(errors) if errors else None,
             )
-
-            # Get token usage from artifacts
-            input_tokens, output_tokens = await async_ops.get_token_stats(
-                str(workflow_run.id)
-            )
+            
+            # Reload workflow_run to get aggregated token counts
+            workflow_run = await async_ops.get_workflow_run(workflow_run.id)
 
             # Compile results
             results = {
@@ -448,8 +449,9 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
                 "section_embeddings": final_state.get("section_embeddings_result"),
                 "code_availability": final_state.get("code_availability_result"),
                 "code_reproducibility": final_state.get("code_reproducibility_result"),
-                "total_input_tokens": input_tokens,
-                "total_output_tokens": output_tokens,
+                "total_input_tokens": workflow_run.total_input_tokens,
+                "total_output_tokens": workflow_run.total_output_tokens,
+                "total_tokens": workflow_run.total_tokens,
                 "errors": errors,
             }
 

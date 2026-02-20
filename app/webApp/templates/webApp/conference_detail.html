@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% load static %}
+{% load humanize %}
 
 {% block head_title %}{{ conference.name }} - Papers{% endblock %}
 
@@ -44,6 +45,89 @@
                 </div>
             </div>
 
+            <!-- Workflow Node Statistics -->
+            {% if node_statistics %}
+            <div class="card shadow mb-4">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-chart-bar mr-2"></i>Workflow Node Statistics
+                        <small class="ml-2">(Latest Run per Paper)</small>
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted mb-3">
+                        <i class="fas fa-info-circle mr-1"></i>
+                        Average token usage per workflow node, based on the latest completed run for each paper.
+                    </p>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover">
+                            <thead class="thead-light">
+                                <tr>
+                                    <th>Node</th>
+                                    <th class="text-center">Papers</th>
+                                    <th class="text-right">Avg Input</th>
+                                    <th class="text-right">Avg Output</th>
+                                    <th class="text-right">Avg Total</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for node_id, stats in node_statistics.items %}
+                                <tr>
+                                    <td>
+                                        <strong>{{ node_id|title }}</strong>
+                                    </td>
+                                    <td class="text-center">
+                                        <span class="badge badge-secondary">{{ stats.count }}</span>
+                                    </td>
+                                    <td class="text-right">
+                                        {% if stats.avg_input_tokens is not None %}
+                                        <span class="text-primary">
+                                            {{ stats.avg_input_tokens|floatformat:0|intcomma }}
+                                            {% if stats.stddev_input_tokens %}
+                                            <small class="text-muted">(±{{ stats.stddev_input_tokens|floatformat:0|intcomma }})</small>
+                                            {% endif %}
+                                        </span>
+                                        {% else %}
+                                        <span class="text-muted">-</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-right">
+                                        {% if stats.avg_output_tokens is not None %}
+                                        <span class="text-success">
+                                            {{ stats.avg_output_tokens|floatformat:0|intcomma }}
+                                            {% if stats.stddev_output_tokens %}
+                                            <small class="text-muted">(±{{ stats.stddev_output_tokens|floatformat:0|intcomma }})</small>
+                                            {% endif %}
+                                        </span>
+                                        {% else %}
+                                        <span class="text-muted">-</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-right">
+                                        {% if stats.avg_total_tokens is not None %}
+                                        <strong>
+                                            {{ stats.avg_total_tokens|floatformat:0|intcomma }}
+                                            {% if stats.stddev_total_tokens %}
+                                            <small class="text-muted">(±{{ stats.stddev_total_tokens|floatformat:0|intcomma }})</small>
+                                            {% endif %}
+                                        </strong>
+                                        {% else %}
+                                        <span class="text-muted">-</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <small class="text-muted">
+                        <i class="fas fa-info-circle mr-1"></i>
+                        Standard deviations shown in parentheses (±). Data reflects latest workflow run per paper.
+                    </small>
+                </div>
+            </div>
+            {% endif %}
+
             <!-- Papers List -->
             <div class="card shadow">
                 <div class="card-body">
@@ -87,10 +171,11 @@
                         <table class="table table-hover">
                             <thead>
                                 <tr>
-                                    <th style="width: 45%;">Title</th>
+                                    <th style="width: 40%;">Title</th>
                                     <th style="width: 15%;">Authors</th>
-                                    <th style="width: 20%;" class="text-center">Analysis Status</th>
+                                    <th style="width: 15%;" class="text-center">Analysis Status</th>
                                     <th style="width: 10%;" class="text-center">Workflows</th>
+                                    <th style="width: 10%;" class="text-center">Tokens</th>
                                     <th style="width: 10%;" class="text-center">Actions</th>
                                 </tr>
                             </thead>
@@ -157,6 +242,17 @@
                                         </span>
                                         {% else %}
                                         <span class="text-muted">0</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-center">
+                                        {% if paper.latest_run_tokens %}
+                                        <span class="badge badge-info" style="font-size: 0.9rem;" title="{{ paper.latest_run_tokens }} tokens">
+                                            <i class="fas fa-coins mr-1"></i>{{ paper.latest_run_tokens|intcomma }}
+                                        </span>
+                                        {% else %}
+                                        <span class="text-muted" title="No completed analysis">
+                                            <i class="fas fa-minus"></i>
+                                        </span>
                                         {% endif %}
                                     </td>
                                     <td class="text-center">

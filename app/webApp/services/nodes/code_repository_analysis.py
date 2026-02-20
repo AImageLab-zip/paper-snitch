@@ -67,6 +67,25 @@ async def code_repository_analysis_node(
 
                 result = CodeReproducibilityAnalysis(**previous["result"])
                 await async_ops.create_node_artifact(node, "result", result)
+                
+                # Copy tokens from previous execution
+                previous_node = await async_ops.get_most_recent_completed_node(
+                    paper_id=state["paper_id"],
+                    node_id=node_id,
+                    exclude_run_id=state["workflow_run_id"]
+                )
+                
+                if previous_node:
+                    await async_ops.update_node_tokens(
+                        node,
+                        input_tokens=previous_node.input_tokens,
+                        output_tokens=previous_node.output_tokens,
+                        was_cached=True
+                    )
+                    logger.info(
+                        f"Copied tokens from previous execution: {previous_node.total_tokens} total"
+                    )
+                
                 await async_ops.update_node_status(
                     node, "completed", completed_at=timezone.now()
                 )
@@ -159,6 +178,14 @@ async def code_repository_analysis_node(
                 "input_tokens": repo_analysis.get("input_tokens", 0),
                 "output_tokens": repo_analysis.get("output_tokens", 0),
             },
+        )
+        
+        # Update node token fields in database
+        await async_ops.update_node_tokens(
+            node,
+            input_tokens=repo_analysis.get("input_tokens", 0),
+            output_tokens=repo_analysis.get("output_tokens", 0),
+            was_cached=False
         )
 
         # Store detailed LLM analysis if available

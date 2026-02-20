@@ -251,6 +251,9 @@ class CodeAvailabilityWorkflow(BaseWorkflowGraph):
             # Check for errors
             errors = final_state.get("errors", [])
             success = len(errors) == 0
+            
+            # Aggregate token counts from all nodes
+            await async_ops.aggregate_workflow_run_tokens(workflow_run.id)
 
             # Update workflow run status
             await async_ops.update_workflow_run_status(
@@ -272,6 +275,9 @@ class CodeAvailabilityWorkflow(BaseWorkflowGraph):
                 },
                 error_message="; ".join(errors) if errors else None,
             )
+            
+            # Reload workflow_run to get aggregated token counts
+            workflow_run = await async_ops.get_workflow_run(workflow_run.id)
 
             logger.info(
                 f"Workflow completed for paper {paper_id}. Success: {success}, Run ID: {workflow_run.id}"
@@ -284,6 +290,9 @@ class CodeAvailabilityWorkflow(BaseWorkflowGraph):
                 "paper_id": paper_id,
                 "paper_type_result": final_state.get("paper_type_result"),
                 "code_availability_result": final_state.get("code_availability_result"),
+                "total_input_tokens": workflow_run.total_input_tokens,
+                "total_output_tokens": workflow_run.total_output_tokens,
+                "total_tokens": workflow_run.total_tokens,
                 "errors": errors,
             }
 

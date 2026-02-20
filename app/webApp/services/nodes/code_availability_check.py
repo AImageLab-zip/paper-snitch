@@ -62,6 +62,25 @@ async def code_availability_check_node(
 
                 result = CodeAvailabilityCheck(**previous["result"])
                 await async_ops.create_node_artifact(node, "result", result)
+                
+                # Copy tokens from previous execution
+                previous_node = await async_ops.get_most_recent_completed_node(
+                    paper_id=state["paper_id"],
+                    node_id=node_id,
+                    exclude_run_id=state["workflow_run_id"]
+                )
+                
+                if previous_node:
+                    await async_ops.update_node_tokens(
+                        node,
+                        input_tokens=previous_node.input_tokens,
+                        output_tokens=previous_node.output_tokens,
+                        was_cached=True
+                    )
+                    logger.info(
+                        f"Copied tokens from previous execution: {previous_node.total_tokens} total"
+                    )
+                
                 await async_ops.update_node_status(
                     node, "completed", completed_at=timezone.now()
                 )
@@ -76,6 +95,10 @@ async def code_availability_check_node(
         code_url = None
         found_online = False
         search_notes = ""
+        
+        # Token tracking across all API calls
+        total_input_tokens = 0
+        total_output_tokens = 0
 
         # Step 1: Check if URL already exists in database
         if paper.code_url:
@@ -173,6 +196,10 @@ Respond with your assessment."""
                             verification = response.output_parsed
                             input_tokens = response.usage.input_tokens
                             output_tokens = response.usage.output_tokens
+                            
+                            # Accumulate tokens from verification call
+                            total_input_tokens += input_tokens
+                            total_output_tokens += output_tokens
 
                             logger.info(
                                 f"Verification for {candidate_url}: official={verification.is_official_repo}, confidence={verification.confidence}"
@@ -230,7 +257,11 @@ Respond with your assessment."""
             )
 
             try:
-                search_result = await search_code_online(paper, client, model, node)
+                search_result, search_input_tokens, search_output_tokens = await search_code_online(paper, client, model, node)
+                
+                # Accumulate tokens from online search
+                total_input_tokens += search_input_tokens
+                total_output_tokens += search_output_tokens
 
                 if search_result.repository_url and search_result.confidence >= 0.7:
                     code_url = search_result.repository_url
@@ -451,6 +482,25 @@ Respond with your assessment."""
 
         # Store result as artifact
         await async_ops.create_node_artifact(node, "result", result)
+        
+        # Store token usage as artifact
+        await async_ops.create_node_artifact(
+            node,
+            "token_usage",
+            {
+                "input_tokens": total_input_tokens,
+                "output_tokens": total_output_tokens,
+                "total_tokens": total_input_tokens + total_output_tokens,
+            },
+        )
+        
+        # Update node token fields in database
+        await async_ops.update_node_tokens(
+            node,
+            input_tokens=total_input_tokens,
+            output_tokens=total_output_tokens,
+            was_cached=False
+        )
 
         # Log success
         await async_ops.create_node_log(
@@ -492,7 +542,7 @@ Respond with your assessment."""
 
 async def search_code_online(
     paper: Paper, client: OpenAI, model: str, node: Any = None
-) -> OnlineCodeSearch:
+) -> tuple[OnlineCodeSearch, int, int]:
     """
     Use LLM to search for code repository online with structured output.
 
@@ -505,7 +555,7 @@ async def search_code_online(
         model: Model name
 
     Returns:
-        OnlineCodeSearch result with repository URL (if found) and metadata
+        Tuple of (OnlineCodeSearch result, input_tokens, output_tokens)
     """
     # Construct detailed search prompt
     authors_str = ""
@@ -554,6 +604,8 @@ Provide:
         )
 
         result = response.output_parsed
+        input_tokens = response.usage.input_tokens
+        output_tokens = response.usage.output_tokens
 
         logger.info(
             f"Online search result: {result.repository_url or 'Not found'} (confidence: {result.confidence})"
@@ -561,12 +613,12 @@ Provide:
         await async_ops.create_node_log(
             node,
             "INFO",
-            f"Online search result: {result.repository_url or 'Not found'} (confidence: {result.confidence}, input tokens: {response.usage.input_tokens}, output tokens: {response.usage.output_tokens})",
+            f"Online search result: {result.repository_url or 'Not found'} (confidence: {result.confidence}, input tokens: {input_tokens}, output tokens: {output_tokens})",
         )
 
         logger.info(f"Search strategy: {result.search_strategy}")
 
-        return result
+        return result, input_tokens, output_tokens
 
     except Exception as e:
         logger.error(f"Error in online code search: {e}")
@@ -580,4 +632,4 @@ Provide:
             confidence=0.0,
             search_strategy="Error occurred",
             notes=f"Search failed: {str(e)}",
-        )
+        ), 0, 0

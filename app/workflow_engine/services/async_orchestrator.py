@@ -509,6 +509,124 @@ class AsyncWorkflowOperations:
             node: WorkflowNode instance
         """
         node.logs.all().delete()
+    
+    @sync_to_async
+    def update_node_tokens(
+        self,
+        node: WorkflowNode,
+        input_tokens: int,
+        output_tokens: int,
+        was_cached: bool = False
+    ):
+        """
+        Update token counts for a node.
+        
+        Args:
+            node: WorkflowNode instance
+            input_tokens: Number of input tokens consumed
+            output_tokens: Number of output tokens generated
+            was_cached: Whether tokens were copied from cached result
+        """
+        node.input_tokens = input_tokens
+        node.output_tokens = output_tokens
+        node.total_tokens = input_tokens + output_tokens
+        node.was_cached = was_cached
+        node.save(update_fields=['input_tokens', 'output_tokens', 'total_tokens', 'was_cached'])
+        
+        logger.info(
+            f"Updated node {node.node_id} tokens: {input_tokens} in, {output_tokens} out, "
+            f"total {node.total_tokens}, cached={was_cached}"
+        )
+    
+    @sync_to_async
+    def get_most_recent_completed_node(
+        self,
+        paper_id: int,
+        node_id: str,
+        exclude_run_id: str = None
+    ) -> Optional[WorkflowNode]:
+        """
+        Get the most recent successfully completed node for a paper.
+        
+        Used to copy token counts when a node is cached.
+        
+        Args:
+            paper_id: Paper database ID
+            node_id: Node ID (e.g., 'paper_type_classification')
+            exclude_run_id: Workflow run ID to exclude (current run)
+            
+        Returns:
+            WorkflowNode instance or None
+        """
+        query = WorkflowNode.objects.filter(
+            workflow_run__paper_id=paper_id,
+            node_id=node_id,
+            status='completed'
+        )
+        
+        if exclude_run_id:
+            query = query.exclude(workflow_run_id=exclude_run_id)
+        
+        # Get most recent by workflow run creation date
+        node = query.select_related('workflow_run').order_by('-workflow_run__created_at').first()
+        
+        if node:
+            logger.info(
+                f"Found previous completed node {node_id} for paper {paper_id}: "
+                f"{node.input_tokens} in, {node.output_tokens} out"
+            )
+        
+        return node
+    
+    @sync_to_async
+    def get_workflow_run(self, workflow_run_id: str) -> WorkflowRun:
+        """
+        Get a workflow run by ID.
+        
+        Args:
+            workflow_run_id: UUID of workflow run
+            
+        Returns:
+            WorkflowRun instance
+        """
+        return WorkflowRun.objects.get(id=workflow_run_id)
+    
+    @sync_to_async
+    def aggregate_workflow_run_tokens(self, workflow_run_id: str):
+        """
+        Aggregate token counts from all nodes and update workflow run totals.
+        
+        Should be called after workflow completes.
+        
+        Args:
+            workflow_run_id: UUID of workflow run
+        """
+        from django.db.models import Sum
+        
+        workflow_run = WorkflowRun.objects.get(id=workflow_run_id)
+        
+        # Aggregate tokens from all nodes
+        aggregated = workflow_run.nodes.aggregate(
+            total_input=Sum('input_tokens'),
+            total_output=Sum('output_tokens'),
+            total=Sum('total_tokens')
+        )
+        
+        workflow_run.total_input_tokens = aggregated['total_input'] or 0
+        workflow_run.total_output_tokens = aggregated['total_output'] or 0
+        workflow_run.total_tokens = aggregated['total'] or 0
+        
+        workflow_run.save(update_fields=[
+            'total_input_tokens',
+            'total_output_tokens',
+            'total_tokens'
+        ])
+        
+        logger.info(
+            f"Aggregated tokens for workflow run {workflow_run_id}: "
+            f"{workflow_run.total_input_tokens} in, {workflow_run.total_output_tokens} out, "
+            f"total {workflow_run.total_tokens}"
+        )
 
 
 # Convenience singleton instance

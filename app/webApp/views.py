@@ -30,6 +30,196 @@ from .tasks import (
 from workflow_engine.models import WorkflowRun, WorkflowNode, WorkflowDefinition
 
 
+def compute_conference_token_statistics(conferences):
+    """
+    Compute token statistics for conferences based on latest workflow run per paper.
+    
+    For each conference, computes:
+    - Average input/output/total tokens (latest run per paper only)
+    - Standard deviation for input/output/total tokens
+    
+    Results are added as attributes to conference objects:
+    - avg_input_tokens, stddev_input_tokens
+    - avg_output_tokens, stddev_output_tokens
+    - avg_total_tokens, stddev_total_tokens
+    """
+    if not conferences:
+        return
+    
+    import statistics
+    from collections import defaultdict
+    from django.db.models import Max, Q
+    
+    conference_ids = [c.id for c in conferences]
+    
+    # Get latest run per paper for these conferences
+    latest_per_paper = WorkflowRun.objects.filter(
+        paper__conference_id__in=conference_ids,
+        status='completed'
+    ).values('paper_id').annotate(
+        max_created=Max('created_at')
+    )
+    
+    # Build Q filter for (paper_id, created_at) combinations
+    q_filter = Q()
+    for lpp in latest_per_paper:
+        q_filter |= Q(paper_id=lpp['paper_id'], created_at=lpp['max_created'])
+    
+    if not q_filter:
+        # No completed runs, set all values to None
+        for conference in conferences:
+            conference.avg_input_tokens = None
+            conference.stddev_input_tokens = None
+            conference.avg_output_tokens = None
+            conference.stddev_output_tokens = None
+            conference.avg_total_tokens = None
+            conference.stddev_total_tokens = None
+        return
+    
+    # Fetch all latest runs
+    latest_runs = WorkflowRun.objects.filter(
+        q_filter,
+        status='completed'
+    ).select_related('paper').values('paper__conference_id', 'total_input_tokens', 'total_output_tokens', 'total_tokens')
+    
+    # Group by conference
+    conference_data = defaultdict(lambda: {
+        'input': [],
+        'output': [],
+        'total': []
+    })
+    
+    for run in latest_runs:
+        conf_id = run['paper__conference_id']
+        if run['total_input_tokens'] is not None:
+            conference_data[conf_id]['input'].append(run['total_input_tokens'])
+        if run['total_output_tokens'] is not None:
+            conference_data[conf_id]['output'].append(run['total_output_tokens'])
+        if run['total_tokens'] is not None:
+            conference_data[conf_id]['total'].append(run['total_tokens'])
+    
+    # Compute statistics for each conference
+    for conference in conferences:
+        data = conference_data[conference.id]
+        
+        # Input tokens
+        if data['input']:
+            conference.avg_input_tokens = statistics.mean(data['input'])
+            conference.stddev_input_tokens = statistics.stdev(data['input']) if len(data['input']) > 1 else 0
+        else:
+            conference.avg_input_tokens = None
+            conference.stddev_input_tokens = None
+        
+        # Output tokens
+        if data['output']:
+            conference.avg_output_tokens = statistics.mean(data['output'])
+            conference.stddev_output_tokens = statistics.stdev(data['output']) if len(data['output']) > 1 else 0
+        else:
+            conference.avg_output_tokens = None
+            conference.stddev_output_tokens = None
+        
+        # Total tokens
+        if data['total']:
+            conference.avg_total_tokens = statistics.mean(data['total'])
+            conference.stddev_total_tokens = statistics.stdev(data['total']) if len(data['total']) > 1 else 0
+        else:
+            conference.avg_total_tokens = None
+            conference.stddev_total_tokens = None
+
+
+def compute_node_statistics(conference_id):
+    """
+    Compute per-node token statistics for a conference based on latest workflow runs.
+    
+    Returns a dict with structure:
+    {
+        'node_name': {
+            'avg_input_tokens': float,
+            'stddev_input_tokens': float,
+            'avg_output_tokens': float,
+            'stddev_output_tokens': float,
+            'avg_total_tokens': float,
+            'stddev_total_tokens': float,
+            'count': int  # number of papers with this node
+        }
+    }
+    """
+    import statistics
+    from collections import defaultdict
+    from django.db.models import Max, Q
+    
+    # Get latest run per paper for this conference
+    latest_per_paper = WorkflowRun.objects.filter(
+        paper__conference_id=conference_id,
+        status='completed'
+    ).values('paper_id').annotate(
+        max_created=Max('created_at')
+    )
+    
+    # Build Q filter
+    q_filter = Q()
+    for lpp in latest_per_paper:
+        q_filter |= Q(workflow_run__paper_id=lpp['paper_id'], workflow_run__created_at=lpp['max_created'])
+    
+    if not q_filter:
+        return {}
+    
+    # Fetch all nodes from latest runs
+    nodes = WorkflowNode.objects.filter(
+        q_filter,
+        workflow_run__status='completed'
+    ).values('node_id', 'input_tokens', 'output_tokens', 'total_tokens')
+    
+    # Group by node_id
+    node_data = defaultdict(lambda: {
+        'input': [],
+        'output': [],
+        'total': []
+    })
+    
+    for node in nodes:
+        node_id = node['node_id']
+        if node['input_tokens'] is not None:
+            node_data[node_id]['input'].append(node['input_tokens'])
+        if node['output_tokens'] is not None:
+            node_data[node_id]['output'].append(node['output_tokens'])
+        if node['total_tokens'] is not None:
+            node_data[node_id]['total'].append(node['total_tokens'])
+    
+    # Compute statistics
+    result = {}
+    for node_id, data in node_data.items():
+        result[node_id] = {}
+        
+        # Input tokens
+        if data['input']:
+            result[node_id]['avg_input_tokens'] = statistics.mean(data['input'])
+            result[node_id]['stddev_input_tokens'] = statistics.stdev(data['input']) if len(data['input']) > 1 else 0
+            result[node_id]['count'] = len(data['input'])
+        else:
+            result[node_id]['avg_input_tokens'] = None
+            result[node_id]['stddev_input_tokens'] = None
+            result[node_id]['count'] = 0
+        
+        # Output tokens
+        if data['output']:
+            result[node_id]['avg_output_tokens'] = statistics.mean(data['output'])
+            result[node_id]['stddev_output_tokens'] = statistics.stdev(data['output']) if len(data['output']) > 1 else 0
+        else:
+            result[node_id]['avg_output_tokens'] = None
+            result[node_id]['stddev_output_tokens'] = None
+        
+        # Total tokens
+        if data['total']:
+            result[node_id]['avg_total_tokens'] = statistics.mean(data['total'])
+            result[node_id]['stddev_total_tokens'] = statistics.stdev(data['total']) if len(data['total']) > 1 else 0
+        else:
+            result[node_id]['avg_total_tokens'] = None
+            result[node_id]['stddev_total_tokens'] = None
+    
+    return result
+
+
 class PaperSnitchLoginView(LoginView):
 
     template_name = "registration/login.html"
@@ -543,13 +733,18 @@ class ConferenceListView(View):
 
     def get(self, request):
         """Display conferences with search and pagination."""
+        from django.db.models import Sum
+        
         search_query = request.GET.get("q", "").strip()
 
         # Start with all conferences
         conferences = Conference.objects.all()
 
-        # Annotate with paper count
-        conferences = conferences.annotate(paper_count=Count("papers"))
+        # Annotate with paper count and total tokens (sum of all completed runs)
+        conferences = conferences.annotate(
+            paper_count=Count("papers"),
+            total_tokens=Sum("papers__workflow_runs__total_tokens", filter=Q(papers__workflow_runs__status="completed")),
+        )
 
         # Apply search filter
         if search_query:
@@ -564,6 +759,10 @@ class ConferenceListView(View):
         paginator = Paginator(conferences, 20)  # 20 conferences per page
         page_number = request.GET.get("page", 1)
         page_obj = paginator.get_page(page_number)
+
+        # Compute token statistics based on latest run per paper
+        # This adds avg_input_tokens, stddev_input_tokens, etc. to each conference
+        compute_conference_token_statistics(list(page_obj))
 
         context = {
             "conferences": page_obj,
@@ -581,7 +780,7 @@ class ConferenceDetailView(View):
 
     def get(self, request, conference_id):
         """Display conference with its papers, search, and pagination."""
-        from django.db.models import Count, Prefetch
+        from django.db.models import Count, Prefetch, OuterRef, Subquery
         from django.core.paginator import Paginator
 
         conference = get_object_or_404(Conference, id=conference_id)
@@ -599,6 +798,14 @@ class ConferenceDetailView(View):
             to_attr="latest_workflow_list",
         )
 
+        # Subquery to get token count from latest completed workflow run
+        latest_completed_tokens_subquery = Subquery(
+            WorkflowRun.objects.filter(
+                paper_id=OuterRef('pk'),
+                status='completed'
+            ).order_by('-created_at').values('total_tokens')[:1]
+        )
+
         # Get papers for this conference with workflow stats annotated
         # Use only() to fetch only required fields for better performance
         papers = (
@@ -606,8 +813,14 @@ class ConferenceDetailView(View):
             .select_related("conference")
             .prefetch_related(latest_workflow_prefetch)
             .only("id", "title", "doi", "authors", "conference__id", "conference__name")
-            .annotate(workflow_count=Count("workflow_runs"))
+            .annotate(
+                workflow_count=Count("workflow_runs"),
+                latest_run_tokens=latest_completed_tokens_subquery
+            )
         )
+
+        # Compute per-node statistics for this conference
+        node_statistics = compute_node_statistics(conference_id)
 
         # Apply search filter
         if search_query:
@@ -631,6 +844,7 @@ class ConferenceDetailView(View):
             "page_obj": page_obj,
             "search_query": search_query,
             "total_papers": total_papers,  # Pre-calculated count
+            "node_statistics": node_statistics,  # Per-node token statistics
         }
 
         return render(request, self.template_name, context)

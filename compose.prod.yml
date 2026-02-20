@@ -136,7 +136,7 @@ services:
     volumes:
       - ./certbot/conf:/etc/letsencrypt
       - ./certbot/www:/var/www/certbot
-    command: certonly --webroot -w /var/www/certbot --email 284124@studenti.unimore.it -d paper-snitch.ing.unimore.it --agree-tos --non-interactive
+    command: certonly --webroot -w /var/www/certbot --email your-email@example.com -d paper-snitch.online -d www.paper-snitch.online -d paper-snitch.ing.unimore.it -d www.paper-snitch.ing.unimore.it --agree-tos --non-interactive
 
   certbot-renew:
     image: certbot/certbot
