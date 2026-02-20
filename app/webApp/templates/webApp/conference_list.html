@@ -64,6 +64,18 @@
                                         <!-- Conference with logo: show only logo -->
                                         <div class="text-center mb-3">
                                             <img src="{{ conference.logo.url }}" alt="{{ conference.name }}" class="img-fluid conference-logo-main">
+                                            {% comment %} {% if conference.avg_total_tokens %}
+                                            <div class="mt-2">
+                                                <button class="btn btn-sm btn-link p-0" 
+                                                        data-toggle="tooltip" 
+                                                        data-html="true"
+                                                        data-placement="top"
+                                                        title="<strong>Latest Run Averages (per paper):</strong><br><i class='fas fa-arrow-down text-primary'></i> Input: {{ conference.avg_input_tokens|floatformat:0|intcomma }} {% if conference.stddev_input_tokens %}(±{{ conference.stddev_input_tokens|floatformat:0|intcomma }}){% endif %}<br><i class='fas fa-arrow-up text-success'></i> Output: {{ conference.avg_output_tokens|floatformat:0|intcomma }} {% if conference.stddev_output_tokens %}(±{{ conference.stddev_output_tokens|floatformat:0|intcomma }}){% endif %}<br><i class='fas fa-equals'></i> Total: {{ conference.avg_total_tokens|floatformat:0|intcomma }} {% if conference.stddev_total_tokens %}(±{{ conference.stddev_total_tokens|floatformat:0|intcomma }}){% endif %}"
+                                                        onclick="event.preventDefault(); event.stopPropagation();">
+                                                    <i class="fas fa-info-circle text-info"></i>
+                                                </button>
+                                            </div>
+                                            {% endif %} {% endcomment %}
                                         </div>
                                         {% else %}
                                         <!-- Conference without logo: show large placeholder with initials -->
@@ -71,7 +83,9 @@
                                             <div class="conference-logo-placeholder-large mx-auto mb-3">
                                                 <span class="conference-initials">{{ conference.name|slice:":2"|upper }}</span>
                                             </div>
-                                            <h5 class="card-title mb-1">{{ conference.name }}</h5>
+                                            <h5 class="card-title mb-1">
+                                                {{ conference.name }}
+                                            </h5>
                                             {% if conference.year %}
                                             <div class="text-muted">
                                                 <i class="fas fa-calendar mr-1"></i>{{ conference.year }}
@@ -90,36 +104,20 @@
                                                 <span class="badge badge-info badge-pill px-3 py-2 mt-2">
                                                     <i class="fas fa-coins mr-1"></i>
                                                     {{ conference.total_tokens|floatformat:0|intcomma }} total tokens
+                                                    {% if conference.avg_total_tokens %}
+                                                    <button class="btn btn-sm btn-link p-0 ml-1" 
+                                                            data-toggle="tooltip" 
+                                                            data-html="true"
+                                                            data-placement="top"
+                                                            title="<strong>Latest Run Averages (per paper):</strong><br>
+                                                                <i class='fas fa-arrow-down text-primary'></i> Input: {{ conference.avg_input_tokens|floatformat:0|intcomma }}{% if conference.stddev_input_tokens %} (±{{ conference.stddev_input_tokens|floatformat:0|intcomma }}){% endif %}<br>
+                                                                <i class='fas fa-arrow-up text-success'></i> Output: {{ conference.avg_output_tokens|floatformat:0|intcomma }}{% if conference.stddev_output_tokens %} (±{{ conference.stddev_output_tokens|floatformat:0|intcomma }}){% endif %}<br>
+                                                                <i class='fas fa-equals'></i> Total: {{ conference.avg_total_tokens|floatformat:0|intcomma }}{% if conference.stddev_total_tokens %} (±{{ conference.stddev_total_tokens|floatformat:0|intcomma }}){% endif %}"
+                                                            onclick="event.preventDefault(); event.stopPropagation();">
+                                                        <i class="fas fa-info-circle text-white"></i>
+                                                    </button>
+                                                    {% endif %}
                                                 </span>
-                                                {% endif %}
-                                                
-                                                {% if conference.avg_total_tokens %}
-                                                <div class="mt-3">
-                                                    <small class="text-muted d-block">
-                                                        <strong>Latest Run Averages (per paper):</strong>
-                                                    </small>
-                                                    <small class="text-muted d-block mt-1">
-                                                        <i class="fas fa-arrow-down mr-1 text-primary"></i>
-                                                        Input: {{ conference.avg_input_tokens|floatformat:0|intcomma }}
-                                                        {% if conference.stddev_input_tokens %}
-                                                        (±{{ conference.stddev_input_tokens|floatformat:0|intcomma }})
-                                                        {% endif %}
-                                                    </small>
-                                                    <small class="text-muted d-block">
-                                                        <i class="fas fa-arrow-up mr-1 text-success"></i>
-                                                        Output: {{ conference.avg_output_tokens|floatformat:0|intcomma }}
-                                                        {% if conference.stddev_output_tokens %}
-                                                        (±{{ conference.stddev_output_tokens|floatformat:0|intcomma }})
-                                                        {% endif %}
-                                                    </small>
-                                                    <small class="text-muted d-block">
-                                                        <i class="fas fa-equals mr-1"></i>
-                                                        Total: {{ conference.avg_total_tokens|floatformat:0|intcomma }}
-                                                        {% if conference.stddev_total_tokens %}
-                                                        (±{{ conference.stddev_total_tokens|floatformat:0|intcomma }})
-                                                        {% endif %}
-                                                    </small>
-                                                </div>
                                                 {% endif %}
                                             </div>
                                         </div>
@@ -643,6 +641,9 @@ $(document).ready(function() {
     const $paginationContainer = $('#pagination-container');
     let currentConferenceId = null;
     let logRefreshInterval = null;
+    
+    // Initialize Bootstrap tooltips
+    $('[data-toggle="tooltip"]').tooltip();
     
     // === Scraping functionality ===
     

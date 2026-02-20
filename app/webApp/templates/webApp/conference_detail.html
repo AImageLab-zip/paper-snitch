@@ -955,16 +955,125 @@ $(document).ready(function() {
         console.log(`Status update complete: ${updatedCount} papers updated`);
     }
     
+    // === Node Statistics Auto-Refresh ===
+    
+    let nodeStatsRefreshInterval;
+    
+    function refreshNodeStatistics() {
+        console.log('Refreshing node statistics...');
+        $.ajax({
+            url: '{% url "conference_node_statistics" conference.id %}',
+            method: 'GET',
+            success: function(response) {
+                console.log('Node statistics response:', response);
+                updateNodeStatistics(response.node_statistics);
+            },
+            error: function(xhr, status, error) {
+                console.error('Failed to refresh node statistics:', error);
+            }
+        });
+    }
+    
+    function updateNodeStatistics(nodeStats) {
+        if (!nodeStats || Object.keys(nodeStats).length === 0) {
+            // No statistics yet - hide the card if it exists
+            const $statsCard = $('.card').has('h5:contains("Workflow Node Statistics")');
+            if ($statsCard.length) {
+                $statsCard.hide();
+            }
+            return;
+        }
+        
+        // Find the node statistics table body
+        const $tbody = $('.card').has('h5:contains("Workflow Node Statistics")').find('tbody');
+        if ($tbody.length === 0) {
+            // Card doesn't exist yet - need to reload page to show it
+            console.log('Node statistics card not found - page reload needed');
+            return;
+        }
+        
+        // Update each node row
+        $.each(nodeStats, function(nodeId, stats) {
+            const $row = $tbody.find(`tr:has(td:first:contains("${nodeId.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}"))`);
+            if ($row.length === 0) {
+                console.warn('Row not found for node:', nodeId);
+                return;
+            }
+            
+            // Helper to format number with commas
+            function formatNumber(num) {
+                if (num === null || num === undefined) return null;
+                return Math.round(num).toLocaleString();
+            }
+            
+            // Update count
+            const $countCell = $row.find('td:eq(1)');
+            $countCell.html(`<span class="badge badge-secondary">${stats.count}</span>`);
+            
+            // Update avg input tokens
+            const $inputCell = $row.find('td:eq(2)');
+            if (stats.avg_input_tokens !== null) {
+                let html = `<span class="text-primary">${formatNumber(stats.avg_input_tokens)}`;
+                if (stats.stddev_input_tokens) {
+                    html += ` <small class="text-muted">(±${formatNumber(stats.stddev_input_tokens)})</small>`;
+                }
+                html += `</span>`;
+                $inputCell.html(html);
+            } else {
+                $inputCell.html('<span class="text-muted">-</span>');
+            }
+            
+            // Update avg output tokens
+            const $outputCell = $row.find('td:eq(3)');
+            if (stats.avg_output_tokens !== null) {
+                let html = `<span class="text-success">${formatNumber(stats.avg_output_tokens)}`;
+                if (stats.stddev_output_tokens) {
+                    html += ` <small class="text-muted">(±${formatNumber(stats.stddev_output_tokens)})</small>`;
+                }
+                html += `</span>`;
+                $outputCell.html(html);
+            } else {
+                $outputCell.html('<span class="text-muted">-</span>');
+            }
+            
+            // Update avg total tokens
+            const $totalCell = $row.find('td:eq(4)');
+            if (stats.avg_total_tokens !== null) {
+                let html = `<strong>${formatNumber(stats.avg_total_tokens)}`;
+                if (stats.stddev_total_tokens) {
+                    html += ` <small class="text-muted">(±${formatNumber(stats.stddev_total_tokens)})</small>`;
+                }
+                html += `</strong>`;
+                $totalCell.html(html);
+            } else {
+                $totalCell.html('<span class="text-muted">-</span>');
+            }
+        });
+        
+        console.log('Node statistics updated');
+    }
+    
     // Initial load and start auto-refresh (every 5 seconds)
     console.log('Starting paper status auto-refresh...');
     refreshPaperStatuses(); // Call immediately on page load
     statusRefreshInterval = setInterval(refreshPaperStatuses, 5000);
     console.log('Paper status auto-refresh started (interval ID:', statusRefreshInterval, ')');
     
+    {% if node_statistics %}
+    // Start node statistics refresh only if the card is present
+    console.log('Starting node statistics auto-refresh...');
+    refreshNodeStatistics(); // Call immediately on page load
+    nodeStatsRefreshInterval = setInterval(refreshNodeStatistics, 10000); // Every 10 seconds
+    console.log('Node statistics auto-refresh started (interval ID:', nodeStatsRefreshInterval, ')');
+    {% endif %}
+    
     // Stop auto-refresh when modal is open to avoid updates while user is interacting
     $('.modal').on('show.bs.modal', function() {
         if (statusRefreshInterval) {
             clearInterval(statusRefreshInterval);
+        }
+        if (nodeStatsRefreshInterval) {
+            clearInterval(nodeStatsRefreshInterval);
         }
     });
     
@@ -973,6 +1082,11 @@ $(document).ready(function() {
         statusRefreshInterval = setInterval(refreshPaperStatuses, 5000);
         // Immediately refresh after modal closes
         refreshPaperStatuses();
+        
+        {% if node_statistics %}
+        nodeStatsRefreshInterval = setInterval(refreshNodeStatistics, 10000);
+        refreshNodeStatistics();
+        {% endif %}
     });
     
     // === Active Workflows Status Badge ===

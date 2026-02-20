@@ -904,6 +904,35 @@ class ConferencePaperStatusView(View):
         return JsonResponse({'statuses': statuses})
 
 
+class ConferenceNodeStatisticsView(View):
+    """API view to get per-node token statistics for a conference (for auto-refresh)."""
+
+    def get(self, request, conference_id):
+        """Return current node statistics for the conference."""
+        try:
+            conference = get_object_or_404(Conference, id=conference_id)
+        except Conference.DoesNotExist:
+            return JsonResponse({'error': 'Conference not found'}, status=404)
+        
+        # Compute node statistics
+        node_statistics = compute_node_statistics(conference_id)
+        
+        # Format for JSON response
+        stats_json = {}
+        for node_id, stats in node_statistics.items():
+            stats_json[node_id] = {
+                'avg_input_tokens': float(stats['avg_input_tokens']) if stats['avg_input_tokens'] is not None else None,
+                'stddev_input_tokens': float(stats['stddev_input_tokens']) if stats['stddev_input_tokens'] is not None else None,
+                'avg_output_tokens': float(stats['avg_output_tokens']) if stats['avg_output_tokens'] is not None else None,
+                'stddev_output_tokens': float(stats['stddev_output_tokens']) if stats['stddev_output_tokens'] is not None else None,
+                'avg_total_tokens': float(stats['avg_total_tokens']) if stats['avg_total_tokens'] is not None else None,
+                'stddev_total_tokens': float(stats['stddev_total_tokens']) if stats['stddev_total_tokens'] is not None else None,
+                'count': stats['count']
+            }
+        
+        return JsonResponse({'node_statistics': stats_json})
+
+
 class ActiveWorkflowsView(View):
     """API view to get currently active workflows (for monitoring concurrency)."""
 

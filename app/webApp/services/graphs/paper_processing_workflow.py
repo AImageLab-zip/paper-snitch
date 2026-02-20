@@ -458,7 +458,7 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
             logger.info(
                 f"Workflow run {workflow_run.id} completed. Status: {'success' if success else 'failed'}"
             )
-            logger.info(f"Tokens used: {input_tokens} input, {output_tokens} output")
+            logger.info(f"Tokens used: {workflow_run.total_input_tokens} input, {workflow_run.total_output_tokens} output")
 
             return results
 
