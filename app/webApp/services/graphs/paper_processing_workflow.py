@@ -359,6 +359,44 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
 
         return state
 
+    async def _mark_cancelled_nodes(
+        self, workflow_run_id: str, final_state: PaperProcessingState
+    ) -> None:
+        """
+        Mark nodes as cancelled when they were intentionally skipped due to workflow routing decisions.
+        
+        Nodes are marked as cancelled when:
+        - Node B (code_availability_check) determines no code is available -> mark F and C as cancelled
+        - Node F (code_embedding) fails or is skipped -> mark C as cancelled
+        """
+        # Check if code_availability_check ran and determined no code available
+        code_availability = final_state.get("code_availability_result")
+        paper_type = final_state.get("paper_type_result")
+        code_embedding = final_state.get("code_embedding_result")
+        
+        # If paper is theoretical, mark section_embeddings, code_availability_check, code_embedding, and code_repository_analysis as cancelled
+        if paper_type and paper_type.paper_type == "theoretical":
+            for node_id in ["section_embeddings", "code_availability_check", "code_embedding", "code_repository_analysis"]:
+                node = await async_ops.get_workflow_node(workflow_run_id, node_id)
+                if node and node.status == "pending":
+                    await async_ops.update_node_status(node, "cancelled")
+                    logger.info(f"Marked node {node_id} as cancelled (theoretical paper)")
+        
+        # If no code available, mark code_embedding and code_repository_analysis as cancelled
+        elif code_availability and not code_availability.code_available:
+            for node_id in ["code_embedding", "code_repository_analysis"]:
+                node = await async_ops.get_workflow_node(workflow_run_id, node_id)
+                if node and node.status == "pending":
+                    await async_ops.update_node_status(node, "cancelled")
+                    logger.info(f"Marked node {node_id} as cancelled (no code available)")
+        
+        # If code_embedding didn't produce results, mark code_repository_analysis as cancelled
+        elif not code_embedding:
+            node = await async_ops.get_workflow_node(workflow_run_id, "code_repository_analysis")
+            if node and node.status == "pending":
+                await async_ops.update_node_status(node, "cancelled")
+                logger.info("Marked code_repository_analysis as cancelled (code embedding failed)")
+
     async def execute_workflow(
         self,
         paper_id: int,
@@ -512,6 +550,9 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
             # Check for errors
             errors = final_state.get("errors", [])
             success = len(errors) == 0
+            
+            # Mark unexecuted nodes as cancelled based on workflow routing decisions
+            await self._mark_cancelled_nodes(workflow_run.id, final_state)
             
             # Aggregate token counts from all nodes
             await async_ops.aggregate_workflow_run_tokens(workflow_run.id)

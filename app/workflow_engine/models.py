@@ -309,6 +309,7 @@ class WorkflowNode(models.Model):
         ('completed', 'Completed'),  # Successfully finished
         ('failed', 'Failed'),        # Failed after all retries
         ('skipped', 'Skipped'),      # Skipped due to upstream failure
+        ('cancelled', 'Cancelled'),  # Intentionally bypassed by workflow logic
     ]
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

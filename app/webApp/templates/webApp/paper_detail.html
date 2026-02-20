@@ -70,6 +70,11 @@
         stroke: #d4ac0d !important;
     }
     
+    .mermaid .node.cancelled rect {
+        fill: url(#gradient-cancelled) !important;
+        stroke: #d68910 !important;
+    }
+    
     /* Node text styling */
     .mermaid .nodeLabel {
         color: white !important;
@@ -281,6 +286,11 @@
         border-color: #d4ac0d;
     }
     
+    .legend-box.cancelled {
+        background: linear-gradient(135deg, #d68910 0%, #f39c12 100%);
+        border-color: #d68910;
+    }
+    
     .status-badge-large {
         font-size: 0.7rem;
         padding: 2px 6px;
@@ -419,6 +429,10 @@
                             <div class="legend-item">
                                 <div class="legend-box pending"></div>
                                 <span><i class="fas fa-clock text-warning"></i> Pending</span>
+                            </div>
+                            <div class="legend-item">
+                                <div class="legend-box cancelled"></div>
+                                <span><i class="fas fa-ban" style="color: #d68910;"></i> Cancelled</span>
                             </div>
                         </div>
                         <div class="legend-help text-muted small">
@@ -890,6 +904,9 @@ function renderNodeDetails(node) {
     } else if (node.status === 'failed') {
         statusBadge = '<span class="badge badge-danger"><i class="fas fa-times-circle"></i> Failed</span>';
         statusIcon = '✗';
+    } else if (node.status === 'cancelled') {
+        statusBadge = '<span class="badge badge-warning"><i class="fas fa-ban"></i> Cancelled</span>';
+        statusIcon = '⊘';
     } else if (node.status === 'pending' || node.status === 'ready') {
         statusBadge = '<span class="badge badge-warning"><i class="fas fa-clock"></i> ' + node.status + '</span>';
         statusIcon = '⏳';
@@ -1424,6 +1441,8 @@ function renderWorkflowDiagram(nodes) {
             statusIcon = '⟳';
         } else if (nodeData.status === 'failed') {
             statusIcon = '✗';
+        } else if (nodeData.status === 'cancelled') {
+            statusIcon = '⊘';
         } else {
             statusIcon = '○';
         }
@@ -1502,10 +1521,23 @@ function renderWorkflowDiagram(nodes) {
                 <stop offset="100%" style="stop-color:#f4d03f;stop-opacity:1" />
             `;
             
+            // Cancelled gradient (orange)
+            const gradCancelled = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
+            gradCancelled.setAttribute('id', 'gradient-cancelled');
+            gradCancelled.setAttribute('x1', '0%');
+            gradCancelled.setAttribute('y1', '0%');
+            gradCancelled.setAttribute('x2', '100%');
+            gradCancelled.setAttribute('y2', '100%');
+            gradCancelled.innerHTML = `
+                <stop offset="0%" style="stop-color:#d68910;stop-opacity:1" />
+                <stop offset="100%" style="stop-color:#f39c12;stop-opacity:1" />
+            `;
+            
             defs.appendChild(gradCompleted);
             defs.appendChild(gradRunning);
             defs.appendChild(gradFailed);
             defs.appendChild(gradPending);
+            defs.appendChild(gradCancelled);
             
             svg.insertBefore(defs, svg.firstChild);
             
