@@ -233,6 +233,14 @@ Update tree generated, improved ingested pipeline, added degub-dev-stack.sh
 17/02/2026
 Added function to check if there are multiple repo inside of a paper and check them which one is the correct one.
 
+18/02/2026
+Added function to check if there are multiple pdf inside of a paper and check them which one is the correct one.
+
+19/02/2026
+Added function to check if there are multiple dataset inside of a paper and check them which one is the correct one.
+
+20/02/2026
+
 
 
 

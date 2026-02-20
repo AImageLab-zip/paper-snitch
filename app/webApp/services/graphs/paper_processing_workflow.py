@@ -103,10 +103,27 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
         workflow.add_node("code_availability_check", code_availability_check_node)
         workflow.add_node("code_repository_analysis", code_repository_analysis_node)
 
-        # Define routing function
+        # Define routing function after paper type classification
+        def route_after_classification(state: PaperProcessingState) -> str:
+            """
+            Route after paper type classification.
+
+            Returns:
+                - END if paper is theoretical
+                - "section_embeddings" otherwise
+            """
+            paper_type_result = state.get("paper_type_result")
+
+            if paper_type_result and paper_type_result.paper_type == "theoretical":
+                logger.info("Ending workflow early for theoretical paper")
+                return END
+
+            return "section_embeddings"
+
+        # Define routing function after code availability check
         def route_after_checks(state: PaperProcessingState) -> str:
             """
-            Route after both paper type classification and code availability check.
+            Route after code availability check.
 
             Returns:
                 - "code_repository_analysis" if should analyze code
@@ -115,11 +132,8 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
             paper_type_result = state.get("paper_type_result")
             code_availability = state.get("code_availability_result")
 
-            # Skip if theoretical or dataset paper
-            if paper_type_result and paper_type_result.paper_type in [
-                "theoretical",
-                "dataset",
-            ]:
+            # Skip if dataset paper
+            if paper_type_result and paper_type_result.paper_type == "dataset":
                 logger.info(
                     f"Skipping code analysis for {paper_type_result.paper_type} paper"
                 )
@@ -134,9 +148,19 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
             logger.info("Proceeding to code repository analysis")
             return "code_repository_analysis"
 
-        # Set entry point and sequential flow
+        # Set entry point and conditional flow
         workflow.set_entry_point("paper_type_classification")
-        workflow.add_edge("paper_type_classification", "section_embeddings")
+
+        # Conditional routing after classification - end early for theoretical papers
+        workflow.add_conditional_edges(
+            "paper_type_classification",
+            route_after_classification,
+            {
+                "section_embeddings": "section_embeddings",
+                END: END,
+            },
+        )
+
         workflow.add_edge("section_embeddings", "code_availability_check")
 
         # Conditional routing after both checks complete
@@ -288,12 +312,14 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
             Dictionary with workflow results and statistics
         """
         logger.info(f"Starting paper processing workflow for paper ID {paper_id}")
-        
+
         # Acquire semaphore (blocks until available - no timeout when running in Celery)
         # This ensures worker-level concurrency control
         _workflow_semaphore.acquire()
         active_count = await get_active_workflow_count()
-        logger.info(f"Acquired workflow slot for paper {paper_id}. Active: {active_count + 1}/{MAX_CONCURRENT_WORKFLOWS}")
+        logger.info(
+            f"Acquired workflow slot for paper {paper_id}. Active: {active_count + 1}/{MAX_CONCURRENT_WORKFLOWS}"
+        )
 
         try:
             # Get or create workflow definition
@@ -302,59 +328,59 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
                 version=3,  # Version 3 with 4-node architecture including embeddings
                 description="Four-node workflow: paper type classification, section embeddings, code availability check, and conditional code repository analysis",
                 dag_structure={
-                "workflow_handler": {
-                    "module": "webApp.services.graphs.paper_processing_workflow",
-                    "function": "execute_workflow",
+                    "workflow_handler": {
+                        "module": "webApp.services.graphs.paper_processing_workflow",
+                        "function": "execute_workflow",
+                    },
+                    "nodes": [
+                        {
+                            "id": "paper_type_classification",
+                            "type": "python",
+                            "handler": "webApp.services.paper_processing_workflow.paper_type_classification_node",
+                            "description": "Classify paper type (dataset/method/both/theoretical/unknown)",
+                            "config": {},
+                        },
+                        {
+                            "id": "section_embeddings",
+                            "type": "python",
+                            "handler": "webApp.services.paper_processing_workflow.section_embeddings_node",
+                            "description": "Compute and store vector embeddings for paper sections",
+                            "config": {},
+                        },
+                        {
+                            "id": "code_availability_check",
+                            "type": "python",
+                            "handler": "webApp.services.paper_processing_workflow.code_availability_check_node",
+                            "description": "Check if code repository exists (database/text/online search)",
+                            "config": {},
+                        },
+                        {
+                            "id": "code_repository_analysis",
+                            "type": "python",
+                            "handler": "webApp.services.paper_processing_workflow.code_repository_analysis_node",
+                            "description": "Analyze repository and compute reproducibility score (conditional)",
+                            "config": {},
+                        },
+                    ],
+                    "edges": [
+                        {
+                            "from": "paper_type_classification",
+                            "to": "section_embeddings",
+                            "type": "sequential",
+                        },
+                        {
+                            "from": "section_embeddings",
+                            "to": "code_availability_check",
+                            "type": "sequential",
+                        },
+                        {
+                            "from": "code_availability_check",
+                            "to": "code_repository_analysis",
+                            "type": "conditional",
+                            "condition": "code_available AND paper_type NOT IN (theoretical, dataset)",
+                        },
+                    ],
                 },
-                "nodes": [
-                    {
-                        "id": "paper_type_classification",
-                        "type": "python",
-                        "handler": "webApp.services.paper_processing_workflow.paper_type_classification_node",
-                        "description": "Classify paper type (dataset/method/both/theoretical/unknown)",
-                        "config": {},
-                    },
-                    {
-                        "id": "section_embeddings",
-                        "type": "python",
-                        "handler": "webApp.services.paper_processing_workflow.section_embeddings_node",
-                        "description": "Compute and store vector embeddings for paper sections",
-                        "config": {},
-                    },
-                    {
-                        "id": "code_availability_check",
-                        "type": "python",
-                        "handler": "webApp.services.paper_processing_workflow.code_availability_check_node",
-                        "description": "Check if code repository exists (database/text/online search)",
-                        "config": {},
-                    },
-                    {
-                        "id": "code_repository_analysis",
-                        "type": "python",
-                        "handler": "webApp.services.paper_processing_workflow.code_repository_analysis_node",
-                        "description": "Analyze repository and compute reproducibility score (conditional)",
-                        "config": {},
-                    },
-                ],
-                "edges": [
-                    {
-                        "from": "paper_type_classification",
-                        "to": "section_embeddings",
-                        "type": "sequential",
-                    },
-                    {
-                        "from": "section_embeddings",
-                        "to": "code_availability_check",
-                        "type": "sequential",
-                    },
-                    {
-                        "from": "code_availability_check",
-                        "to": "code_repository_analysis",
-                        "type": "conditional",
-                        "condition": "code_available AND paper_type NOT IN (theoretical, dataset)",
-                    },
-                ],
-            },
             )
 
             # Create workflow run using orchestrator
@@ -373,7 +399,7 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
             await async_ops.update_workflow_run_status(
                 workflow_run.id, "running", started_at=timezone.now()
             )
-            
+
             # Register this workflow as active
             await _register_workflow(paper_id, str(workflow_run.id))
 
@@ -487,7 +513,9 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
             await _unregister_workflow(paper_id)
             _workflow_semaphore.release()
             active_count = await get_active_workflow_count()
-            logger.info(f"Released workflow slot for paper {paper_id}. Active: {active_count}/{MAX_CONCURRENT_WORKFLOWS}")
+            logger.info(
+                f"Released workflow slot for paper {paper_id}. Active: {active_count}/{MAX_CONCURRENT_WORKFLOWS}"
+            )
 
 
 # ============================================================================
@@ -565,6 +593,7 @@ async def execute_from_node(
 # ============================================================================
 # Convenience Functions
 # ============================================================================
+
 
 async def process_multiple_papers(
     paper_ids: List[int], force_reprocess: bool = False, max_concurrent: int = 3
