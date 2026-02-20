@@ -1,10 +1,11 @@
 """
 Paper Processing Workflow - Integrated with Workflow Engine
 
-This module implements a four-node workflow for analyzing papers:
-- Node S: Section Embeddings (compute vector embeddings for paper sections)
+This module implements a five-node workflow for analyzing papers:
 - Node A: Paper Type Classification (dataset vs method vs both)
+- Node D: Section Embeddings (compute vector embeddings for paper sections)
 - Node B: Code Availability Check (agentic analysis of code availability and quality)
+- Node F: Code Embedding (ingest repository and compute embeddings for code files)
 - Node C: Code Repository Analysis (comprehensive analysis of repository structure, documentation, and reproducibility)
 
 Properly integrated with the workflow_engine models for:
@@ -33,10 +34,12 @@ from webApp.services.nodes.paper_type_classification import (
 from webApp.services.nodes.section_embeddings import section_embeddings_node
 from webApp.services.nodes.code_repository_analysis import code_repository_analysis_node
 from webApp.services.nodes.code_availability_check import code_availability_check_node
+from webApp.services.nodes.code_embedding import code_embedding_node
 
 from ..pydantic_schemas import (
     PaperTypeClassification,
     CodeAvailabilityCheck,
+    CodeEmbeddingResult,
 )
 from ..graphs_state import PaperProcessingState
 from .base_workflow_graph import (
@@ -58,20 +61,23 @@ logger = logging.getLogger(__name__)
 
 class PaperProcessingWorkflow(BaseWorkflowGraph):
     """
-    Three-node workflow for comprehensive paper processing with conditional routing.
+    Five-node workflow for comprehensive paper processing with conditional routing.
 
     Nodes:
-    1. paper_type_classification: Classify paper type
-    2. code_availability_check: Check code availability
-    3. code_repository_analysis: Comprehensive code analysis (conditional)
+    1. paper_type_classification (A): Classify paper type
+    2. section_embeddings (D): Compute embeddings for paper sections
+    3. code_availability_check (B): Check code availability
+    4. code_embedding (F): Ingest and embed code repository (conditional)
+    5. code_repository_analysis (C): Comprehensive code analysis (conditional)
     """
 
     WORKFLOW_NAME = "reduced_paper_processing_pipeline"
-    WORKFLOW_VERSION = "3"
+    WORKFLOW_VERSION = "4"
     NODE_ORDER = [
         "paper_type_classification",
         "section_embeddings",
         "code_availability_check",
+        "code_embedding",
         "code_repository_analysis",
     ]
 
@@ -83,16 +89,19 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
         - Node A (paper_type_classification): Classify paper type
         - Node D (section_embeddings): Compute embeddings for paper sections
         - Node B (code_availability_check): Check code availability and verify accessibility
+        - Node F (code_embedding): Ingest repository and compute code file embeddings (conditional)
         - Node C (code_repository_analysis): Comprehensive code analysis (conditional)
 
         Flow:
         1. paper_type_classification runs first
         2. section_embeddings runs second (computes embeddings for sections)
-        3. code_availability_check runs third
+        3. code_availability_check runs third (for all non-theoretical papers)
         4. After code_availability_check, route to:
-        * END if paper is 'theoretical' or 'dataset'
-        * END if no code found (code_available=False)
-        * code_repository_analysis if code found AND paper is 'method', 'both', or 'unknown'
+           * Node F (code_embedding) if code is available
+           * END if no code found
+        5. After code_embedding, route to:
+           * Node C (code_repository_analysis) for full analysis
+           * END if embedding failed
         """
 
         workflow = StateGraph(PaperProcessingState)
@@ -101,6 +110,7 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
         workflow.add_node("paper_type_classification", paper_type_classification_node)
         workflow.add_node("section_embeddings", section_embeddings_node)
         workflow.add_node("code_availability_check", code_availability_check_node)
+        workflow.add_node("code_embedding", code_embedding_node)
         workflow.add_node("code_repository_analysis", code_repository_analysis_node)
 
         # Define routing function after paper type classification
@@ -121,30 +131,41 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
             return "section_embeddings"
 
         # Define routing function after code availability check
-        def route_after_checks(state: PaperProcessingState) -> str:
+        def route_after_availability(state: PaperProcessingState) -> str:
             """
             Route after code availability check.
 
             Returns:
-                - "code_repository_analysis" if should analyze code
-                - END if should skip analysis
+                - "code_embedding" if code is available
+                - END if no code found
             """
-            paper_type_result = state.get("paper_type_result")
             code_availability = state.get("code_availability_result")
-
-            # Skip if dataset paper
-            if paper_type_result and paper_type_result.paper_type == "dataset":
-                logger.info(
-                    f"Skipping code analysis for {paper_type_result.paper_type} paper"
-                )
-                return END
 
             # Skip if no code available
             if not code_availability or not code_availability.code_available:
-                logger.info("Skipping code analysis - no code available")
+                logger.info("Ending workflow - no code available")
                 return END
 
-            # Proceed to repository analysis for method/both/unknown papers with code
+            # Proceed to code embedding for papers with code
+            logger.info("Proceeding to code embedding")
+            return "code_embedding"
+
+        # Define routing function after code embedding
+        def route_after_embedding(state: PaperProcessingState) -> str:
+            """
+            Route after code embedding.
+
+            Returns:
+                - "code_repository_analysis" if embedding succeeded
+                - END if embedding failed (unlikely but defensive)
+            """
+            code_embedding = state.get("code_embedding_result")
+
+            if not code_embedding:
+                logger.warning("Code embedding result missing - ending workflow")
+                return END
+
+            # Always proceed to repository analysis after embedding
             logger.info("Proceeding to code repository analysis")
             return "code_repository_analysis"
 
@@ -163,10 +184,20 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
 
         workflow.add_edge("section_embeddings", "code_availability_check")
 
-        # Conditional routing after both checks complete
+        # Conditional routing after availability check
         workflow.add_conditional_edges(
             "code_availability_check",
-            route_after_checks,
+            route_after_availability,
+            {
+                "code_embedding": "code_embedding",
+                END: END,
+            },
+        )
+
+        # Conditional routing after code embedding
+        workflow.add_conditional_edges(
+            "code_embedding",
+            route_after_embedding,
             {
                 "code_repository_analysis": "code_repository_analysis",
                 END: END,
@@ -218,8 +249,25 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
                         )
                         break
 
+        elif node.node_id == "code_embedding":
+            # Need code_availability_result from previous node
+            code_avail_node = await async_ops.get_workflow_node(
+                str(workflow_run.id), "code_availability_check"
+            )
+            if code_avail_node and code_avail_node.status == "completed":
+                artifacts = await async_ops.get_node_artifacts(code_avail_node)
+                for artifact in artifacts:
+                    if artifact.name == "result":
+                        state["code_availability_result"] = CodeAvailabilityCheck(
+                            **artifact.inline_data
+                        )
+                        logger.info(
+                            f"Loaded code_availability_result: code_available={state['code_availability_result'].code_available}"
+                        )
+                        break
+
         elif node.node_id == "code_repository_analysis":
-            # Need both paper_type_result and code_availability_result from previous nodes
+            # Need paper_type_result, code_availability_result, and code_embedding_result
             paper_type_node = await async_ops.get_workflow_node(
                 str(workflow_run.id), "paper_type_classification"
             )
@@ -250,6 +298,21 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
                         )
                         break
 
+            code_embedding_node = await async_ops.get_workflow_node(
+                str(workflow_run.id), "code_embedding"
+            )
+            if code_embedding_node and code_embedding_node.status == "completed":
+                artifacts = await async_ops.get_node_artifacts(code_embedding_node)
+                for artifact in artifacts:
+                    if artifact.name == "result":
+                        state["code_embedding_result"] = CodeEmbeddingResult(
+                            **artifact.inline_data
+                        )
+                        logger.info(
+                            f"Loaded code_embedding_result: {state['code_embedding_result'].total_files} files embedded"
+                        )
+                        break
+
         return state
 
     async def _execute_node_function(
@@ -263,6 +326,8 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
             return await section_embeddings_node(state)
         elif node_id == "code_availability_check":
             return await code_availability_check_node(state)
+        elif node_id == "code_embedding":
+            return await code_embedding_node(state)
         elif node_id == "code_repository_analysis":
             return await code_repository_analysis_node(state)
         else:
@@ -284,6 +349,10 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
                     state["section_embeddings_result"] = artifact.inline_data
                 elif node_id == "code_availability_check":
                     state["code_availability_result"] = CodeAvailabilityCheck(
+                        **artifact.inline_data
+                    )
+                elif node_id == "code_embedding":
+                    state["code_embedding_result"] = CodeEmbeddingResult(
                         **artifact.inline_data
                     )
                 # Note: code_repository_analysis result is stored as code_reproducibility_result
@@ -325,8 +394,8 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
             # Get or create workflow definition
             workflow_def = await async_ops.get_or_create_workflow_definition(
                 name="reduced_paper_processing_pipeline",
-                version=3,  # Version 3 with 4-node architecture including embeddings
-                description="Four-node workflow: paper type classification, section embeddings, code availability check, and conditional code repository analysis",
+                version=4,  # Version 4 with 5-node architecture including code embedding
+                description="Five-node workflow: paper type classification, section embeddings, code availability check, code embedding, and conditional code repository analysis",
                 dag_structure={
                     "workflow_handler": {
                         "module": "webApp.services.graphs.paper_processing_workflow",
@@ -355,6 +424,13 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
                             "config": {},
                         },
                         {
+                            "id": "code_embedding",
+                            "type": "python",
+                            "handler": "webApp.services.paper_processing_workflow.code_embedding_node",
+                            "description": "Ingest and embed code repository files (conditional)",
+                            "config": {},
+                        },
+                        {
                             "id": "code_repository_analysis",
                             "type": "python",
                             "handler": "webApp.services.paper_processing_workflow.code_repository_analysis_node",
@@ -375,9 +451,14 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
                         },
                         {
                             "from": "code_availability_check",
-                            "to": "code_repository_analysis",
+                            "to": "code_embedding",
                             "type": "conditional",
-                            "condition": "code_available AND paper_type NOT IN (theoretical, dataset)",
+                            "condition": "code_available",
+                        },
+                        {
+                            "from": "code_embedding",
+                            "to": "code_repository_analysis",
+                            "type": "sequential",
                         },
                     ],
                 },
@@ -418,6 +499,7 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
                 "paper_type_result": None,
                 "section_embeddings_result": None,
                 "code_availability_result": None,
+                "code_embedding_result": None,
                 "code_reproducibility_result": None,
                 "errors": [],
             }
@@ -452,6 +534,11 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
                         if final_state.get("code_availability_result")
                         else None
                     ),
+                    "code_embedding": (
+                        final_state.get("code_embedding_result").model_dump()
+                        if final_state.get("code_embedding_result")
+                        else None
+                    ),
                     "code_reproducibility": (
                         final_state.get("code_reproducibility_result").model_dump()
                         if final_state.get("code_reproducibility_result")
@@ -474,6 +561,7 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
                 "paper_type": final_state.get("paper_type_result"),
                 "section_embeddings": final_state.get("section_embeddings_result"),
                 "code_availability": final_state.get("code_availability_result"),
+                "code_embedding": final_state.get("code_embedding_result"),
                 "code_reproducibility": final_state.get("code_reproducibility_result"),
                 "total_input_tokens": workflow_run.total_input_tokens,
                 "total_output_tokens": workflow_run.total_output_tokens,

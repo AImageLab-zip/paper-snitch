@@ -7,6 +7,7 @@ from webApp.services.pydantic_schemas import (
     PaperTypeClassification,
     CodeAvailabilityCheck,
     CodeReproducibilityAnalysis,
+    CodeEmbeddingResult,
 )
 from openai import OpenAI
 
@@ -32,7 +33,4 @@ class PaperProcessingState(TypedDict):
     paper_type_result: Optional[PaperTypeClassification]
     section_embeddings_result: Optional[dict]  # Dict with sections_processed, section_types, etc.
     code_availability_result: Optional[CodeAvailabilityCheck]
-    code_reproducibility_result: Optional[CodeReproducibilityAnalysis]
-
-    # Errors
-    errors: List[str]
+    code_embedding_result: Optional[CodeEmbeddingResult]  # Node F: Code file embeddings

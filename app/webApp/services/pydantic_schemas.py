@@ -206,3 +206,47 @@ class PatternExtraction(BaseModel):
         default_factory=list,
         description="List of string patterns to include. Return an empty list if no inclusion patterns are found.",
     )
+
+class CodeFileEmbeddingInfo(BaseModel):
+    """Information about a single embedded code file or chunk."""
+    
+    model_config = ConfigDict(extra="forbid")
+    
+    file_path: str = Field(description="Relative path of the file in repository")
+    file_content: str = Field(description="Text content of file or chunk")
+    chunk_index: int = Field(default=0, description="Chunk index (0 for non-chunked)")
+    total_chunks: int = Field(default=1, description="Total chunks for this file")
+    content_hash: str = Field(description="SHA256 hash of original file content")
+    embedding: List[float] = Field(description="Embedding vector")
+    tokens_used: int = Field(description="Tokens used for this embedding")
+
+
+class CodeEmbeddingResult(BaseModel):
+    """Result of code repository embedding (Node F)."""
+    
+    model_config = ConfigDict(extra="forbid")
+    
+    code_url: str = Field(description="Repository URL")
+    clone_path: Optional[str] = Field(
+        default=None,
+        description="Path to cloned repository (for reuse in Node C)"
+    )
+    summary: str = Field(description="Repository summary from ingestion")
+    tree_structure: str = Field(description="Full repository tree structure")
+    selected_patterns: List[str] = Field(
+        description="File patterns selected by LLM for embedding"
+    )
+    embedded_files: List[CodeFileEmbeddingInfo] = Field(
+        description="List of embedded files with their embeddings"
+    )
+    total_files: int = Field(description="Total number of files embedded")
+    total_chunks: int = Field(description="Total number of chunks created")
+    total_tokens: int = Field(description="Total tokens used for embeddings")
+    embedding_model: str = Field(
+        default="text-embedding-3-small",
+        description="OpenAI embedding model used"
+    )
+    embedding_dimension: int = Field(
+        default=1536,
+        description="Dimension of embedding vectors"
+    )

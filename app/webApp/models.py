@@ -697,3 +697,108 @@ class PaperSectionEmbedding(models.Model):
         
         return float(dot_product / (norm_a * norm_b))
 
+
+class CodeFileEmbedding(models.Model):
+    """
+    Stores vector embeddings for code repository files.
+    Used for semantic code search and repository analysis with LLM.
+    """
+    paper = models.ForeignKey(
+        Paper,
+        on_delete=models.CASCADE,
+        related_name='code_file_embeddings',
+        help_text='Paper this code embedding belongs to'
+    )
+    code_url = models.URLField(
+        max_length=500,
+        help_text='Repository URL for this code version'
+    )
+    file_path = models.CharField(
+        max_length=500,
+        help_text='Relative path of the file in the repository'
+    )
+    file_content = models.TextField(
+        help_text='Text content of the file (or chunk for large files)'
+    )
+    chunk_index = models.IntegerField(
+        default=0,
+        help_text='Chunk index for files split into multiple parts (0 for non-chunked files)'
+    )
+    total_chunks = models.IntegerField(
+        default=1,
+        help_text='Total number of chunks for this file'
+    )
+    content_hash = models.CharField(
+        max_length=64,
+        help_text='SHA256 hash of the original file content (for cache invalidation)'
+    )
+    embedding = models.JSONField(
+        help_text='Vector embedding as JSON array'
+    )
+    embedding_model = models.CharField(
+        max_length=50,
+        default='text-embedding-3-small',
+        help_text='OpenAI model used for embedding'
+    )
+    embedding_dimension = models.IntegerField(
+        default=1536,
+        help_text='Dimension of the embedding vector'
+    )
+    tokens_used = models.IntegerField(
+        default=0,
+        help_text='Number of tokens used for this embedding'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'code_file_embeddings'
+        indexes = [
+            models.Index(fields=['paper', 'code_url'], name='idx_paper_code_url'),
+            models.Index(fields=['paper', 'file_path'], name='idx_paper_file_path'),
+            models.Index(fields=['content_hash'], name='idx_content_hash'),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['paper', 'code_url', 'file_path', 'chunk_index', 'embedding_model'],
+                name='unique_code_file_chunk_embedding'
+            )
+        ]
+        verbose_name = 'Code File Embedding'
+        verbose_name_plural = 'Code File Embeddings'
+
+    def __str__(self):
+        chunk_info = f" (chunk {self.chunk_index + 1}/{self.total_chunks})" if self.total_chunks > 1 else ""
+        return f"Code Embedding: {self.paper.title[:30]} - {self.file_path}{chunk_info}"
+    
+    def compute_cosine_similarity(self, other_embedding: list) -> float:
+        """
+        Compute cosine similarity between this embedding and another.
+        
+        Args:
+            other_embedding: List of floats representing another embedding
+            
+        Returns:
+            Cosine similarity score (0 to 1)
+        """
+        import numpy as np
+        
+        if not isinstance(self.embedding, list) or not isinstance(other_embedding, list):
+            raise ValueError("Embeddings must be lists")
+        
+        if len(self.embedding) != len(other_embedding):
+            raise ValueError(f"Embedding dimensions must match: {len(self.embedding)} vs {len(other_embedding)}")
+        
+        # Convert to numpy arrays
+        a = np.array(self.embedding)
+        b = np.array(other_embedding)
+        
+        # Compute cosine similarity
+        dot_product = np.dot(a, b)
+        norm_a = np.linalg.norm(a)
+        norm_b = np.linalg.norm(b)
+        
+        if norm_a == 0 or norm_b == 0:
+            return 0.0
+        
+        return float(dot_product / (norm_a * norm_b))

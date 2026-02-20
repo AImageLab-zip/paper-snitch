@@ -16,6 +16,7 @@ from .models import (
     LLMModelConfig,
     Prompt,
     PaperSectionEmbedding,
+    CodeFileEmbedding,
 )
 from .models_schema import DatabaseSchema
 
@@ -475,3 +476,46 @@ class PaperSectionEmbeddingAdmin(admin.ModelAdmin):
         )
     embedding_preview.short_description = "Embedding Preview"
 
+
+@admin.register(CodeFileEmbedding)
+class CodeFileEmbeddingAdmin(admin.ModelAdmin):
+    list_display = ('paper', 'file_path', 'chunk_index', 'total_chunks', 'embedding_model', 'tokens_used', 'created_at')
+    list_filter = ('embedding_model', 'total_chunks', 'created_at')
+    search_fields = ('paper__title', 'code_url', 'file_path', 'file_content')
+    readonly_fields = ('created_at', 'updated_at', 'embedding_dimension', 'content_hash', 'embedding_preview')
+    
+    fieldsets = (
+        ('Paper Information', {
+            'fields': ('paper', 'code_url')
+        }),
+        ('File Details', {
+            'fields': ('file_path', 'file_content', 'chunk_index', 'total_chunks', 'content_hash')
+        }),
+        ('Embedding Information', {
+            'fields': ('embedding_model', 'embedding_dimension', 'tokens_used', 'embedding_preview')
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def embedding_preview(self, obj):
+        """Show first few and last few dimensions of embedding."""
+        if not obj.embedding:
+            return "No embedding"
+        
+        embedding = obj.embedding
+        if len(embedding) > 10:
+            preview = embedding[:5] + ['...'] + embedding[-5:]
+        else:
+            preview = embedding
+        
+        return format_html(
+            '<div style="font-family: monospace; font-size: 11px;">'
+            'Dimension: {} | Preview: {}'
+            '</div>',
+            len(embedding),
+            str(preview)
+        )
+    embedding_preview.short_description = "Embedding Preview"
