@@ -1731,9 +1731,51 @@ $('#confirm-rerun-btn').on('click', function() {
         },
         success: function(response) {
             if (response.success) {
-                // Workflow started successfully - reload immediately to show running workflow
+                // Workflow started successfully - poll for new workflow run then reload
                 $('#rerunWorkflowModal').modal('hide');
-                location.reload();
+                
+                // Get the current workflow run ID to detect when a NEW one is created
+                const currentWorkflowRunId = workflowRunId; // Global variable set at page load
+                
+                // Poll for the new workflow run (Celery task creates it asynchronously)
+                let pollAttempts = 0;
+                const maxPollAttempts = 20; // Increased to 20 attempts = 10 seconds
+                const pollInterval = 500; // Poll every 500ms
+                
+                function pollForWorkflow() {
+                    pollAttempts++;
+                    
+                    $.ajax({
+                        url: `/workflow/status/${paperId}/latest/`,
+                        method: 'GET',
+                        success: function(statusResponse) {
+                            if (statusResponse.workflow_run_id && 
+                                statusResponse.workflow_run_id !== currentWorkflowRunId) {
+                                // Found a NEW workflow run (different from current), reload with its ID
+                                console.log('New workflow run detected:', statusResponse.workflow_run_id);
+                                window.location.href = `?workflow_run=${statusResponse.workflow_run_id}`;
+                            } else if (pollAttempts < maxPollAttempts) {
+                                // Still the same workflow or not found yet, try again
+                                setTimeout(pollForWorkflow, pollInterval);
+                            } else {
+                                // Polling timed out, just reload normally
+                                console.warn('Polling timed out, reloading normally');
+                                location.reload();
+                            }
+                        },
+                        error: function() {
+                            if (pollAttempts < maxPollAttempts) {
+                                setTimeout(pollForWorkflow, pollInterval);
+                            } else {
+                                // Polling failed, just reload normally
+                                console.warn('Polling failed, reloading normally');
+                                location.reload();
+                            }
+                        }
+                    });
+                }
+                
+                pollForWorkflow();
             } else {
                 // Show error
                 $('#rerunWorkflowModal .modal-body').html(`
@@ -1822,6 +1864,9 @@ $('#confirm-rerun-node-btn').on('click', function() {
                 // Close modals and reload page to show updated workflow
                 $('#rerunNodeModal').modal('hide');
                 $('#nodeDetailsModal').modal('hide');
+                
+                // Single node rerun doesn't create a new workflow run,
+                // so just reload the current page
                 location.reload();
             } else {
                 // Show error
@@ -1918,7 +1963,13 @@ $('#confirm-rerun-from-node-btn').on('click', function() {
                 // Close modals and reload page to show new workflow run
                 $('#rerunFromNodeModal').modal('hide');
                 $('#nodeDetailsModal').modal('hide');
-                location.reload();
+                
+                // Reload with the specific workflow run ID if available
+                if (response.workflow_run_id) {
+                    window.location.href = `?workflow_run=${response.workflow_run_id}`;
+                } else {
+                    location.reload();
+                }
             } else {
                 // Show error
                 $('#rerunFromNodeModal .modal-body').html(`

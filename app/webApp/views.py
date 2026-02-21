@@ -1266,6 +1266,37 @@ class WorkflowStatusView(View):
         )
 
 
+class LatestWorkflowStatusView(View):
+    """API view for getting the latest workflow run for a paper."""
+
+    def get(self, request, paper_id):
+        """Get latest workflow run ID for a paper."""
+        try:
+            paper = Paper.objects.get(id=paper_id)
+        except Paper.DoesNotExist:
+            return JsonResponse({"error": "Paper not found"}, status=404)
+
+        # Get the most recent workflow run for this paper
+        latest_run = (
+            WorkflowRun.objects.filter(paper=paper)
+            .order_by("-created_at")
+            .first()
+        )
+
+        if latest_run:
+            return JsonResponse(
+                {
+                    "workflow_run_id": str(latest_run.id),
+                    "status": latest_run.status,
+                    "created_at": latest_run.created_at.isoformat(),
+                }
+            )
+        else:
+            return JsonResponse(
+                {"workflow_run_id": None, "status": None, "created_at": None}
+            )
+
+
 class WorkflowNodeDetailView(View):
     """API view for getting workflow node details (public, no auth required)."""
 
