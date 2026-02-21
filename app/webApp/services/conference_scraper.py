@@ -152,6 +152,14 @@ class ConferenceScraper:
         """Clean and normalize paper data from scraped content."""
         cleaned = deepcopy(paper)
 
+        # Ensure abstract is extracted (might be in different formats)
+        if not cleaned.get("abstract") and "abstract" not in cleaned:
+            # Try to find abstract in other fields
+            for key in cleaned.keys():
+                if "abstract" in key.lower() and isinstance(cleaned[key], str):
+                    cleaned["abstract"] = cleaned[key]
+                    break
+
         # Clean authors
         if cleaned.get("authors"):
             if isinstance(cleaned["authors"], list):
@@ -264,8 +272,10 @@ class ConferenceScraper:
             logger.warning("Paper missing URL, skipping")
             return None
 
-        if not paper_url.startswith("https://"):
-            paper_url = urljoin(self.base_url + "/", paper_url)
+        # Handle relative URLs - use the conference URL as base, not just the domain
+        if not paper_url.startswith("http"):
+            # Use the full conference URL path as base for relative URLs
+            paper_url = urljoin(self.conference_url, paper_url)
             paper["paper_url"] = paper_url
 
         try:
@@ -338,6 +348,13 @@ class ConferenceScraper:
             paper_url=paper_fields["paper_url"],
             defaults=paper_fields,
         )
+        
+        action = "Created" if created else "Updated"
+        updates = []
+        if paper_fields.get("doi"): updates.append("DOI")
+        if paper_fields.get("abstract"): updates.append("abstract")
+        if paper_fields.get("code_url"): updates.append("code_url")
+        logger.info(f"{action} paper: {paper.title[:50]} - {', '.join(updates) if updates else 'no new data'}")
 
         # Download and save PDF files
         pdf_content = paper_data.get("pdf_content")
