@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 # Configuration for aspect-based retrieval
 ASPECT_RETRIEVAL_CONFIG = {
     "max_context_tokens": 20000,  # Total token budget per aspect
-    "min_similarity_threshold": 0.4,  # Minimum similarity to include content
+    "min_similarity_threshold": 0.2,  # Minimum similarity to include content (lowered to capture more sections)
     "section_budget_ratio": 0.4,  # 40% of budget for sections (8K tokens)
     "code_budget_ratio": 0.6,  # 60% of budget for code (12K tokens)
 }
@@ -173,13 +173,25 @@ async def retrieve_relevant_sections(
     
     # Compute similarities
     section_similarities = []
+    all_similarities = []  # Track all similarities for debugging
     for section in sections:
         similarity = compute_cosine_similarity(
             aspect_embedding.embedding,
             section.embedding
         )
+        all_similarities.append((section.section_type, similarity))
         if similarity >= min_similarity:
             section_similarities.append((section, similarity))
+    
+    # Log all similarity scores for debugging
+    if all_similarities:
+        max_sim = max(s[1] for s in all_similarities)
+        min_sim = min(s[1] for s in all_similarities)
+        avg_sim = sum(s[1] for s in all_similarities) / len(all_similarities)
+        logger.debug(
+            f"Aspect {aspect_embedding.aspect_id}: Similarity range: "
+            f"min={min_sim:.3f}, max={max_sim:.3f}, avg={avg_sim:.3f}"
+        )
     
     # Sort by similarity (descending)
     section_similarities.sort(key=lambda x: x[1], reverse=True)
@@ -265,13 +277,25 @@ async def retrieve_relevant_code(
     
     # Compute similarities
     code_similarities = []
+    all_code_similarities = []  # Track all similarities for debugging
     for code_file in code_files:
         similarity = compute_cosine_similarity(
             aspect_embedding.embedding,
             code_file.embedding
         )
+        all_code_similarities.append((code_file.file_path, similarity))
         if similarity >= min_similarity:
             code_similarities.append((code_file, similarity))
+    
+    # Log all similarity scores for debugging
+    if all_code_similarities:
+        max_sim = max(s[1] for s in all_code_similarities)
+        min_sim = min(s[1] for s in all_code_similarities)
+        avg_sim = sum(s[1] for s in all_code_similarities) / len(all_code_similarities)
+        logger.debug(
+            f"Aspect {aspect_embedding.aspect_id}: Code similarity range: "
+            f"min={min_sim:.3f}, max={max_sim:.3f}, avg={avg_sim:.3f}"
+        )
     
     # Sort by similarity (descending)
     code_similarities.sort(key=lambda x: x[1], reverse=True)
