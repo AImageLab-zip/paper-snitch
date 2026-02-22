@@ -742,7 +742,7 @@ class ConferenceListView(View):
 
         # Annotate with paper count and total tokens (sum of all completed runs)
         conferences = conferences.annotate(
-            paper_count=Count("papers"),
+            paper_count=Count("papers", distinct=True),
             total_tokens=Sum("papers__workflow_runs__total_tokens", filter=Q(papers__workflow_runs__status="completed")),
         )
 
