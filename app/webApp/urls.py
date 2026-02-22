@@ -42,6 +42,7 @@ from .views import (
     RerunSingleNodeView,
     RerunFromNodeView,
     BulkRerunWorkflowsView,
+    BulkStopWorkflowsView,
     BulkRerunPreviewView,
 )
 
@@ -63,6 +64,7 @@ urlpatterns = [
     path("conference/<int:conference_id>/node-statistics/", ConferenceNodeStatisticsView.as_view(), name="conference_node_statistics"),
     path("workflows/active/", ActiveWorkflowsView.as_view(), name="active_workflows"),
     path("conference/<int:conference_id>/bulk-rerun-workflows/", BulkRerunWorkflowsView.as_view(), name="bulk_rerun_workflows"),
+    path("conference/<int:conference_id>/bulk-stop-workflows/", BulkStopWorkflowsView.as_view(), name="bulk_stop_workflows"),
     path("conference/<int:conference_id>/bulk-rerun-preview/", BulkRerunPreviewView.as_view(), name="bulk_rerun_preview"),
     path("paper/<int:paper_id>/", PaperDetailView.as_view(), name="paper_detail"),
     path("paper/<int:paper_id>/rerun-workflow/", RerunWorkflowView.as_view(), name="rerun_workflow"),

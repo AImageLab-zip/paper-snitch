@@ -36,6 +36,9 @@
                             <button class="btn btn-warning btn-sm" id="bulk-rerun-btn" data-conference-id="{{ conference.id }}" data-conference-name="{{ conference.name }}" title="Restart workflows for all papers">
                                 <i class="fas fa-redo-alt mr-1"></i> Restart All Workflows
                             </button>
+                            <button class="btn btn-danger btn-sm ml-1" id="bulk-stop-btn" data-conference-id="{{ conference.id }}" data-conference-name="{{ conference.name }}" title="Stop all running workflows">
+                                <i class="fas fa-stop mr-1"></i> Stop All Workflows
+                            </button>
                             <span id="active-workflows-badge" class="badge badge-secondary ml-2" style="font-size: 0.9rem; padding: 0.4rem 0.7rem;" title="Active workflows / Maximum concurrent">
                                 <i class="fas fa-sync fa-spin"></i> Loading...
                             </span>
@@ -433,6 +436,49 @@
     </div>
 </div>
 
+<!-- Stop All Workflows Modal -->
+<div class="modal fade" id="bulkStopModal" tabindex="-1" role="dialog" aria-labelledby="bulkStopModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="bulkStopModalLabel">
+                    <i class="fas fa-stop mr-2"></i>Stop All Workflows
+                </h5>
+                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p>Stop all running workflows for papers in <strong id="bulk-stop-conference-name"></strong>?</p>
+                
+                <div class="alert alert-warning mb-3">
+                    <i class="fas fa-exclamation-triangle mr-2"></i>
+                    <strong>Warning:</strong> This will cancel all currently running and pending workflows for this conference.
+                    <br><small class="mt-1 d-block"><i class="fas fa-info-circle mr-1"></i>Workflows will be marked as failed and can be restarted later if needed.</small>
+                </div>
+                
+                <div class="alert alert-info mb-0">
+                    <i class="fas fa-info-circle mr-2"></i>
+                    <strong>Note:</strong> This action will:
+                    <ul class="mb-0 mt-2">
+                        <li>Cancel all active Celery tasks in the queue</li>
+                        <li>Mark running workflows as failed</li>
+                        <li>Free up workers for new tasks</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">
+                    <i class="fas fa-times mr-1"></i>Cancel
+                </button>
+                <button type="button" class="btn btn-danger" id="confirm-bulk-stop">
+                    <i class="fas fa-stop mr-1"></i>Stop All Workflows
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Success Modal -->
 <div class="modal fade" id="successModal" tabindex="-1" role="dialog" aria-labelledby="successModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered" role="document">
@@ -716,6 +762,64 @@ $(document).ready(function() {
                 $('#bulkRerunModal').modal('hide');
                 
                 const message = xhr.responseJSON?.error || 'Failed to start workflows. Please try again.';
+                $('#error-message').text(message);
+                $('#errorModal').modal('show');
+            },
+            complete: function() {
+                $btn.prop('disabled', false).html(originalHtml);
+            }
+        });
+    });
+    
+    // === Bulk Stop Workflows ===
+    
+    // Show bulk stop confirmation modal
+    $('#bulk-stop-btn').on('click', function() {
+        const conferenceName = $(this).data('conference-name');
+        $('#bulk-stop-conference-name').text(conferenceName);
+        $('#bulkStopModal').modal('show');
+    });
+    
+    // Confirm bulk stop
+    $('#confirm-bulk-stop').on('click', function() {
+        const $btn = $(this);
+        const originalHtml = $btn.html();
+        const conferenceId = $('#bulk-stop-btn').data('conference-id');
+        
+        // Disable button and show loading
+        $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin mr-1"></i>Stopping...');
+        
+        $.ajax({
+            url: `/conference/${conferenceId}/bulk-stop-workflows/`,
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}',
+                'Content-Type': 'application/json'
+            },
+            success: function(response) {
+                $('#bulkStopModal').modal('hide');
+                
+                if (response.success) {
+                    let message = `Successfully stopped ${response.cancelled_workflows} workflow${response.cancelled_workflows !== 1 ? 's' : ''}.`;
+                    if (response.purged_tasks > 0) {
+                        message += ` (${response.purged_tasks} pending task${response.purged_tasks !== 1 ? 's' : ''} removed from queue)`;
+                    }
+                    $('#success-message').text(message);
+                    $('#successModal').modal('show');
+                    
+                    // Reload page after modal closes to show updated statuses
+                    $('#successModal').on('hidden.bs.modal', function() {
+                        location.reload();
+                    });
+                } else {
+                    $('#error-message').text(response.message || 'Failed to stop workflows');
+                    $('#errorModal').modal('show');
+                }
+            },
+            error: function(xhr) {
+                $('#bulkStopModal').modal('hide');
+                
+                const message = xhr.responseJSON?.error || 'Failed to stop workflows. Please try again.';
                 $('#error-message').text(message);
                 $('#errorModal').modal('show');
             },

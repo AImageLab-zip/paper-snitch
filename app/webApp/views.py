@@ -1847,3 +1847,85 @@ class BulkRerunWorkflowsView(View):
                 "max_concurrent": MAX_CONCURRENT_WORKFLOWS,
             }
         )
+
+
+class BulkStopWorkflowsView(View):
+    """API view to stop all running workflows for a conference."""
+
+    def post(self, request, conference_id):
+        """Stop all running and pending workflows for the specified conference."""
+        from django.utils import timezone
+        import logging
+        import json
+        from celery import current_app
+
+        logger = logging.getLogger(__name__)
+
+        try:
+            conference = Conference.objects.get(id=conference_id)
+        except Conference.DoesNotExist:
+            return JsonResponse({"error": "Conference not found"}, status=404)
+
+        # Get all papers for this conference
+        papers = Paper.objects.filter(conference=conference)
+        paper_ids = list(papers.values_list('id', flat=True))
+
+        if not paper_ids:
+            return JsonResponse(
+                {"error": "No papers found for this conference"}, status=400
+            )
+
+        # Cancel all running/pending workflows for these papers
+        cancelled_workflows = 0
+        running_workflows = WorkflowRun.objects.filter(
+            paper__in=papers, status__in=["running", "pending"]
+        )
+
+        for running_workflow in running_workflows:
+            logger.info(
+                f"Cancelling workflow {running_workflow.id} for paper {running_workflow.paper.id}"
+            )
+            running_workflow.status = "failed"
+            running_workflow.completed_at = timezone.now()
+            running_workflow.error_message = "Workflow cancelled by user (bulk stop)"
+            running_workflow.save()
+
+            # Also mark all running/pending nodes as failed
+            stuck_nodes = WorkflowNode.objects.filter(
+                workflow_run=running_workflow,
+                status__in=["running", "pending"],
+            )
+            for node in stuck_nodes:
+                node.status = "failed"
+                node.completed_at = timezone.now()
+                node.error_message = "Node cancelled (bulk stop)"
+                node.save()
+
+            cancelled_workflows += 1
+
+        # Purge all pending tasks from Celery queue
+        try:
+            purged_count = current_app.control.purge()
+            logger.info(f"Purged {purged_count} pending tasks from Celery queue")
+        except Exception as e:
+            logger.error(f"Failed to purge Celery queue: {e}", exc_info=True)
+            purged_count = 0
+
+        message = f"Successfully stopped {cancelled_workflows} workflow{'s' if cancelled_workflows != 1 else ''}"
+        if purged_count > 0:
+            message += f" and removed {purged_count} pending task{'s' if purged_count != 1 else ''} from queue"
+
+        logger.info(
+            f"Bulk stop completed for conference {conference_id}: "
+            f"{cancelled_workflows} workflows cancelled, {purged_count} tasks purged"
+        )
+
+        return JsonResponse(
+            {
+                "success": True,
+                "message": message,
+                "cancelled_workflows": cancelled_workflows,
+                "purged_tasks": purged_count,
+                "conference_id": conference_id,
+            }
+        )
