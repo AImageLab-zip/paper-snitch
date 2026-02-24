@@ -20,6 +20,7 @@ from webApp.models import (
     CodeFileEmbedding,
 )
 from .reproducibility_aspects import get_aspect, get_aspect_ids, REPRODUCIBILITY_ASPECTS
+from .shared_helpers import retrieve_sections_by_embedding
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +71,7 @@ async def get_or_create_aspect_embedding(
     # Create new embedding
     aspect_def = get_aspect(aspect_id)
     
-    # Combine description and prompt template as context
+    # Combine description and prompt template as context TODO: investigate this; what is analysis_prompt_template
     context_text = f"{aspect_def.aspect_name}\n\n{aspect_def.aspect_description}\n\nAnalysis Focus:\n{aspect_def.analysis_prompt_template[:500]}"
     
     logger.info(f"Creating new embedding for aspect: {aspect_id}")
@@ -101,36 +102,6 @@ async def get_or_create_aspect_embedding(
     return aspect_emb
 
 
-def compute_cosine_similarity(embedding1: List[float], embedding2: List[float]) -> float:
-    """
-    Compute cosine similarity between two embeddings.
-    
-    Args:
-        embedding1: First embedding vector
-        embedding2: Second embedding vector
-        
-    Returns:
-        Cosine similarity score (0 to 1)
-    """
-    if not embedding1 or not embedding2:
-        return 0.0
-    
-    if len(embedding1) != len(embedding2):
-        raise ValueError(f"Embedding dimensions must match: {len(embedding1)} vs {len(embedding2)}")
-    
-    a = np.array(embedding1)
-    b = np.array(embedding2)
-    
-    dot_product = np.dot(a, b)
-    norm_a = np.linalg.norm(a)
-    norm_b = np.linalg.norm(b)
-    
-    if norm_a == 0 or norm_b == 0:
-        return 0.0
-    
-    return float(dot_product / (norm_a * norm_b))
-
-
 async def retrieve_relevant_sections(
     paper_id: int,
     aspect_embedding: ReproducibilityAspectEmbedding,
@@ -157,79 +128,38 @@ async def retrieve_relevant_sections(
         f"paper_id={paper_id}, token_budget={token_budget:,}, min_similarity={min_similarity}"
     )
     
-    # Get all section embeddings for this paper
-    sections = await sync_to_async(list)(
-        PaperSectionEmbedding.objects.filter(
-            paper_id=paper_id,
-            embedding_model=aspect_embedding.embedding_model
-        )
+    # Use shared low-level function with token budget
+    results = await retrieve_sections_by_embedding(
+        paper=paper_id,
+        query_embedding=aspect_embedding.embedding,
+        min_similarity=min_similarity,
+        token_budget=token_budget
     )
     
-    if not sections:
+    if not results:
         logger.warning(f"No section embeddings found for paper {paper_id}")
         return []
     
-    logger.info(f"Found {len(sections)} section embeddings for paper {paper_id}")
-    
-    # Compute similarities
-    section_similarities = []
-    all_similarities = []  # Track all similarities for debugging
-    for section in sections:
-        similarity = compute_cosine_similarity(
-            aspect_embedding.embedding,
-            section.embedding
-        )
-        all_similarities.append((section.section_type, similarity))
-        if similarity >= min_similarity:
-            section_similarities.append((section, similarity))
-    
-    # Log all similarity scores for debugging
+    # Log similarity statistics
+    all_similarities = [similarity for _, similarity, _ in results]
     if all_similarities:
-        max_sim = max(s[1] for s in all_similarities)
-        min_sim = min(s[1] for s in all_similarities)
-        avg_sim = sum(s[1] for s in all_similarities) / len(all_similarities)
+        max_sim = max(all_similarities)
+        min_sim = min(all_similarities)
+        avg_sim = np.mean(all_similarities)
         logger.debug(
             f"Aspect {aspect_embedding.aspect_id}: Similarity range: "
             f"min={min_sim:.3f}, max={max_sim:.3f}, avg={avg_sim:.3f}"
         )
     
-    # Sort by similarity (descending)
-    section_similarities.sort(key=lambda x: x[1], reverse=True)
+    # Convert to expected format (section, similarity)
+    section_similarities = [(section, similarity) for section, similarity, _ in results]
     
     logger.info(
-        f"Aspect {aspect_embedding.aspect_id}: {len(section_similarities)}/{len(sections)} sections "
-        f"passed similarity threshold {min_similarity}"
+        f"Retrieved {len(section_similarities)} sections for aspect {aspect_embedding.aspect_id} "
+        f"(avg similarity: {np.mean([s[1] for s in section_similarities]):.3f})"
     )
-    if section_similarities:
-        top_similarity = section_similarities[0][1] if section_similarities else 0
-        logger.debug(f"Top section similarity: {top_similarity:.3f}")
     
-    # Fill until token budget exhausted
-    selected_sections = []
-    tokens_used = 0
-    
-    for section, similarity in section_similarities:
-        section_tokens = estimate_tokens(section.section_text)
-        
-        if tokens_used + section_tokens <= token_budget:
-            selected_sections.append((section, similarity))
-            tokens_used += section_tokens
-        else:
-            # Budget exhausted
-            break
-    
-    if selected_sections:
-        avg_similarity = np.mean([s[1] for s in selected_sections])
-        logger.info(
-            f"Retrieved {len(selected_sections)} sections for aspect {aspect_embedding.aspect_id} "
-            f"({tokens_used:,} tokens, avg similarity: {avg_similarity:.3f})"
-        )
-    else:
-        logger.warning(
-            f"No sections met similarity threshold {min_similarity} for aspect {aspect_embedding.aspect_id}"
-        )
-    
-    return selected_sections
+    return section_similarities
 
 
 async def retrieve_relevant_code(
@@ -275,13 +205,12 @@ async def retrieve_relevant_code(
     
     logger.info(f"Found {len(code_files)} code embeddings for paper {paper_id}, repo {code_url}")
     
-    # Compute similarities
+    # Compute similarities using model method
     code_similarities = []
     all_code_similarities = []  # Track all similarities for debugging
     for code_file in code_files:
-        similarity = compute_cosine_similarity(
-            aspect_embedding.embedding,
-            code_file.embedding
+        similarity = code_file.compute_cosine_similarity(
+            aspect_embedding.embedding
         )
         all_code_similarities.append((code_file.file_path, similarity))
         if similarity >= min_similarity:

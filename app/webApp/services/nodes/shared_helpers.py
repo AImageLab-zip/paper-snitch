@@ -4,9 +4,11 @@ Helper functions for enhanced paper code repository processing and analysis work
 
 import json
 import logging
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
 
+import numpy as np
 from openai import OpenAI
+from asgiref.sync import sync_to_async
 from gitingest.clone import clone_repo
 from gitingest.query_parser import parse_remote_repo, parse_local_dir_path
 from gitingest.utils.auth import resolve_token
@@ -37,6 +39,180 @@ from webApp.services.pydantic_schemas import (
 logger = logging.getLogger(__name__)
 
 
+def prepare_paper_content(paper, max_chars: int = 12000) -> str:
+    """
+    Prepare paper content for analysis (fallback when sections not available).
+    
+    Args:
+        paper: Paper object
+        max_chars: Maximum characters to extract from paper text
+        
+    Returns:
+        Formatted string with title, abstract, and truncated text
+    """
+    content_parts = [f"Title: {paper.title}"]
+
+    if paper.abstract:
+        content_parts.append(f"\nAbstract: {paper.abstract}")
+
+    if paper.text:
+        text = paper.text[:max_chars]
+        content_parts.append(f"\nFull Text:\n{text}")
+    else:
+        content_parts.append("\n(No full text available)")
+
+    return "\n".join(content_parts)
+
+
+# ============================================================================
+# Embedding Similarity Utilities
+# ============================================================================
+
+async def retrieve_sections_by_embedding(
+    paper,
+    query_embedding: List[float],
+    top_k: Optional[int] = None,
+    min_similarity: Optional[float] = None,
+    max_chars_per_section: Optional[int] = None,
+    token_budget: Optional[int] = None
+) -> List[Tuple[Any, float, str]]:
+    """
+    Low-level function to retrieve paper sections by embedding similarity.
+    
+    Args:
+        paper: Paper object or paper_id
+        query_embedding: Pre-computed embedding vector to compare against
+        top_k: Return top K sections (if using simple cutoff)
+        min_similarity: Minimum similarity threshold to include
+        max_chars_per_section: Character limit per section
+        token_budget: Token budget for selection (alternative to top_k)
+        
+    Returns:
+        List of (section_object, similarity, section_text) tuples
+        Sorted by similarity (highest first)
+    """
+    from webApp.models import PaperSectionEmbedding
+    
+    # Handle paper_id vs paper object
+    paper_id = paper.id if hasattr(paper, 'id') else paper
+    
+    # Get all section embeddings for this paper
+    all_sections = await sync_to_async(
+        lambda: list(
+            PaperSectionEmbedding.objects.filter(paper_id=paper_id).exclude(
+                section_text__isnull=True
+            ).exclude(section_text="")
+        )
+    )()
+    
+    if not all_sections:
+        logger.info(f"No section embeddings found for paper {paper_id}")
+        return []
+    
+    # Compute similarities using model method
+    similarities = []
+    for section in all_sections:
+        similarity = section.compute_cosine_similarity(query_embedding)
+        
+        # Apply minimum similarity filter if specified
+        if min_similarity is not None and similarity < min_similarity:
+            continue
+        
+        similarities.append((section, similarity, section.section_text))
+    
+    # Sort by similarity (highest first)
+    similarities.sort(reverse=True, key=lambda x: x[1])
+    
+    # Apply selection strategy
+    selected = []
+    
+    if token_budget is not None:
+        # Token budget strategy: fill until budget exhausted
+        tokens_used = 0
+        for section, similarity, text in similarities:
+            section_tokens = len(text) // 4  # Rough estimate
+            if tokens_used + section_tokens <= token_budget:
+                selected.append((section, similarity, text[:max_chars_per_section] if max_chars_per_section else text))
+                tokens_used += section_tokens
+            else:
+                break
+    else:
+        # Top-k strategy: just take top K
+        k = top_k if top_k is not None else len(similarities)
+        selected = [
+            (section, similarity, text[:max_chars_per_section] if max_chars_per_section else text)
+            for section, similarity, text in similarities[:k]
+        ]
+    
+    avg_sim = np.mean([s[1] for s in selected]) if selected else 0.0
+    logger.info(
+        f"Found {len(all_sections)} sections for paper {paper_id}, "
+        f"selected {len(selected)} (avg similarity: {avg_sim:.3f})"
+    )
+    
+    return selected
+
+
+async def get_relevant_sections_by_similarity(
+    paper,
+    query: str,
+    top_k: int = 4,
+    max_chars_per_section: int = 4000,
+    client = None
+) -> List[Tuple[float, str, str]]:
+    """
+    Retrieve paper sections most semantically relevant to a text query.
+    
+    High-level convenience function that computes query embedding and retrieves sections.
+    
+    Args:
+        paper: Paper object
+        query: Query text to find relevant sections
+        top_k: Number of top sections to return
+        max_chars_per_section: Maximum characters per section (for token management)
+        client: OpenAI client (optional, will create if not provided)
+        
+    Returns:
+        List of tuples (similarity_score, section_type, section_text)
+        Sorted by similarity (highest first)
+    """
+    try:
+        # Get or create OpenAI client
+        if client is None:
+            from openai import OpenAI
+            import os
+            client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        
+        # Compute query embedding
+        query_response = client.embeddings.create(
+            model="text-embedding-3-small",
+            input=query
+        )
+        query_embedding = query_response.data[0].embedding
+        
+        # Use low-level function
+        results = await retrieve_sections_by_embedding(
+            paper=paper,
+            query_embedding=query_embedding,
+            top_k=top_k,
+            max_chars_per_section=max_chars_per_section
+        )
+        
+        # Convert to simplified format (similarity, section_type, section_text)
+        return [
+            (similarity, section.section_type, text)
+            for section, similarity, text in results
+        ]
+        
+    except Exception as e:
+        logger.warning(f"Could not retrieve sections by similarity: {e}")
+        return []
+
+
+# ============================================================================
+# Reproducibility Scoring
+# ============================================================================
+
 def compute_reproducibility_score(
     methodology: Optional[ResearchMethodologyAnalysis],
     structure: Optional[RepositoryStructureAnalysis],
@@ -57,8 +233,8 @@ def compute_reproducibility_score(
 
     Returns:
         (score, breakdown, recommendations)
-        - score: 0-10 overall reproducibility score
-        - breakdown: Dict with component scores
+        - score: 0-100 overall reproducibility score
+        - breakdown: Dict with component scores (0-100 scale)
         - recommendations: List of improvement suggestions
     """
     breakdown = {
@@ -68,6 +244,16 @@ def compute_reproducibility_score(
         "dataset_splits": 0.0,  # 0-2.0 points (adaptive)
         "documentation": 0.0,  # 2.0 points
     }
+    
+    # Track max points for each component (for normalization to 0-100 scale)
+    component_max = {
+        "code_completeness": 0.0,
+        "dependencies": 1.0,
+        "artifacts": 0.0,
+        "dataset_splits": 0.0,
+        "documentation": 2.0,
+    }
+    
     recommendations = []
 
     # Determine methodology-specific weights
@@ -85,6 +271,7 @@ def compute_reproducibility_score(
 
     # 1. Code Completeness (2.5-3.0 points, adaptive)
     max_code_points = 3.0 if requires_training else 2.5
+    component_max["code_completeness"] = max_code_points
 
     if components:
         score = 0.0
@@ -145,6 +332,7 @@ def compute_reproducibility_score(
 
     # 3. Artifacts (0-2.5 points, adaptive)
     if requires_datasets or requires_training:
+        component_max["artifacts"] = 2.5
         if artifacts:
             # Checkpoints: 0-1.0 point (only for models)
             if requires_training:
@@ -179,6 +367,7 @@ def compute_reproducibility_score(
                 recommendations.append("Provide dataset download links")
     else:
         # Non-data research: Award full artifacts points if code is complete
+        component_max["artifacts"] = 2.0
         if components and (
             components.has_evaluation_code or components.has_training_code
         ):
@@ -186,6 +375,7 @@ def compute_reproducibility_score(
 
     # 4. Dataset Splits (0-2.0 points, adaptive) - CRITICAL for ML, less for others
     if requires_splits:
+        component_max["dataset_splits"] = 2.0
         if dataset_splits:
             score = 0.0
             if dataset_splits.splits_specified:
@@ -214,6 +404,7 @@ def compute_reproducibility_score(
             )
     else:
         # Non-ML: Award points if seeds/parameters are documented
+        component_max["dataset_splits"] = 1.5
         if dataset_splits and dataset_splits.random_seeds_documented:
             breakdown["dataset_splits"] = 1.5  # Reward for documenting randomness
             recommendations.append("Continue documenting all sources of randomness")
@@ -267,16 +458,25 @@ def compute_reproducibility_score(
     # Compute raw total score
     raw_score = sum(breakdown.values())
 
-    # Normalize to 10-point scale
+    # Normalize to 100-point scale
     total_score = (
-        (raw_score / max_possible_score) * 10.0 if max_possible_score > 0 else 0.0
+        (raw_score / max_possible_score) * 100.0 if max_possible_score > 0 else 0.0
     )
 
     # Round to 1 decimal place
     total_score = round(total_score, 1)
-    breakdown = {k: round(v, 2) for k, v in breakdown.items()}
+    
+    # Scale each component breakdown to 0-100 based on its OWN max value
+    breakdown_normalized = {}
+    for component, raw_value in breakdown.items():
+        max_for_component = component_max.get(component, 1.0)
+        if max_for_component > 0:
+            normalized = round((raw_value / max_for_component) * 100.0, 1)
+        else:
+            normalized = 0.0
+        breakdown_normalized[component] = normalized
 
-    return total_score, breakdown, recommendations
+    return total_score, breakdown_normalized, recommendations
 
 
 async def ingest_with_steroids(
@@ -1033,15 +1233,15 @@ Output the complete JSON object with ALL fields filled in based on the analysis 
             documentation_obj,
         )
 
-        logger.info(f"Computed reproducibility score: {score}/10")
+        logger.info(f"Computed reproducibility score: {score}/100")
         logger.info(f"Score breakdown: {breakdown}")
 
         if node:
-            breakdown_text = "\n".join(f"  • {k}: {v}/10" for k, v in breakdown.items())
+            breakdown_text = "\n".join(f"  • {k}: {v}/100" for k, v in breakdown.items())
             await async_ops.create_node_log(
                 node,
                 "INFO",
-                f"Reproducibility score: {score}/10\n\nBreakdown:\n{breakdown_text}",
+                f"Reproducibility score: {score}/100\n\nBreakdown:\n{breakdown_text}",
             )
 
             # Log key findings

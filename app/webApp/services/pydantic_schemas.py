@@ -184,7 +184,7 @@ class CodeReproducibilityAnalysis(BaseModel):
     dataset_splits: Optional[DatasetSplitsAnalysis] = None
     documentation: Optional[ReproducibilityDocumentation] = None
     reproducibility_score: float = Field(
-        description="Computed reproducibility score (0-10)", ge=0.0, le=10.0
+        description="Computed reproducibility score (0-100)", ge=0.0, le=100.0
     )
     score_breakdown: Dict[str, float] = Field(
         description="Breakdown of score by component"
@@ -249,4 +249,479 @@ class CodeEmbeddingResult(BaseModel):
     embedding_dimension: int = Field(
         default=1536,
         description="Dimension of embedding vectors"
+    )
+
+
+class DatasetDocumentationItem(BaseModel):
+    """Individual dataset documentation item."""
+    
+    model_config = ConfigDict(extra="forbid")
+    
+    criterion: str = Field(description="Documentation criterion being evaluated")
+    present: bool = Field(description="Whether criterion is satisfied")
+    confidence: float = Field(description="Confidence score 0-1", ge=0.0, le=1.0)
+    evidence_text: Optional[str] = Field(
+        default=None,
+        description="Text excerpt providing evidence (max 500 chars)"
+    )
+    page_reference: Optional[str] = Field(
+        default=None,
+        description="Page/section reference where evidence was found"
+    )
+    notes: Optional[str] = Field(
+        default=None,
+        description="Additional notes or clarifications"
+    )
+
+
+class DatasetDocumentationCheck(BaseModel):
+    """Structured output for dataset documentation check (for dataset/both papers)."""
+    
+    model_config = ConfigDict(extra="forbid")
+    
+    # Core dataset information
+    dataset_name: Optional[str] = Field(
+        default=None,
+        description="Name of the dataset if mentioned"
+    )
+    dataset_size: Optional[str] = Field(
+        default=None,
+        description="Number of samples/images/patients mentioned"
+    )
+    
+    # Data collection criteria
+    data_collection_described: DatasetDocumentationItem = Field(
+        description="Whether data collection process is described"
+    )
+    acquisition_parameters: DatasetDocumentationItem = Field(
+        description="Whether image acquisition parameters are specified"
+    )
+    study_cohort: DatasetDocumentationItem = Field(
+        description="Whether study cohort/population is described"
+    )
+    
+    # Annotation criteria
+    annotation_protocol: DatasetDocumentationItem = Field(
+        description="Whether annotation protocol is documented"
+    )
+    annotator_details: DatasetDocumentationItem = Field(
+        description="Whether annotator qualifications/instructions are described"
+    )
+    inter_rater_agreement: DatasetDocumentationItem = Field(
+        description="Whether inter-annotator agreement metrics reported"
+    )
+    quality_control: DatasetDocumentationItem = Field(
+        description="Whether quality control measures are described"
+    )
+    
+    # Ethics and availability
+    ethics_approval: DatasetDocumentationItem = Field(
+        description="Whether ethics approval/IRB is mentioned"
+    )
+    data_availability: DatasetDocumentationItem = Field(
+        description="Whether data availability statement is present"
+    )
+    data_license: DatasetDocumentationItem = Field(
+        description="Whether usage license is specified"
+    )
+    download_link: Optional[str] = Field(
+        default=None,
+        description="Download link or access procedure URL if mentioned"
+    )
+    
+    # Overall assessment
+    overall_score: float = Field(
+        description="Overall documentation score 0-100",
+        ge=0.0,
+        le=100.0
+    )
+    summary: str = Field(
+        description="Brief summary of dataset documentation quality"
+    )
+
+
+class ReproducibilityChecklistItem(BaseModel):
+    """Individual reproducibility checklist item."""
+    
+    model_config = ConfigDict(extra="forbid")
+    
+    criterion: str = Field(description="MICCAI reproducibility criterion")
+    category: str = Field(
+        description="Category: models, datasets, code, experiments, or infrastructure"
+    )
+    present: bool = Field(description="Whether criterion is satisfied")
+    confidence: float = Field(description="Confidence score 0-1", ge=0.0, le=1.0)
+    evidence_text: Optional[str] = Field(
+        default=None,
+        description="Text excerpt providing evidence (max 500 chars)"
+    )
+    page_reference: Optional[str] = Field(
+        default=None,
+        description="Page/section reference where evidence was found"
+    )
+    importance: str = Field(
+        description="'critical', 'important', or 'optional' based on paper type"
+    )
+
+
+class CategoryScores(BaseModel):
+    """Category-wise reproducibility scores."""
+    
+    model_config = ConfigDict(extra="forbid")
+    
+    models: float = Field(description="Models/algorithms score (0-100)", ge=0.0, le=100.0)
+    datasets: float = Field(description="Dataset documentation score (0-100)", ge=0.0, le=100.0)
+    code: float = Field(description="Code availability score (0-100)", ge=0.0, le=100.0)
+    experiments: float = Field(description="Experimental rigor score (0-100)", ge=0.0, le=100.0)
+    infrastructure: float = Field(description="Infrastructure transparency score (0-100)", ge=0.0, le=100.0)
+
+
+class ReproducibilityChecklist(BaseModel):
+    """Structured output for MICCAI reproducibility checklist extraction."""
+    
+    model_config = ConfigDict(extra="forbid")
+    
+    # Models/Algorithms criteria (7 items)
+    mathematical_description: ReproducibilityChecklistItem
+    assumptions_stated: ReproducibilityChecklistItem
+    software_framework: ReproducibilityChecklistItem
+    hyperparameters_reported: ReproducibilityChecklistItem
+    hyperparameter_selection: ReproducibilityChecklistItem
+    baseline_implementation: ReproducibilityChecklistItem
+    sensitivity_analysis: ReproducibilityChecklistItem
+    
+    # Dataset criteria (4 items)
+    dataset_statistics: ReproducibilityChecklistItem
+    dataset_splits: ReproducibilityChecklistItem
+    dataset_availability: ReproducibilityChecklistItem
+    dataset_ethics: ReproducibilityChecklistItem
+    
+    # Code criteria (6 items)
+    code_available: ReproducibilityChecklistItem
+    dependencies_specified: ReproducibilityChecklistItem
+    training_code: ReproducibilityChecklistItem
+    evaluation_code: ReproducibilityChecklistItem
+    pretrained_models: ReproducibilityChecklistItem
+    readme_with_instructions: ReproducibilityChecklistItem
+    
+    # Experimental results criteria (9 items)
+    number_of_runs: ReproducibilityChecklistItem
+    results_with_variance: ReproducibilityChecklistItem
+    statistical_significance: ReproducibilityChecklistItem
+    evaluation_metrics: ReproducibilityChecklistItem
+    runtime_reported: ReproducibilityChecklistItem
+    memory_footprint: ReproducibilityChecklistItem
+    failure_analysis: ReproducibilityChecklistItem
+    clinical_significance: ReproducibilityChecklistItem
+    computing_infrastructure: ReproducibilityChecklistItem
+    
+    # Overall assessment
+    category_scores: CategoryScores = Field(
+        description="Scores by category: models, datasets, code, experiments, infrastructure (0-100)"
+    )
+    overall_score: float = Field(
+        description="Overall reproducibility score 0-100",
+        ge=0.0,
+        le=100.0
+    )
+    paper_type_context: str = Field(
+        description="Paper type from classification node ('dataset', 'method', 'both', etc.)"
+    )
+    weighted_score: float = Field(
+        description="Score weighted by paper type (0-100)",
+        ge=0.0,
+        le=100.0
+    )
+    summary: str = Field(
+        description="Executive summary of reproducibility assessment"
+    )
+    strengths: List[str] = Field(
+        description="Key reproducibility strengths (2-5 items)"
+    )
+    weaknesses: List[str] = Field(
+        description="Key reproducibility weaknesses (2-5 items)"
+    )
+
+
+class SingleCriterionAnalysis(BaseModel):
+    """
+    Individual criterion analysis result (used in multi-step process).
+    LLM analyzes each criterion independently with targeted paper sections.
+    """
+    
+    model_config = ConfigDict(extra="forbid")
+    
+    criterion_id: str = Field(description="Unique criterion identifier")
+    criterion_number: int = Field(description="Criterion number (1-20)")
+    criterion_name: str = Field(description="Human-readable criterion name")
+    category: str = Field(description="Category: models, datasets, or experiments")
+    
+    present: bool = Field(description="Whether criterion is satisfied in the paper")
+    confidence: float = Field(description="Confidence score 0-1", ge=0.0, le=1.0)
+    
+    evidence_text: Optional[str] = Field(
+        default=None,
+        description="Direct quote/excerpt supporting assessment (max 500 chars)"
+    )
+    page_reference: Optional[str] = Field(
+        default=None,
+        description="Where evidence was found (e.g., 'Methods section', 'Table 2', 'Page 4')"
+    )
+    
+    notes: Optional[str] = Field(
+        default=None,
+        description="Additional context or reasons for assessment"
+    )
+    
+    importance: str = Field(
+        description="Importance for THIS paper type: 'critical', 'important', or 'optional'"
+    )
+
+
+class SingleDatasetCriterionAnalysis(BaseModel):
+    """
+    Individual dataset documentation criterion analysis result (used in multi-step process).
+    LLM analyzes each criterion independently with targeted paper sections.
+    """
+    
+    model_config = ConfigDict(extra="forbid")
+    
+    criterion_id: str = Field(description="Unique criterion identifier")
+    criterion_number: int = Field(description="Criterion number (1-10)")
+    criterion_name: str = Field(description="Human-readable criterion name")
+    category: str = Field(description="Category: data_collection, annotation, or ethics_availability")
+    
+    present: bool = Field(description="Whether criterion is satisfied in the paper")
+    confidence: float = Field(description="Confidence score 0-1", ge=0.0, le=1.0)
+    
+    evidence_text: Optional[str] = Field(
+        default=None,
+        description="Direct quote/excerpt supporting assessment (max 500 chars)"
+    )
+    page_reference: Optional[str] = Field(
+        default=None,
+        description="Where evidence was found (e.g., 'Methods section', 'Table 1', 'Page 3')"
+    )
+    
+    notes: Optional[str] = Field(
+        default=None,
+        description="Additional context or reasons for assessment"
+    )
+    
+    importance: str = Field(
+        description="Importance for dataset papers: 'critical', 'important', or 'optional'"
+    )
+
+
+class AggregatedReproducibilityAnalysis(BaseModel):
+    """
+    Final aggregated reproducibility analysis combining all criteria.
+    Generated programmatically after analyzing all 20 criteria individually.
+    All scores and text are computed deterministically (no LLM aggregation).
+    """
+    
+    model_config = ConfigDict(extra="forbid")
+    
+    # Category scores (0-100 each) - computed programmatically
+    models_score: float = Field(
+        description="Average score for models/algorithms criteria (1-7)",
+        ge=0.0,
+        le=100.0
+    )
+    datasets_score: float = Field(
+        description="Average score for dataset criteria (8-11)",
+        ge=0.0,
+        le=100.0
+    )
+    experiments_score: float = Field(
+        description="Average score for experiments criteria (12-20)",
+        ge=0.0,
+        le=100.0
+    )
+    
+    # Overall scores - computed programmatically
+    overall_score: float = Field(
+        description="Overall reproducibility score (average of category scores, 0-100)",
+        ge=0.0,
+        le=100.0
+    )
+    weighted_score: float = Field(
+        description="Score weighted by paper type importance (0-100)",
+        ge=0.0,
+        le=100.0
+    )
+    
+    paper_type_context: str = Field(
+        description="Paper type from classification: 'dataset', 'method', 'both', 'theoretical', 'unknown'"
+    )
+    
+    # Qualitative assessment - generated programmatically from structured criterion analyses
+    summary: str = Field(
+        description="Executive summary generated programmatically (2-4 sentences)"
+    )
+    strengths: List[str] = Field(
+        description="Key reproducibility strengths extracted from criteria (3-7 items)"
+    )
+    weaknesses: List[str] = Field(
+        description="Key reproducibility gaps extracted from criteria (3-7 items)"
+    )
+    recommendations: List[str] = Field(
+        description="Specific recommendations generated programmatically (3-7 items)"
+    )
+
+
+class AggregatedDatasetDocumentationAnalysis(BaseModel):
+    """
+    Final aggregated dataset documentation analysis combining all criteria.
+    Generated programmatically after analyzing all 10 criteria individually.
+    All scores and text are computed deterministically (no LLM aggregation).
+    """
+    
+    model_config = ConfigDict(extra="forbid")
+    
+    # Core dataset information (optional, extracted if found)
+    dataset_name: Optional[str] = Field(
+        default=None,
+        description="Name of the dataset if mentioned in paper"
+    )
+    dataset_size: Optional[str] = Field(
+        default=None,
+        description="Dataset size (samples/images/patients) if mentioned"
+    )
+    download_link: Optional[str] = Field(
+        default=None,
+        description="Download link or access URL if mentioned"
+    )
+    
+    # Category scores (0-100 each) - computed programmatically
+    data_collection_score: float = Field(
+        description="Average score for data collection criteria (1-3)",
+        ge=0.0,
+        le=100.0
+    )
+    annotation_score: float = Field(
+        description="Average score for annotation criteria (4-7)",
+        ge=0.0,
+        le=100.0
+    )
+    ethics_availability_score: float = Field(
+        description="Average score for ethics & availability criteria (8-10)",
+        ge=0.0,
+        le=100.0
+    )
+    
+    # Overall score - computed programmatically
+    overall_score: float = Field(
+        description="Overall documentation score (weighted average of category scores, 0-100)",
+        ge=0.0,
+        le=100.0
+    )
+    
+    # Qualitative assessment - generated programmatically from structured criterion analyses
+    summary: str = Field(
+        description="Executive summary generated programmatically (2-4 sentences)"
+    )
+    strengths: List[str] = Field(
+        description="Key documentation strengths extracted from criteria (3-7 items)"
+    )
+    weaknesses: List[str] = Field(
+        description="Key documentation gaps extracted from criteria (3-7 items)"
+    )
+    recommendations: List[str] = Field(
+        description="Specific recommendations generated programmatically (3-7 items)"
+    )
+
+
+class FinalQualitativeAssessment(BaseModel):
+    """
+    Qualitative text assessment generated by LLM for final aggregation.
+    This is the LLM response format containing only qualitative text,
+    which is then combined with programmatic scores in FinalReproducibilityAssessment.
+    """
+    
+    model_config = ConfigDict(extra="forbid")
+    
+    executive_summary: str = Field(
+        description="2-3 paragraph exec summary synthesizing key findings and implications"
+    )
+    strengths: List[str] = Field(
+        description="3-7 concrete reproducibility strengths across all dimensions"
+    )
+    weaknesses: List[str] = Field(
+        description="3-7 specific gaps or areas needing improvement"
+    )
+
+
+class FinalReproducibilityAssessment(BaseModel):
+    """
+    Final comprehensive reproducibility assessment combining:
+    - Paper checklist (reproducibility_checklist node) 
+    - Code repository analysis (code_repository_analysis node)
+    - Dataset documentation (dataset_documentation_check node)
+    
+    Scores are computed programmatically, qualitative text is LLM-generated.
+    """
+    
+    model_config = ConfigDict(extra="forbid")
+    
+    # Scores (computed programmatically from component nodes)
+    paper_checklist_score: float = Field(
+        description="Score from reproducibility_checklist node (0-100)",
+        ge=0.0,
+        le=100.0
+    )
+    code_analysis_score: Optional[float] = Field(
+        default=None,
+        description="Score from code_repository_analysis node if code available (0-100)",
+        ge=0.0,
+        le=100.0
+    )
+    dataset_documentation_score: Optional[float] = Field(
+        default=None,
+        description="Score from dataset_documentation_check node if dataset paper (0-100)",
+        ge=0.0,
+        le=100.0
+    )
+    overall_score: float = Field(
+        description="Weighted average of all available component scores (0-100)",
+        ge=0.0,
+        le=100.0
+    )
+    weighted_score: float = Field(
+        description="Same as overall_score (for backward compatibility)",
+        ge=0.0,
+        le=100.0
+    )
+    
+    # Qualitative text (LLM-generated from FinalQualitativeAssessment)
+    executive_summary: str = Field(
+        description="Comprehensive summary synthesizing all findings"
+    )
+    strengths: List[str] = Field(
+        description="Key reproducibility strengths across all evaluated dimensions"
+    )
+    weaknesses: List[str] = Field(
+        description="Key reproducibility gaps and areas needing improvement"
+    )
+    
+    # Recommendations (computed programmatically)
+    recommendations: List[str] = Field(
+        description="Specific actionable recommendations based on identified gaps"
+    )
+    
+    # Metadata
+    has_code_analysis: bool = Field(
+        description="Whether code repository analysis was performed"
+    )
+    has_dataset_analysis: bool = Field(
+        description="Whether dataset documentation analysis was performed"
+    )
+    paper_type: str = Field(
+        description="Paper type: 'dataset', 'method', 'both', 'theoretical', 'unknown'"
+    )
+    
+    # Detailed evaluation criteria (for comparison with human evaluation)
+    evaluation_details: Optional[Dict] = Field(
+        default=None,
+        description="Merged detailed evaluation criteria from all components (reproducibility checklist, code analysis, dataset docs) with true/false presence/absence details"
     )

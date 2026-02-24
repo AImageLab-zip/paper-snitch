@@ -100,10 +100,15 @@ class WorkflowOrchestrator:
         """Mark nodes as ready if their dependencies are met."""
         pending_nodes = workflow_run.nodes.filter(status='pending')
         
+        logger.info(f"_update_ready_nodes: Found {pending_nodes.count()} pending nodes for workflow {workflow_run.id}")
+        
         for node in pending_nodes:
+            logger.info(f"  Checking node {node.node_id}: dependencies_met()={node.dependencies_met()}")
             if node.dependencies_met():
                 node.status = 'ready'
                 node.save(update_fields=['status'])
+                
+                logger.info(f"  -> Marked {node.node_id} as READY")
                 
                 NodeLog.objects.create(
                     node=node,
@@ -204,11 +209,24 @@ class WorkflowOrchestrator:
     ):
         """Mark a node as completed and trigger downstream nodes."""
         with transaction.atomic():
+            # Refresh node to ensure we have latest data (async handlers may have updated it)
+            node.refresh_from_db()
+            
             node.status = 'completed'
             node.completed_at = timezone.now()
             
-            if output_data:
-                node.output_data = output_data
+            # Only save output_data if node doesn't already have it
+            # (NodeExecutor.execute() may have already saved it)
+            if output_data and not node.output_data:
+                # Serialize Pydantic models to dicts for JSON storage
+                from pydantic import BaseModel
+                serialized_output = {}
+                for key, value in output_data.items():
+                    if isinstance(value, BaseModel):
+                        serialized_output[key] = value.model_dump()
+                    else:
+                        serialized_output[key] = value
+                node.output_data = serialized_output
             
             node.save(update_fields=['status', 'completed_at', 'output_data'])
             
@@ -251,8 +269,11 @@ class WorkflowOrchestrator:
                     message=f'Node failed, will retry (attempt {node.attempt_count}/{node.max_retries})',
                     context={'error': error_message}
                 )
+                
+                # Don't cancel siblings or mark workflow as failed yet - node will retry
+                
             else:
-                # Permanent failure
+                # Permanent failure - cancel siblings and mark as failed
                 node.status = 'failed'
                 node.completed_at = timezone.now()
                 
@@ -262,6 +283,9 @@ class WorkflowOrchestrator:
                     message='Node failed permanently',
                     context={'error': error_message}
                 )
+                
+                # Cancel sibling nodes (fail fast on permanent failure)
+                self._cancel_sibling_nodes(node)
                 
                 # Mark downstream nodes as skipped
                 self._skip_dependent_nodes(node)
@@ -274,12 +298,36 @@ class WorkflowOrchestrator:
                 'claimed_by', 'claimed_at', 'claim_expires_at', 'completed_at'
             ])
     
+    def _cancel_sibling_nodes(self, failed_node: WorkflowNode):
+        """Cancel all sibling nodes (running/pending) when a node fails."""
+        workflow_run = failed_node.workflow_run
+        
+        # Get all nodes in the workflow that are not completed and not the failed node
+        sibling_nodes = workflow_run.nodes.filter(
+            status__in=['running', 'claimed', 'ready', 'pending']
+        ).exclude(id=failed_node.id)
+        
+        for sibling in sibling_nodes:
+            sibling.status = 'cancelled'
+            sibling.completed_at = timezone.now()
+            sibling.save(update_fields=['status', 'completed_at'])
+            
+            NodeLog.objects.create(
+                node=sibling,
+                level='WARNING',
+                message=f'Node cancelled due to failure in {failed_node.node_id}'
+            )
+            
+            logger.info(
+                f"Cancelled node {sibling.node_id} (was {sibling.status}) due to failure in {failed_node.node_id}"
+            )
+    
     def _skip_dependent_nodes(self, node: WorkflowNode):
         """Mark all downstream nodes as skipped due to upstream failure."""
         dependents = node.get_dependents()
         
         for dependent in dependents:
-            if dependent.status in ['pending', 'ready']:
+            if dependent.status in ['pending', 'ready', 'cancelled']:
                 dependent.status = 'skipped'
                 dependent.save(update_fields=['status'])
                 
@@ -296,9 +344,15 @@ class WorkflowOrchestrator:
         """Check if workflow is complete and update status."""
         nodes = workflow_run.nodes.all()
         
+        logger.info(f"_check_workflow_completion: Checking workflow {workflow_run.id}")
+        logger.info(f"  Node statuses: {[(n.node_id, n.status) for n in nodes]}")
+        
         # Check if all nodes are in terminal states
-        terminal_statuses = ['completed', 'failed', 'skipped']
-        if all(node.status in terminal_statuses for node in nodes):
+        terminal_statuses = ['completed', 'failed', 'skipped', 'cancelled']
+        all_terminal = all(node.status in terminal_statuses for node in nodes)
+        logger.info(f"  All nodes in terminal states? {all_terminal}")
+        
+        if all_terminal:
             # Workflow is done
             if all(node.status == 'completed' for node in nodes):
                 workflow_run.status = 'completed'
@@ -310,7 +364,7 @@ class WorkflowOrchestrator:
                 errors = [f"{n.node_id}: {n.error_message}" for n in failed_nodes]
                 workflow_run.error_message = "\n".join(errors)
             else:
-                workflow_run.status = 'completed'  # Some skipped but no failures
+                workflow_run.status = 'completed'  # Some skipped/cancelled but no failures
             
             workflow_run.completed_at = timezone.now()
             workflow_run.save(update_fields=[
@@ -372,6 +426,7 @@ class NodeExecutor:
         Execute the node's handler and return results.
         
         This should be called from within a Celery task.
+        Handles both sync and async handler functions.
         """
         self.log('INFO', 'Starting node execution')
         
@@ -382,8 +437,34 @@ class NodeExecutor:
             # Prepare input context
             input_context = self._prepare_input_context()
             
-            # Execute handler
-            result = handler_func(input_context)
+            # Execute handler (handle both sync and async functions)
+            import asyncio
+            import inspect
+            
+            if inspect.iscoroutinefunction(handler_func):
+                # Async handler - run with asyncio
+                result = asyncio.run(handler_func(input_context))
+            else:
+                # Sync handler - call directly
+                result = handler_func(input_context)
+            
+            # Save output_data if node returned something and hasn't saved it yet
+            # (Async nodes mark themselves as completed but don't save output_data)
+            if result and isinstance(result, dict):
+                self.node.refresh_from_db()
+                if not self.node.output_data:
+                    # Serialize Pydantic models to dicts for JSON storage
+                    from pydantic import BaseModel
+                    serialized_result = {}
+                    for key, value in result.items():
+                        if isinstance(value, BaseModel):
+                            serialized_result[key] = value.model_dump()
+                        else:
+                            serialized_result[key] = value
+                    
+                    self.node.output_data = serialized_result
+                    self.node.save(update_fields=['output_data'])
+                    self.log('INFO', f'Saved output_data with keys: {list(serialized_result.keys())}')
             
             self.log('INFO', 'Node execution completed successfully')
             return result
@@ -404,30 +485,62 @@ class NodeExecutor:
         """
         Prepare input context for the node handler.
         
-        Includes:
-        - Node's input_data
-        - Output from upstream dependencies
-        - Workflow run input_data
-        - Paper reference
+        For async nodes expecting PaperProcessingState, provides:
+        - workflow_run_id
+        - paper_id  
+        - current_node_id
+        - client, model (OpenAI)
+        - force_reprocess
+        - Upstream node outputs (merged into state)
         """
+        from openai import OpenAI
+        import os
+        
         workflow_run = self.node.workflow_run
         
         # Collect outputs from dependencies
         dependencies = self.node.get_dependencies()
-        upstream_outputs = {}
+        
+        # Prepare state matching PaperProcessingState structure
+        state = {
+            'workflow_run_id': str(workflow_run.id),
+            'paper_id': workflow_run.paper.id,
+            'current_node_id': self.node.node_id,
+            'client': OpenAI(api_key=os.getenv('OPENAI_API_KEY')),
+            'model': os.getenv('OPENAI_MODEL', 'gpt-4o-2024-08-06'),
+            'force_reprocess': workflow_run.input_data.get('force_reprocess', False),
+        }
+        
+        # Add upstream outputs to state
+        # Each node returns a dict like {'reproducibility_checklist_result': {...}}
+        # We merge all these dicts into the state
+        # Reconstruct Pydantic models from saved dicts
+        from webApp.services.pydantic_schemas import (
+            AggregatedReproducibilityAnalysis,
+            CodeReproducibilityAnalysis,
+            AggregatedDatasetDocumentationAnalysis,
+            PaperTypeClassification,
+        )
         
         for dep in dependencies:
-            upstream_outputs[dep.node_id] = dep.output_data
+            if dep.output_data:
+                for key, value in dep.output_data.items():
+                    # Reconstruct Pydantic models from dicts
+                    if isinstance(value, dict):
+                        if key == 'reproducibility_checklist_result':
+                            state[key] = AggregatedReproducibilityAnalysis(**value)
+                        elif key == 'code_reproducibility_result':
+                            state[key] = CodeReproducibilityAnalysis(**value)
+                        elif key == 'dataset_documentation_result':
+                            state[key] = AggregatedDatasetDocumentationAnalysis(**value)
+                        elif key == 'paper_type_result':
+                            state[key] = PaperTypeClassification(**value)
+                        else:
+                            state[key] = value
+                    else:
+                        state[key] = value
         
-        return {
-            'node_id': self.node.node_id,
-            'node_input': self.node.input_data,
-            'upstream_outputs': upstream_outputs,
-            'workflow_input': workflow_run.input_data,
-            'paper': workflow_run.paper,
-            'workflow_run_id': str(workflow_run.id),
-            'node': self.node,  # Pass node instance for artifact creation
-        }
+        return state
     
     def log(self, level: str, message: str, context: Dict = None):
         """Create a log entry for this node."""

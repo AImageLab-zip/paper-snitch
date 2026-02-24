@@ -1126,8 +1126,213 @@ function renderNodeDetails(node) {
         if (node.artifacts.result) {
             const result = node.artifacts.result;
             
+            // Check if it's a final aggregation (has overall_score, paper_checklist_score, executive_summary)
+            if (result.overall_score !== undefined && result.paper_checklist_score !== undefined && result.executive_summary) {
+                html += `
+                    <div class="card mb-3">
+                        <div class="card-header bg-success text-white">
+                            <h6 class="mb-0">
+                                <i class="fas fa-trophy mr-2"></i>
+                                Final Reproducibility Assessment
+                                <span class="badge badge-light text-success float-right">
+                                    Overall Score: ${result.overall_score}/100
+                                </span>
+                            </h6>
+                        </div>
+                        <div class="card-body">
+                `;
+                
+                // Component Scores Summary
+                html += `
+                    <div class="mb-3">
+                        <h6><i class="fas fa-chart-pie text-info mr-2"></i>Component Scores</h6>
+                        <table class="table table-sm table-bordered">
+                            <thead class="thead-light">
+                                <tr>
+                                    <th>Component</th>
+                                    <th style="width: 120px;">Score</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>Paper Checklist</td>
+                                    <td class="text-center">
+                                        <span class="badge ${result.paper_checklist_score >= 70 ? 'badge-success' : result.paper_checklist_score >= 40 ? 'badge-warning' : 'badge-danger'}">
+                                            ${result.paper_checklist_score.toFixed(1)}/100
+                                        </span>
+                                    </td>
+                                </tr>
+                `;
+                
+                if (result.has_code_analysis && result.code_analysis_score !== null) {
+                    html += `
+                                <tr>
+                                    <td>Code Analysis</td>
+                                    <td class="text-center">
+                                        <span class="badge ${result.code_analysis_score >= 70 ? 'badge-success' : result.code_analysis_score >= 40 ? 'badge-warning' : 'badge-danger'}">
+                                            ${result.code_analysis_score.toFixed(1)}/100
+                                        </span>
+                                    </td>
+                                </tr>
+                    `;
+                }
+                
+                if (result.has_dataset_analysis && result.dataset_documentation_score !== null) {
+                    html += `
+                                <tr>
+                                    <td>Dataset Documentation</td>
+                                    <td class="text-center">
+                                        <span class="badge ${result.dataset_documentation_score >= 70 ? 'badge-success' : result.dataset_documentation_score >= 40 ? 'badge-warning' : 'badge-danger'}">
+                                            ${result.dataset_documentation_score.toFixed(1)}/100
+                                        </span>
+                                    </td>
+                                </tr>
+                    `;
+                }
+                
+                html += `
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+                
+                // Executive Summary
+                html += `
+                    <div class="mb-3">
+                        <h6><i class="fas fa-file-alt text-primary mr-2"></i>Executive Summary</h6>
+                        <p>${escapeHtml(result.executive_summary)}</p>
+                    </div>
+                `;
+                
+                // Strengths
+                if (result.strengths && result.strengths.length > 0) {
+                    html += `
+                        <div class="mb-3">
+                            <h6><i class="fas fa-check-circle text-success mr-2"></i>Strengths</h6>
+                            <ul class="mb-0">
+                    `;
+                    result.strengths.forEach(strength => {
+                        html += `<li>${escapeHtml(strength)}</li>`;
+                    });
+                    html += `
+                            </ul>
+                        </div>
+                    `;
+                }
+                
+                // Weaknesses
+                if (result.weaknesses && result.weaknesses.length > 0) {
+                    html += `
+                        <div class="mb-3">
+                            <h6><i class="fas fa-exclamation-triangle text-danger mr-2"></i>Weaknesses</h6>
+                            <ul class="mb-0">
+                    `;
+                    result.weaknesses.forEach(weakness => {
+                        html += `<li>${escapeHtml(weakness)}</li>`;
+                    });
+                    html += `
+                            </ul>
+                        </div>
+                    `;
+                }
+                
+                // Recommendations
+                if (result.recommendations && result.recommendations.length > 0) {
+                    html += `
+                        <div class="mb-3">
+                            <h6><i class="fas fa-lightbulb text-warning mr-2"></i>Recommendations</h6>
+                            <ul class="mb-0">
+                    `;
+                    result.recommendations.forEach(rec => {
+                        html += `<li>${escapeHtml(rec)}</li>`;
+                    });
+                    html += `
+                            </ul>
+                        </div>
+                    `;
+                }
+                
+                // Detailed Evaluation Criteria (for comparison with human evaluation)
+                if (result.evaluation_details) {
+                    html += `
+                        <div class="mb-3">
+                            <h6><i class="fas fa-clipboard-list text-info mr-2"></i>Detailed Evaluation Criteria</h6>
+                            <p class="text-muted small mb-2">Complete structured evaluation data from all analysis components (for comparison with human evaluation)</p>
+                            <div class="accordion" id="evaluationDetailsAccordion">
+                    `;
+                    
+                    // Paper Checklist Details - All details including criteria and category scores
+                    if (result.evaluation_details.paper_checklist) {
+                        const criteriaCount = result.evaluation_details.paper_checklist.criteria ? result.evaluation_details.paper_checklist.criteria.length : 0;
+                        html += `
+                                <div class="card">
+                                    <div class="card-header p-2" id="paperChecklistHeader">
+                                        <button class="btn btn-link btn-sm btn-block text-left" type="button" data-toggle="collapse" data-target="#paperChecklistCollapse">
+                                            <i class="fas fa-file-alt mr-2"></i>Paper Checklist (${criteriaCount} criteria + scores)
+                                            <i class="fas fa-chevron-down float-right mt-1"></i>
+                                        </button>
+                                    </div>
+                                    <div id="paperChecklistCollapse" class="collapse" data-parent="#evaluationDetailsAccordion">
+                                        <div class="card-body p-2">
+                                            <pre class="mb-0" style="max-height: 400px; overflow-y: auto; font-size: 0.85em;">${JSON.stringify(result.evaluation_details.paper_checklist, null, 2)}</pre>
+                                        </div>
+                                    </div>
+                                </div>
+                        `;
+                    }
+                    
+                    // Code Analysis Details
+                    if (result.evaluation_details.code_analysis) {
+                        html += `
+                                <div class="card">
+                                    <div class="card-header p-2" id="codeAnalysisHeader">
+                                        <button class="btn btn-link btn-sm btn-block text-left" type="button" data-toggle="collapse" data-target="#codeAnalysisCollapse">
+                                            <i class="fas fa-code mr-2"></i>Code Analysis Criteria
+                                            <i class="fas fa-chevron-down float-right mt-1"></i>
+                                        </button>
+                                    </div>
+                                    <div id="codeAnalysisCollapse" class="collapse" data-parent="#evaluationDetailsAccordion">
+                                        <div class="card-body p-2">
+                                            <pre class="mb-0" style="max-height: 400px; overflow-y: auto; font-size: 0.85em;">${JSON.stringify(result.evaluation_details.code_analysis, null, 2)}</pre>
+                                        </div>
+                                    </div>
+                                </div>
+                        `;
+                    }
+                    
+                    // Dataset Documentation Details
+                    if (result.evaluation_details.dataset_documentation) {
+                        const datasetCriteriaCount = result.evaluation_details.dataset_documentation.criteria ? result.evaluation_details.dataset_documentation.criteria.length : 0;
+                        html += `
+                                <div class="card">
+                                    <div class="card-header p-2" id="datasetDocsHeader">
+                                        <button class="btn btn-link btn-sm btn-block text-left" type="button" data-toggle="collapse" data-target="#datasetDocsCollapse">
+                                            <i class="fas fa-database mr-2"></i>Dataset Documentation (${datasetCriteriaCount} criteria + scores)
+                                            <i class="fas fa-chevron-down float-right mt-1"></i>
+                                        </button>
+                                    </div>
+                                    <div id="datasetDocsCollapse" class="collapse" data-parent="#evaluationDetailsAccordion">
+                                        <div class="card-body p-2">
+                                            <pre class="mb-0" style="max-height: 400px; overflow-y: auto; font-size: 0.85em;">${JSON.stringify(result.evaluation_details.dataset_documentation, null, 2)}</pre>
+                                        </div>
+                                    </div>
+                                </div>
+                        `;
+                    }
+                    
+                    html += `
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                html += `
+                        </div>
+                    </div>
+                `;
+            }
             // Check if it's a code reproducibility analysis
-            if (result.reproducibility_score !== undefined) {
+            else if (result.reproducibility_score !== undefined) {
                 html += `
                     <div class="card mb-3">
                         <div class="card-header bg-primary text-white">
@@ -1135,7 +1340,7 @@ function renderNodeDetails(node) {
                                 <i class="fas fa-chart-bar mr-2"></i>
                                 Code Reproducibility Analysis
                                 <span class="badge badge-light text-primary float-right">
-                                    Score: ${result.reproducibility_score}/10
+                                    Score: ${result.reproducibility_score}/100
                                 </span>
                             </h6>
                         </div>
@@ -1212,28 +1417,24 @@ function renderNodeDetails(node) {
                             `;
                         } else {
                             // Show applicable components with progress bars
-                            const percentage = (value / 10 * 100).toFixed(0);
-                            const maxScore = key === 'code_completeness' ? (requiresTraining ? 3.0 : 2.5) : 
-                                           key === 'artifacts' ? 2.5 :
-                                           key === 'dataset_splits' ? 2.0 :
-                                           key === 'dependencies' ? 1.0 : 2.0;
-                            const relativePercentage = (value / maxScore * 100).toFixed(0);
-                            const scoreText = `${value.toFixed(1)}/${maxScore.toFixed(1)}`;
+                            // Note: All scores are now normalized to 0-100 scale
+                            const percentage = value.toFixed(0);
+                            const scoreText = `${value.toFixed(1)}/100`;
                             
                             html += `
                                 <tr>
                                     <td style="vertical-align: middle;">${componentName}</td>
                                     <td style="position: relative; vertical-align: middle; padding: 0.5rem;">
                                         <div class="progress" style="height: 20px;">
-                                            <div class="progress-bar ${value >= maxScore * 0.7 ? 'bg-success' : value >= maxScore * 0.4 ? 'bg-warning' : 'bg-danger'}" 
+                                            <div class="progress-bar ${value >= 70 ? 'bg-success' : value >= 40 ? 'bg-warning' : 'bg-danger'}" 
                                                  role="progressbar" 
-                                                 style="width: ${Math.max(relativePercentage, 5)}%"
+                                                 style="width: ${Math.max(percentage, 5)}%"
                                                  aria-valuenow="${value}" 
                                                  aria-valuemin="0" 
-                                                 aria-valuemax="${maxScore}">
+                                                 aria-valuemax="100">
                                             </div>
                                         </div>
-                                        <span style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-weight: 500; font-family: monospace; color: ${relativePercentage > 50 ? '#fff' : '#333'};">
+                                        <span style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-weight: 500; font-family: monospace; color: ${percentage > 50 ? '#fff' : '#333'};">
                                             ${scoreText}
                                         </span>
                                     </td>

@@ -317,6 +317,37 @@ async def section_embeddings_node(state: PaperProcessingState) -> Dict[str, Any]
             f"Node D: Section embeddings completed. Processed {len(processed_sections)} sections, "
             f"{total_tokens} tokens"
         )
+        
+        # Immediately mark skipped nodes based on paper type (progressive skipping)
+        # This ensures downstream nodes can become 'ready' as soon as dependencies are met
+        paper_type_result = state.get("paper_type_result")
+        if paper_type_result:
+            workflow_run_id = state.get("workflow_run_id")
+            if paper_type_result.paper_type == "theoretical":
+                # Theoretical papers skip all code and dataset analysis
+                skipped_nodes = [
+                    "dataset_documentation_check",
+                    "code_availability_check",
+                    "code_embedding",
+                    "code_repository_analysis",
+                ]
+                for node_id in skipped_nodes:
+                    skip_node = await async_ops.get_workflow_node(workflow_run_id, node_id)
+                    if skip_node and skip_node.status == "pending":
+                        await async_ops.update_node_status(skip_node, "skipped")
+                        await async_ops.create_node_log(
+                            skip_node, "INFO", "Skipped (theoretical paper - no code/dataset analysis)"
+                        )
+                        logger.info(f"Marked {node_id} as skipped (theoretical paper)")
+            elif paper_type_result.paper_type == "method":
+                # Method-only papers skip dataset documentation
+                skip_node = await async_ops.get_workflow_node(workflow_run_id, "dataset_documentation_check")
+                if skip_node and skip_node.status == "pending":
+                    await async_ops.update_node_status(skip_node, "skipped")
+                    await async_ops.create_node_log(
+                        skip_node, "INFO", "Skipped (method-only paper - no dataset)"
+                    )
+                    logger.info("Marked dataset_documentation_check as skipped (method-only paper)")
 
         return {"section_embeddings_result": result}
 
@@ -326,7 +357,4 @@ async def section_embeddings_node(state: PaperProcessingState) -> Dict[str, Any]
         await async_ops.update_node_status(
             node, "failed", completed_at=timezone.now(), error_message=str(e)
         )
-
-        # Add error to state
-        state["errors"].append(f"Node D (section_embeddings): {str(e)}")
-        return {"section_embeddings_result": None}
+        raise

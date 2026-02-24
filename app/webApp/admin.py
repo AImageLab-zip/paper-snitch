@@ -18,6 +18,8 @@ from .models import (
     PaperSectionEmbedding,
     CodeFileEmbedding,
     ReproducibilityAspectEmbedding,
+    ReproducibilityChecklistCriterion,
+    DatasetDocumentationCriterion,
 )
 from .models_schema import DatabaseSchema
 
@@ -555,6 +557,89 @@ class ReproducibilityAspectEmbeddingAdmin(admin.ModelAdmin):
         
         return format_html(
             '<div style="font-family: monospace; font-size: 11px;">'
+            'Dimension: {} | Preview: {}'
+            '</div>',
+            len(embedding),
+            str(preview)
+        )
+    embedding_preview.short_description = "Embedding Preview"
+
+@admin.register(ReproducibilityChecklistCriterion)
+class ReproducibilityChecklistCriterionAdmin(admin.ModelAdmin):
+    list_display = ('criterion_number', 'criterion_id', 'criterion_name', 'category', 'embedding_model', 'created_at')
+    list_filter = ('category', 'embedding_model', 'created_at')
+    search_fields = ('criterion_id', 'criterion_name', 'description')
+    readonly_fields = ('created_at', 'updated_at', 'embedding_dimension', 'embedding_preview')
+    ordering = ('criterion_number',)
+    
+    fieldsets = (
+        ('Criterion Information', {
+            'fields': ('criterion_number', 'criterion_id', 'criterion_name', 'category', 'description', 'criterion_context')
+        }),
+        ('Embedding Information', {
+            'fields': ('embedding_model', 'embedding_dimension', 'embedding_preview')
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def embedding_preview(self, obj):
+        """Show first few and last few dimensions of embedding."""
+        if not obj.embedding:
+            return "No embedding"
+        
+        embedding = obj.embedding
+        if len(embedding) > 10:
+            preview = embedding[:5] + ['...'] + embedding[-5:]
+        else:
+            preview = embedding
+        
+        return format_html(
+            '<div style="font-family: monospace; font-size: 11px;">'  
+            'Dimension: {} | Preview: {}'
+            '</div>',
+            len(embedding),
+            str(preview)
+        )
+    embedding_preview.short_description = "Embedding Preview"
+
+
+@admin.register(DatasetDocumentationCriterion)
+class DatasetDocumentationCriterionAdmin(admin.ModelAdmin):
+    list_display = ('criterion_number', 'criterion_id', 'criterion_name', 'category', 'embedding_model', 'created_at')
+    list_filter = ('category', 'embedding_model', 'created_at')
+    search_fields = ('criterion_id', 'criterion_name', 'description')
+    readonly_fields = ('created_at', 'updated_at', 'embedding_dimension', 'embedding_preview')
+    ordering = ('criterion_number',)
+    
+    fieldsets = (
+        ('Criterion Information', {
+            'fields': ('criterion_number', 'criterion_id', 'criterion_name', 'category', 'description', 'criterion_context')
+        }),
+        ('Embedding Information', {
+            'fields': ('embedding_model', 'embedding_dimension', 'embedding_preview')
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def embedding_preview(self, obj):
+        """Show first few and last few dimensions of embedding."""
+        if not obj.embedding:
+            return "No embedding"
+        
+        embedding = obj.embedding
+        if len(embedding) > 10:
+            preview = embedding[:5] + ['...'] + embedding[-5:]
+        else:
+            preview = embedding
+        
+        return format_html(
+            '<div style="font-family: monospace; font-size: 11px;">'  
             'Dimension: {} | Preview: {}'
             '</div>',
             len(embedding),

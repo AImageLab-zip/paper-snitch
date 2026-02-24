@@ -46,6 +46,9 @@ class AsyncWorkflowOperations:
         """
         Get or create a workflow definition.
         
+        When creating a new version, automatically deactivates all previous versions
+        of the same workflow to ensure only the latest version is active.
+        
         Args:
             name: Unique workflow name
             dag_structure: DAG structure with nodes and edges
@@ -66,7 +69,18 @@ class AsyncWorkflowOperations:
         )
         
         if created:
-            logger.info(f"Created new workflow definition: {name}")
+            # Deactivate all previous versions of this workflow
+            deactivated_count = WorkflowDefinition.objects.filter(
+                name=name,
+                is_active=True
+            ).exclude(
+                version=version
+            ).update(is_active=False)
+            
+            if deactivated_count > 0:
+                logger.info(f"Created new workflow definition: {name} v{version}, deactivated {deactivated_count} previous version(s)")
+            else:
+                logger.info(f"Created new workflow definition: {name} v{version}")
         
         return workflow
     

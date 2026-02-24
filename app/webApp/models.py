@@ -881,3 +881,181 @@ class ReproducibilityAspectEmbedding(models.Model):
             return 0.0
         
         return float(dot_product / (norm_a * norm_b))
+
+
+class ReproducibilityChecklistCriterion(models.Model):
+    """
+    Stores permanent vector embeddings for MICCAI reproducibility checklist criteria.
+    These are global embeddings used to retrieve relevant paper sections for each criterion.
+    Excludes code-related criteria (12-17) which are handled by Node C.
+    """
+    criterion_id = models.CharField(
+        max_length=50,
+        unique=True,
+        help_text='Unique identifier (e.g., mathematical_description, dataset_statistics)'
+    )
+    criterion_number = models.IntegerField(
+        help_text='Criterion number (1-26, excluding 12-17 for code-related)'
+    )
+    criterion_name = models.CharField(
+        max_length=200,
+        help_text='Human-readable name of the criterion'
+    )
+    category = models.CharField(
+        max_length=50,
+        help_text='Category: models, datasets, experiments'
+    )
+    description = models.TextField(
+        help_text='Detailed description of the criterion'
+    )
+    criterion_context = models.TextField(
+        help_text='Full context text used to generate the embedding (includes description + queries)'
+    )
+    embedding = models.JSONField(
+        help_text='Vector embedding as JSON array'
+    )
+    embedding_model = models.CharField(
+        max_length=50,
+        default='text-embedding-3-small',
+        help_text='OpenAI model used for embedding'
+    )
+    embedding_dimension = models.IntegerField(
+        default=1536,
+        help_text='Dimension of the embedding vector'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'reproducibility_checklist_criteria'
+        indexes = [
+            models.Index(fields=['criterion_id'], name='idx_criterion_id'),
+            models.Index(fields=['category'], name='idx_criterion_category'),
+        ]
+        ordering = ['criterion_number']
+        verbose_name = 'Reproducibility Checklist Criterion'
+        verbose_name_plural = 'Reproducibility Checklist Criteria'
+
+    def __str__(self):
+        return f"Criterion {self.criterion_number}: {self.criterion_name}"
+    
+    def compute_cosine_similarity(self, other_embedding: list) -> float:
+        """
+        Compute cosine similarity between this criterion embedding and another.
+        
+        Args:
+            other_embedding: List of floats representing another embedding
+            
+        Returns:
+            Cosine similarity score (0 to 1)
+        """
+        import numpy as np
+        
+        if not isinstance(self.embedding, list) or not isinstance(other_embedding, list):
+            raise ValueError("Embeddings must be lists")
+        
+        if len(self.embedding) != len(other_embedding):
+            raise ValueError(f"Embedding dimensions must match: {len(self.embedding)} vs {len(other_embedding)}")
+        
+        # Convert to numpy arrays
+        a = np.array(self.embedding)
+        b = np.array(other_embedding)
+        
+        # Compute cosine similarity
+        dot_product = np.dot(a, b)
+        norm_a = np.linalg.norm(a)
+        norm_b = np.linalg.norm(b)
+        
+        if norm_a == 0 or norm_b == 0:
+            return 0.0
+        
+        return float(dot_product / (norm_a * norm_b))
+
+
+class DatasetDocumentationCriterion(models.Model):
+    """
+    Stores permanent vector embeddings for dataset documentation criteria.
+    These are global embeddings used to retrieve relevant paper sections for each criterion.
+    Used for evaluating dataset and both papers (Node E).
+    """
+    criterion_id = models.CharField(
+        max_length=50,
+        unique=True,
+        help_text='Unique identifier (e.g., data_collection_described, annotation_protocol)'
+    )
+    criterion_number = models.IntegerField(
+        help_text='Criterion number (1-10)'
+    )
+    criterion_name = models.CharField(
+        max_length=200,
+        help_text='Human-readable name of the criterion'
+    )
+    category = models.CharField(
+        max_length=50,
+        help_text='Category: data_collection, annotation, ethics_availability'
+    )
+    description = models.TextField(
+        help_text='Detailed description of the criterion'
+    )
+    criterion_context = models.TextField(
+        help_text='Full context text used to generate the embedding'
+    )
+    embedding = models.JSONField(
+        help_text='Vector embedding as JSON array'
+    )
+    embedding_model = models.CharField(
+        max_length=50,
+        default='text-embedding-3-small',
+        help_text='OpenAI model used for embedding'
+    )
+    embedding_dimension = models.IntegerField(
+        default=1536,
+        help_text='Dimension of the embedding vector'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'dataset_documentation_criteria'
+        indexes = [
+            models.Index(fields=['criterion_id'], name='idx_dataset_crit_id'),
+            models.Index(fields=['category'], name='idx_dataset_category'),
+        ]
+        ordering = ['criterion_number']
+        verbose_name = 'Dataset Documentation Criterion'
+        verbose_name_plural = 'Dataset Documentation Criteria'
+
+    def __str__(self):
+        return f"Dataset Criterion {self.criterion_number}: {self.criterion_name}"
+    
+    def compute_cosine_similarity(self, other_embedding: list) -> float:
+        """
+        Compute cosine similarity between this criterion embedding and another.
+        
+        Args:
+            other_embedding: List of floats representing another embedding
+            
+        Returns:
+            Cosine similarity score (0 to 1)
+        """
+        import numpy as np
+        
+        if not isinstance(self.embedding, list) or not isinstance(other_embedding, list):
+            raise ValueError("Embeddings must be lists")
+        
+        if len(self.embedding) != len(other_embedding):
+            raise ValueError(f"Embedding dimensions must match: {len(self.embedding)} vs {len(other_embedding)}")
+        
+        # Convert to numpy arrays
+        a = np.array(self.embedding)
+        b = np.array(other_embedding)
+        
+        # Compute cosine similarity
+        dot_product = np.dot(a, b)
+        norm_a = np.linalg.norm(a)
+        norm_b = np.linalg.norm(b)
+        
+        if norm_a == 0 or norm_b == 0:
+            return 0.0
+        
+        return float(dot_product / (norm_a * norm_b))

@@ -444,9 +444,17 @@ class WorkflowNode(models.Model):
         )
     
     def dependencies_met(self) -> bool:
-        """Check if all upstream dependencies have completed successfully."""
+        """
+        Check if all upstream dependencies have completed successfully or been skipped.
+        
+        A dependency is considered "met" if it is either:
+        - 'completed': Successfully executed
+        - 'skipped': Intentionally bypassed due to routing logic
+        
+        Pending, running, claimed, or failed nodes do NOT count as met.
+        """
         dependencies = self.get_dependencies()
-        return all(dep.status == 'completed' for dep in dependencies)
+        return all(dep.status in ['completed', 'skipped'] for dep in dependencies)
     
     def get_dependents(self) -> List['WorkflowNode']:
         """Get downstream dependent nodes."""

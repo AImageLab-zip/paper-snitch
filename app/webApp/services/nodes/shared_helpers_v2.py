@@ -284,15 +284,15 @@ Generate a JSON with:
             documentation_obj,
         )
         
-        logger.info(f"Computed reproducibility score: {score}/10")
+        logger.info(f"Computed reproducibility score: {score}/100")
         logger.info(f"Score breakdown: {breakdown}")
         
         if node:
-            breakdown_text = "\n".join(f"  • {k}: {v}/10" for k, v in breakdown.items())
+            breakdown_text = "\n".join(f"  • {k}: {v}/100" for k, v in breakdown.items())
             await async_ops.create_node_log(
                 node,
                 "INFO",
-                f"Reproducibility score: {score}/10\n\nBreakdown:\n{breakdown_text}",
+                f"Reproducibility score: {score}/100\n\nBreakdown:\n{breakdown_text}",
             )
             
             if recommendations:

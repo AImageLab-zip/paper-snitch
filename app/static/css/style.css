@@ -620,8 +620,13 @@ body ::selection {
   color: #2e2e2e;
 }
 
-.badge-cancelled, .badge-skipped {
+.badge-cancelled {
   background: linear-gradient(135deg, #7d7d7d 0%, #a0a0a0 100%);
+  color: white;
+}
+
+.badge-skipped {
+  background: linear-gradient(135deg, #8e44ad 0%, #9b59b6 100%);
   color: white;
 }
 

@@ -44,6 +44,48 @@ async def code_repository_analysis_node(
 
     # Get workflow node
     node = await async_ops.get_workflow_node(state["workflow_run_id"], node_id)
+    
+    logger.info(f"Node status on entry: {node.status}")
+
+    # Early exit if node is already marked as skipped (progressive skipping)
+    if node.status == "skipped":
+        logger.info(f"Node already marked as skipped - exiting early (progressive skipping)")
+        # Pass through state so final_aggregation has context
+        return {
+            "code_reproducibility_result": None,
+            "code_availability_result": state.get("code_availability_result"),
+            "code_embedding_result": state.get("code_embedding_result")
+        }
+
+    # Early exit if code is not available (should have been caught by progressive skipping)
+    code_availability = state.get("code_availability_result")
+    logger.info(f"Code availability in state: {code_availability is not None}, code_available={code_availability.code_available if code_availability else 'N/A'}")
+    
+    if not code_availability or not code_availability.code_available:
+        logger.warning(f"Code not available for paper {state['paper_id']} - marking as skipped")
+        await async_ops.update_node_status(node, "skipped")
+        await async_ops.create_node_log(node, "INFO", "Skipped (no code repository available)")
+        # Pass through state so final_aggregation has context
+        return {
+            "code_reproducibility_result": None,
+            "code_availability_result": code_availability,
+            "code_embedding_result": state.get("code_embedding_result")
+        }
+
+    # Early exit if code embedding is missing (should have been caught by progressive skipping)
+    code_embedding = state.get("code_embedding_result")
+    logger.info(f"Code embedding in state: {code_embedding is not None}")
+    
+    if not code_embedding:
+        logger.warning(f"Code embedding not available for paper {state['paper_id']} - marking as skipped")
+        await async_ops.update_node_status(node, "skipped")
+        await async_ops.create_node_log(node, "INFO", "Skipped (code embedding not available)")
+        # Pass through state so final_aggregation has context
+        return {
+            "code_reproducibility_result": None,
+            "code_availability_result": code_availability,
+            "code_embedding_result": None
+        }
 
     # Update node status to running
     await async_ops.update_node_status(node, "running", started_at=timezone.now())
@@ -205,7 +247,7 @@ async def code_repository_analysis_node(
         await async_ops.create_node_log(
             node,
             "INFO",
-            f"Analysis complete - Score: {analysis.reproducibility_score}/10",
+            f"Analysis complete - Score: {analysis.reproducibility_score}/100",
             {"score_breakdown": analysis.score_breakdown},
         )
 
@@ -254,4 +296,4 @@ async def code_repository_analysis_node(
 
     except Exception as e:
         logger.error(f"Error in code reproducibility analysis: {e}", exc_info=True)
-        return {"errors": state["errors"] + [f"Node C error: {str(e)}"]}
+        raise

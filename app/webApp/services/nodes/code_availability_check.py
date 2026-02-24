@@ -522,6 +522,19 @@ Respond with your assessment."""
             },
         )
 
+        # Immediately mark code nodes as skipped if no code available (progressive skipping)
+        # This ensures final_aggregation can become 'ready' as soon as all its dependencies are met
+        if not result.code_available:
+            workflow_run_id = state.get("workflow_run_id")
+            for node_id in ["code_embedding", "code_repository_analysis"]:
+                skip_node = await async_ops.get_workflow_node(workflow_run_id, node_id)
+                if skip_node and skip_node.status == "pending":
+                    await async_ops.update_node_status(skip_node, "skipped")
+                    await async_ops.create_node_log(
+                        skip_node, "INFO", "Skipped (no code repository available)"
+                    )
+                    logger.info(f"Marked {node_id} as skipped (no code available)")
+
         return {"code_availability_result": result}
 
     except Exception as e:

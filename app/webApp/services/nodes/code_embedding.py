@@ -127,6 +127,27 @@ async def code_embedding_node(state: PaperProcessingState) -> Dict[str, Any]:
     # Get workflow node
     node = await async_ops.get_workflow_node(state["workflow_run_id"], node_id)
 
+    # Early exit if node is already marked as skipped (progressive skipping)
+    if node.status == "skipped":
+        logger.info(f"Node already marked as skipped - exiting early (progressive skipping)")
+        # Pass through code_availability_result so downstream nodes have access to it
+        return {
+            "code_embedding_result": None,
+            "code_availability_result": state.get("code_availability_result")
+        }
+
+    # Early exit if code is not available (should have been caught by progressive skipping)
+    code_availability = state.get("code_availability_result")
+    if not code_availability or not code_availability.code_available:
+        logger.info(f"Code not available for paper {state['paper_id']} - marking as skipped")
+        await async_ops.update_node_status(node, "skipped")
+        await async_ops.create_node_log(node, "INFO", "Skipped (no code repository available)")
+        # Pass through code_availability_result so downstream nodes have access to it
+        return {
+            "code_embedding_result": None,
+            "code_availability_result": code_availability
+        }
+
     # Update node status to running
     await async_ops.update_node_status(node, "running", started_at=timezone.now())
     await async_ops.create_node_log(
@@ -183,12 +204,17 @@ async def code_embedding_node(state: PaperProcessingState) -> Dict[str, Any]:
                 "Node F called without code availability - this indicates routing issue"
             )
             await async_ops.create_node_log(
-                node, "ERROR", "Code not available - cannot compute embeddings"
+                node, "WARNING", "Code not available - skipping embeddings"
             )
             await async_ops.update_node_status(
-                node, "failed", completed_at=timezone.now()
+                node, "completed", completed_at=timezone.now()
             )
-            return {"errors": state["errors"] + ["Node F error: Code not available"]}
+            # Return empty result - code_embedding is optional
+            return {
+                "code_embedding_result": None,
+                "total_files": 0,
+                "total_chunks": 0
+            }
 
         code_url = code_availability.code_url
         paper = await async_ops.get_paper(state["paper_id"])
@@ -494,4 +520,4 @@ Generate the output ready to be transformed into a Python list of strings.
         await async_ops.update_node_status(
             node, "failed", completed_at=timezone.now()
         )
-        return {"errors": state["errors"] + [f"Node F error: {str(e)}"]}
+        raise
