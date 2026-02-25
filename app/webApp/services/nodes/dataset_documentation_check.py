@@ -625,7 +625,7 @@ def _generate_programmatic_assessment(
     # Specific recommendations from critical gaps
     for analysis in critical_gaps[:3]:
         recommendations.append(
-            f"Add {analysis.criterion_name}: {analysis.description[:70]}..."
+            f"Add {analysis.criterion_name} ..."
         )
     
     # Fill with important missing criteria
