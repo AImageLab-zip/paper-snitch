@@ -152,7 +152,7 @@ class BaseWorkflowGraph(ABC):
         paper_id: int,
         force_reprocess: bool = False,
         openai_api_key: Optional[str] = None,
-        model: str = "gpt-4o",
+        model: str = "gpt-5",
     ) -> Dict[str, Any]:
         """
         Execute the complete workflow for a paper.
@@ -173,7 +173,7 @@ class BaseWorkflowGraph(ABC):
         node_uuid: str,
         force_reprocess: bool = True,
         openai_api_key: Optional[str] = None,
-        model: str = "gpt-4o",
+        model: str = "gpt-5",
     ) -> Dict[str, Any]:
         """
         Execute a single node in isolation by re-running it within its existing workflow run.
@@ -331,7 +331,7 @@ class BaseWorkflowGraph(ABC):
         self,
         node_uuid: str,
         openai_api_key: Optional[str] = None,
-        model: str = "gpt-4o",
+        model: str = "gpt-5",
         force_reprocess: bool = True,
     ) -> Dict[str, Any]:
         """

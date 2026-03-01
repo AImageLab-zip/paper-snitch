@@ -307,6 +307,7 @@ Generate the output ready to be transformed into a Python list of strings.
                 {"role": "user", "content": code_info_prompt},
             ],
             text_format=PatternExtraction,
+            reasoning={"effort":"minimal"},
         )
         retrieved_patterns = response.output_parsed
         total_input_tokens += response.usage.input_tokens

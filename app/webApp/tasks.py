@@ -391,7 +391,7 @@ def run_analysis_celery_task(self, task_id):
 
 
 @shared_task(bind=True, max_retries=0, time_limit=600, ignore_result=True)
-def process_paper_workflow_task(self, paper_id: int, force_reprocess: bool = True, model: str = "gpt-4o", workflow_id: int = None):
+def process_paper_workflow_task(self, paper_id: int, force_reprocess: bool = True, model: str = "gpt-5", workflow_id: int = None):
     """
     Celery task to process a paper workflow.
     

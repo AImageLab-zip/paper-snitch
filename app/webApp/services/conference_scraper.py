@@ -81,7 +81,7 @@ class ConferenceScraper:
             schema = JsonCssExtractionStrategy.generate_schema(
                 html=html_sample,
                 llm_config=LLMConfig(
-                    provider="openai/gpt-4o",
+                    provider="openai/gpt-5",
                     api_token=os.getenv("OPENAI_API_KEY"),
                 ),
                 query=f"From {self.conference_url}, extract paper listings with: title, authors list, and link to paper details/reviews",

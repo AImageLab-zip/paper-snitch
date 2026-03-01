@@ -328,7 +328,7 @@ can be truly replicated with the same dataset splits.
 ```
 
 **LLM Configuration:**
-- Model: GPT-4o (or user-specified)
+- Model: gpt-5 (or user-specified)
 - Temperature: 0.3 (balanced creativity/determinism)
 - Max tokens: 4000
 - Output: Long-form narrative text
@@ -359,7 +359,7 @@ Include all required fields with evidence-based values.
 ```
 
 **LLM Configuration:**
-- Model: GPT-4o
+- Model: gpt-5
 - Temperature: 0.0 (maximum determinism)
 - Response format: `json_object`
 - Max tokens: 2000
@@ -1110,7 +1110,7 @@ python manage.py process_paper 25
 python manage.py process_paper 25 --force
 
 # Different model
-python manage.py process_paper 25 --model gpt-4o-mini
+python manage.py process_paper 25 --model gpt-5-mini
 
 # View history
 python manage.py process_paper 25 --history
@@ -1138,7 +1138,7 @@ from webApp.services.paper_processing_workflow import process_paper_workflow
 result = await process_paper_workflow(
     paper_id=25,
     force_reprocess=True,
-    model="gpt-4o"
+    model="gpt-5"
 )
 
 # Check result

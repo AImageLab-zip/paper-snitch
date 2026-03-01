@@ -147,7 +147,7 @@ class CodeAvailabilityWorkflow(BaseWorkflowGraph):
         paper_id: int,
         force_reprocess: bool = False,
         openai_api_key: Optional[str] = None,
-        model: str = "gpt-4o",
+        model: str = "gpt-5",
     ) -> Dict[str, Any]:
         """
         Execute the code availability workflow for a paper.
@@ -156,7 +156,7 @@ class CodeAvailabilityWorkflow(BaseWorkflowGraph):
             paper_id: Database ID of the paper to process
             force_reprocess: If True, bypass cache and reprocess all nodes
             openai_api_key: OpenAI API key (uses env var if not provided)
-            model: OpenAI model to use (default: gpt-4o)
+            model: OpenAI model to use (default: gpt-5)
 
         Returns:
             Dictionary with workflow results including:
@@ -331,7 +331,7 @@ async def execute_workflow(
     paper_id: int,
     force_reprocess: bool = False,
     openai_api_key: Optional[str] = None,
-    model: str = "gpt-4o",
+    model: str = "gpt-5",
 ) -> Dict[str, Any]:
     """
     Execute the code availability workflow for a paper.
@@ -347,7 +347,7 @@ async def execute_a_node(
     node_uuid: str,
     force_reprocess: bool = True,
     openai_api_key: Optional[str] = None,
-    model: str = "gpt-4o",
+    model: str = "gpt-5",
 ) -> Dict[str, Any]:
     """
     Execute a single node in isolation.
@@ -362,7 +362,7 @@ async def execute_a_node(
 async def execute_from_node(
     node_uuid: str,
     openai_api_key: Optional[str] = None,
-    model: str = "gpt-4o",
+    model: str = "gpt-5",
 ) -> Dict[str, Any]:
     """
     Execute workflow from a specific node onwards.

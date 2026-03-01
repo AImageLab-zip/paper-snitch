@@ -42,8 +42,8 @@ class Command(BaseCommand):
         parser.add_argument(
             "--model",
             type=str,
-            default="gpt-4o",
-            help="OpenAI model to use (default: gpt-4o)",
+            default="gpt-5",
+            help="OpenAI model to use (default: gpt-5)",
         )
         parser.add_argument(
             "--max-concurrent",

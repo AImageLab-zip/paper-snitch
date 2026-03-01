@@ -560,7 +560,7 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
         paper_id: int,
         force_reprocess: bool = False,
         openai_api_key: Optional[str] = None,
-        model: str = "gpt-4o",
+        model: str = "gpt-5",
         user_id: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
@@ -879,7 +879,7 @@ async def execute_workflow(
     paper_id: int,
     force_reprocess: bool = False,
     openai_api_key: Optional[str] = None,
-    model: str = "gpt-4o",
+    model: str = "gpt-5",
 ) -> Dict[str, Any]:
     """
     Execute the complete paper processing workflow.
@@ -896,7 +896,7 @@ async def process_paper_workflow(
     paper_id: int,
     force_reprocess: bool = False,
     openai_api_key: Optional[str] = None,
-    model: str = "gpt-4o",
+    model: str = "gpt-5",
     user_id: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
@@ -914,7 +914,7 @@ async def execute_a_node(
     node_uuid: str,
     force_reprocess: bool = True,
     openai_api_key: Optional[str] = None,
-    model: str = "gpt-4o",
+    model: str = "gpt-5",
 ) -> Dict[str, Any]:
     """
     Execute a single node in isolation.
@@ -929,7 +929,7 @@ async def execute_a_node(
 async def execute_from_node(
     node_uuid: str,
     openai_api_key: Optional[str] = None,
-    model: str = "gpt-4o",
+    model: str = "gpt-5",
     force_reprocess: bool = True,
 ) -> Dict[str, Any]:
     """

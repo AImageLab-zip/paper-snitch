@@ -507,7 +507,7 @@ class NodeExecutor:
             'paper_id': workflow_run.paper.id,
             'current_node_id': self.node.node_id,
             'client': OpenAI(api_key=os.getenv('OPENAI_API_KEY')),
-            'model': os.getenv('OPENAI_MODEL', 'gpt-4o-2024-08-06'),
+            'model': os.getenv('OPENAI_MODEL', 'gpt-5'),
             'force_reprocess': workflow_run.input_data.get('force_reprocess', False),
         }
         

@@ -11,7 +11,7 @@ The system is implemented as a distributed web application built on **Django 5.2
 - **Task Queue**: Celery 5.x with Redis as message broker
 - **Database**: MySQL 8.0 with InnoDB engine (ACID compliance, row-level locking)
 - **Vector Operations**: NumPy 2.3.4, SciPy 1.16.3
-- **LLM Integration**: OpenAI Python SDK 2.7.2 (GPT-4o models via litellm 1.79.3)
+- **LLM Integration**: OpenAI Python SDK 2.7.2 (gpt-5 models via litellm 1.79.3)
 - **Embeddings**: OpenAI text-embedding-3-small (1536 dimensions)
 - **Document Processing**: PyPDF 6.2.0, GROBID 0.8.0 (TEI-XML extraction)
 - **Web Scraping**: Crawl4AI 0.7.6, Beautiful Soup 4.14.2
@@ -273,7 +273,7 @@ class PaperProcessingState(TypedDict):
     
     # LLM configuration
     client: OpenAI
-    model: str  # "gpt-4o-2024-11-20"
+    model: str  # "gpt-5-2024-11-20"
     
     # Control flags
     force_reprocess: bool  # Bypass cache
@@ -1434,7 +1434,7 @@ def compute_workflow_tokens(workflow_run: WorkflowRun) -> Dict[str, int]:
 
 ### 8.3 Cost Estimation
 
-**GPT-4o Pricing (as of February 2026):**
+**gpt-5 Pricing (as of February 2026):**
 - Input: $2.50 per 1M tokens
 - Output: $10.00 per 1M tokens
 - Cached input: $1.25 per 1M tokens (50% discount)

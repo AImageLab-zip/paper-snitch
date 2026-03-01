@@ -38,7 +38,7 @@
     "pk": 3,
     "fields": {
       "model_key": "gpt51_think",
-      "visual_name": "GPT-5.1 Thinking",
+      "visual_name": "gpt-5.1 Thinking",
       "model": "gpt-5.1",
       "api_key_env_var": "OPENAI_API_KEY",
       "base_url": "https://api.openai.com/v1",
@@ -55,7 +55,7 @@
     "pk": 4,
     "fields": {
       "model_key": "gpt51",
-      "visual_name": "GPT-5.1",
+      "visual_name": "gpt-5.1",
       "model": "gpt-5.1",
       "api_key_env_var": "OPENAI_API_KEY",
       "base_url": "https://api.openai.com/v1",
@@ -72,7 +72,7 @@
     "pk": 5,
     "fields": {
       "model_key": "gpt5_mini",
-      "visual_name": "GPT-5 Mini",
+      "visual_name": "gpt-5 Mini",
       "model": "gpt-5-mini",
       "api_key_env_var": "OPENAI_API_KEY",
       "base_url": "https://api.openai.com/v1",
@@ -89,7 +89,7 @@
     "pk": 6,
     "fields": {
       "model_key": "gpt5_nano",
-      "visual_name": "GPT-5 Nano",
+      "visual_name": "gpt-5 Nano",
       "model": "gpt-5-nano",
       "api_key_env_var": "OPENAI_API_KEY",
       "base_url": "https://api.openai.com/v1",
