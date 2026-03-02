@@ -91,6 +91,7 @@ services:
       - ./certbot/conf:/etc/letsencrypt
       - ./certbot/www:/var/www/certbot
       - ./static:/static
+      - ./media:/media
     depends_on:
       - django-web
     restart: unless-stopped
@@ -108,11 +109,11 @@ services:
     restart: unless-stopped
     ports: []
     healthcheck:
-      test: ["CMD", "mariadb-admin", "ping", "-h", "localhost"]
-      interval: 5s
+      test: ["CMD", "healthcheck.sh", "--su-mysql", "--connect"]
+      start_period: 5s
       timeout: 5s
-      retries: 10
-      start_period: 30s
+      interval: 5s
+      retries: 5
 
   redis:
     image: redis:7-alpine
