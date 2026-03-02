@@ -1,8 +1,8 @@
 # New primary domain
 DOMAIN="paper-snitch.online"
 # Old domain (for transition period)
-OLD_DOMAIN="paper-snitch.ing.unimore.it"
-EMAIL="federico.bolelli@unimore.it"  # Update with your email
+OLD_DOMAIN="paper-snitch.old.com"
+EMAIL="example@mail.com"  # Update with your email
 
 docker compose run --rm certbot certonly --webroot -w /var/www/certbot \
     -d ${DOMAIN} \

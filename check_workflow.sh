@@ -1,7 +1,9 @@
 #!/bin/bash
 # Quick script to check the most recent workflow run for paper 2660
+CONTAINER_SUFFIX="$1"
+CONTAINER_NAME="django-web-${CONTAINER_SUFFIX}"
 
-docker exec django-web-dev-bolelli python manage.py shell -c "
+docker exec "$CONTAINER_NAME" python manage.py shell -c "
 from workflow_engine.models import WorkflowRun, WorkflowNode
 
 # Get the most recent run

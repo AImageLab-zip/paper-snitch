@@ -79,30 +79,34 @@ def convert_pdf_to_html(document):
             # Validate HOST_PROJECT_PATH is set
             if not host_project_path:
                 raise ValueError("HOST_PROJECT_PATH environment variable is not set")
-            
+
             # Get STACK_SUFFIX for media directory mapping
-            # In dev: media_dev, media_bolelli, etc.
+            # In dev: media_dev, etc.
             # In prod: just media (no suffix)
             stack_suffix = os.environ.get("STACK_SUFFIX", "")
-            
+
             rel_pdf_path = os.path.relpath(pdf_path, settings.BASE_DIR)
             rel_output_dir = os.path.relpath(output_dir, settings.BASE_DIR)
-            
+
             # Adjust paths to account for media_${STACK_SUFFIX} on host vs /app/media in container
             # Inside container: /app/media/pdfs/file.pdf
             # On host (dev): /path/to/project/media_dev/pdfs/file.pdf
             # On host (prod): /path/to/project/media/pdfs/file.pdf
             if stack_suffix and rel_pdf_path.startswith("media/"):
-                rel_pdf_path = rel_pdf_path.replace("media/", f"media_{stack_suffix}/", 1)
+                rel_pdf_path = rel_pdf_path.replace(
+                    "media/", f"media_{stack_suffix}/", 1
+                )
             if stack_suffix and rel_output_dir.startswith("media/"):
-                rel_output_dir = rel_output_dir.replace("media/", f"media_{stack_suffix}/", 1)
-            
+                rel_output_dir = rel_output_dir.replace(
+                    "media/", f"media_{stack_suffix}/", 1
+                )
+
             # Get absolute paths on host
             host_pdf_path = os.path.join(host_project_path, rel_pdf_path)
             host_output_dir = os.path.join(host_project_path, rel_output_dir)
             host_pdf_dir = os.path.dirname(host_pdf_path)
             pdf_filename = os.path.basename(pdf_path)
-            
+
             # Log paths for debugging
             logger.info(f"PDF conversion paths:")
             logger.info(f"  Container PDF path: {pdf_path}")
@@ -132,7 +136,7 @@ def convert_pdf_to_html(document):
                 f"/pdf/{pdf_filename}",
                 output_filename,
             ]
-            
+
             logger.info(f"Running Docker command: {' '.join(cmd)}")
 
             result = subprocess.run(
@@ -160,7 +164,9 @@ def convert_pdf_to_html(document):
 
             # Save error to database
             document.conversion_status = "failed"
-            document.conversion_error = e.stderr[:500] if e.stderr else f"Docker error (code {e.returncode})"
+            document.conversion_error = (
+                e.stderr[:500] if e.stderr else f"Docker error (code {e.returncode})"
+            )
             document.save()
 
             # Don't raise, fall through to pypdf fallback
@@ -401,7 +407,9 @@ def save_annotation(request, pk):
 @require_http_methods(["DELETE"])
 def delete_annotation(request, pk, annotation_id):
     """API endpoint to delete an annotation - only delete own annotations"""
-    annotation = get_object_or_404(Annotation, pk=annotation_id, document_id=pk, user=request.user)
+    annotation = get_object_or_404(
+        Annotation, pk=annotation_id, document_id=pk, user=request.user
+    )
     annotation.delete()
 
     return JsonResponse(
@@ -638,7 +646,9 @@ def suggest_categories(request):
 def update_annotation(request, pk, annotation_id):
     """API endpoint to update an annotation's category - only own annotations"""
     document = get_object_or_404(Document, pk=pk)
-    annotation = get_object_or_404(Annotation, pk=annotation_id, document=document, user=request.user)
+    annotation = get_object_or_404(
+        Annotation, pk=annotation_id, document=document, user=request.user
+    )
 
     try:
         data = json.loads(request.body)

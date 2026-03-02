@@ -23,6 +23,7 @@ End
 ```
 
 ### Sequential Flow
+
 1. **Node A** (`paper_type_classification`): Classifies paper type (method/dataset/both/theoretical/unknown)
 2. **Node D** (`section_embeddings`): NEW - Computes and stores vector embeddings for paper sections
 3. **Node B** (`code_availability_check`): Checks for code repository availability
@@ -49,15 +50,18 @@ class PaperSectionEmbedding(models.Model):
 **Table**: `paper_section_embeddings`
 
 **Indexes**:
+
 - `idx_paper_section` on (`paper_id`, `section_type`)
 - `idx_section_type` on (`section_type`)
 
 **Constraints**:
+
 - Unique constraint on (`paper`, `section_type`, `embedding_model`)
 
 ### Why Separate Table?
 
 **Advantages**:
+
 1. **Multiple sections per paper**: Papers have multiple sections (abstract, intro, methods, results, discussion, conclusion)
 2. **Clean separation**: Embeddings are computed artifacts, not core metadata
 3. **Efficient queries**: Easy to query by section type or perform vector similarity searches
@@ -69,16 +73,19 @@ class PaperSectionEmbedding(models.Model):
 ### File: `app/webApp/services/nodes/section_embeddings.py`
 
 **Functionality**:
+
 1. **Section Retrieval**: Reads pre-extracted sections from `Paper.sections` JSONField (fallback to regex extraction if not available)
 2. **Embedding Computation**: Calls OpenAI `text-embedding-3-small` API for each section
 3. **Database Storage**: Stores embeddings in `PaperSectionEmbedding` table
 4. **Caching**: Skips recomputation if embeddings exist (unless forced)
 
 **Section Source Priority**:
+
 1. **Primary**: `Paper.sections` JSONField (pre-extracted during scraping)
 2. **Fallback**: Regex extraction from `Paper.text` (if sections field is empty)
 
 **Supported Section Types** (normalized to lowercase with underscores):
+
 - abstract
 - introduction
 - related_work (or background)
@@ -93,15 +100,16 @@ class PaperSectionEmbedding(models.Model):
 ```python
 def extract_paper_sections(paper_text: str) -> List[Tuple[str, str]]
     # FALLBACK: Extracts sections using regex patterns (only if Paper.sections is empty)
-    
+
 async def compute_embedding(client, text: str, model: str) -> List[float]
     # Calls OpenAI API to compute embedding
-    
+
 async def section_embeddings_node(state: PaperProcessingState) -> Dict[str, Any]
     # Main node function - retrieves sections from database and computes embeddings
 ```
 
 **Why Use Database Sections?**
+
 - **Already extracted**: Sections are parsed during initial paper scraping/ingestion
 - **More accurate**: Scraper uses proper PDF/XML parsing instead of regex
 - **Consistent format**: Standardized section names and structure
@@ -124,10 +132,12 @@ async def section_embeddings_node(state: PaperProcessingState) -> Dict[str, Any]
 ### Planned Use in Node B (Code Availability Check)
 
 The embeddings will be used to compute semantic similarity between:
+
 1. Paper sections (especially methods/results)
 2. Code repository documentation (README, comments)
 
 This will help verify if:
+
 - The repository actually corresponds to the paper
 - The implementation matches the described methodology
 
@@ -145,7 +155,7 @@ paper_embedding.compute_cosine_similarity(other_embedding: list) -> float
 ### 1. Create Migration
 
 ```bash
-docker exec django-web-dev-bolelli python manage.py makemigrations webApp
+docker exec django-web-DEV-STACK python manage.py makemigrations webApp
 ```
 
 Rename the generated file from `0XXX_paper_section_embeddings.py` to the correct number.
@@ -153,13 +163,13 @@ Rename the generated file from `0XXX_paper_section_embeddings.py` to the correct
 ### 2. Apply Migration
 
 ```bash
-docker exec django-web-dev-bolelli python manage.py migrate
+docker exec django-web-DEV-STACK python manage.py migrate
 ```
 
 ### 3. Restart Services
 
 ```bash
-docker restart django-web-dev-bolelli celery-worker-dev-bolelli
+docker restart django-web-DEV-STACK celery-worker-DEV-STACK
 ```
 
 ## Testing
@@ -214,12 +224,14 @@ print(f"Similarity: {similarity:.4f}")
 ## Token Usage
 
 **Per paper** (estimated):
+
 - Average 4-6 sections per paper
 - ~1000-2000 chars per section
 - ~250-500 tokens per section
 - **Total: ~1500-3000 tokens per paper**
 
 At OpenAI's embedding pricing (text-embedding-3-small):
+
 - $0.020 per 1M tokens
 - ~$0.00003-$0.00006 per paper
 

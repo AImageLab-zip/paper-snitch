@@ -6,7 +6,7 @@ the reduced_paper_processing_pipeline workflow (without starting execution).
 
 runnable using ./debug-dev-stack.sh exec 8900 ${STACK-NAME} django-web-dev uv run test_ingest_steroids.py
 
-./debug-dev-stack.sh exec 8900 dev-santoli django-web-dev uv run test_ingest_steroids.py
+./debug-dev-stack.sh exec 8900 dev-stack django-web-dev uv run test_ingest_steroids.py
 """
 
 import asyncio

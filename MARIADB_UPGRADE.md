@@ -3,14 +3,15 @@
 ## What Changed
 
 1. **compose.dev.yml**: Updated mysql service from `mysql:latest` to `mariadb:11.7`
-2. **Added command flags**: 
+2. **Added command flags**:
    - `--vector-ann-search=ON` (enables vector similarity search)
    - Character set configs for utf8mb4 compatibility
-3. **.env.local**: Added MariaDB environment variables (MARIADB_* prefix)
+3. **.env.local**: Added MariaDB environment variables (MARIADB\_\* prefix)
 
 ## Django Compatibility
 
 ✅ **No Django changes needed** - MariaDB is 100% MySQL-compatible
+
 - Same driver: `django.db.backends.mysql`
 - Same connection protocol
 - Same SQL dialect
@@ -26,7 +27,7 @@ cd /home/administrator/papersnitch
 mkdir -p backups
 
 # Backup all databases
-docker exec mysql-dev-bolelli mysqldump \
+docker exec mysql-DEV-STACK mysqldump \
   -u root \
   -prootpassword \
   --all-databases \
@@ -69,7 +70,7 @@ echo "Waiting for MariaDB to initialize..."
 sleep 10
 
 # Check logs
-docker logs mysql-dev-bolelli
+docker logs mysql-DEV-STACK
 ```
 
 ### Step 6: Restore Database
@@ -80,7 +81,7 @@ BACKUP_FILE=$(ls -t backups/mysql_backup_*.sql | head -1)
 echo "Restoring from: $BACKUP_FILE"
 
 # Restore data
-docker exec -i mysql-dev-bolelli mysql \
+docker exec -i mysql-DEV-STACK mysql \
   -u root \
   -prootpassword \
   < "$BACKUP_FILE"
@@ -92,13 +93,13 @@ echo "Database restored"
 
 ```bash
 # Check MariaDB version
-docker exec mysql-dev-bolelli mysql \
+docker exec mysql-DEV-STACK mysql \
   -u root \
   -prootpassword \
   -e "SELECT VERSION();"
 
 # Verify vector search is enabled
-docker exec mysql-dev-bolelli mysql \
+docker exec mysql-DEV-STACK mysql \
   -u root \
   -prootpassword \
   -e "SHOW VARIABLES LIKE 'vector%';"
@@ -118,10 +119,10 @@ docker ps
 
 ```bash
 # Django migrations should detect no changes
-docker exec django-web-dev-bolelli python manage.py migrate
+docker exec django-web-DEV-STACK python manage.py migrate
 
 # Verify database connection
-docker exec django-web-dev-bolelli python manage.py shell -c "
+docker exec django-web-DEV-STACK python manage.py shell -c "
 from django.db import connection
 cursor = connection.cursor()
 cursor.execute('SELECT VERSION()')
@@ -166,7 +167,7 @@ docker-compose -f compose.dev.yml --env-file .env.local up -d
 After upgrade, verify:
 
 - [ ] MariaDB container is running: `docker ps | grep mysql`
-- [ ] Version is 11.7+: `docker exec mysql-dev-bolelli mysql --version`
+- [ ] Version is 11.7+: `docker exec mysql-DEV-STACK mysql --version`
 - [ ] Vector search enabled: Check `SHOW VARIABLES LIKE 'vector%';`
 - [ ] Django connects: Application loads
 - [ ] Data intact: Check conference count, paper count
@@ -176,11 +177,13 @@ After upgrade, verify:
 ## Expected Output
 
 **MariaDB Version:**
+
 ```
 MariaDB 11.7.x-MariaDB
 ```
 
 **Vector Search Variables:**
+
 ```
 | Variable_name      | Value |
 |--------------------|-------|
@@ -197,16 +200,19 @@ MariaDB 11.7.x-MariaDB
 ## Troubleshooting
 
 **Container fails to start:**
-- Check logs: `docker logs mysql-dev-bolelli`
+
+- Check logs: `docker logs mysql-DEV-STACK`
 - Verify env vars are set correctly in .env.local
 - Ensure data directory is writable
 
 **Restore fails:**
+
 - Check backup file exists and is valid
 - Verify MariaDB is fully initialized (wait 30 seconds)
 - Try restoring individual databases instead of --all-databases
 
 **Django can't connect:**
+
 - Verify DATABASE_HOST=mysql in .env.local
 - Check mysql container is in same network
-- Test connection: `docker exec django-web-dev-bolelli ping mysql`
+- Test connection: `docker exec django-web-DEV-STACK ping mysql`

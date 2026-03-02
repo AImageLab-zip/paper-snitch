@@ -12,7 +12,7 @@ La selezione del modello "Select Models for Analysis" confonde un po', nel senso
 e la selezione del modello diventa un'opzione avanzata o comunque nascosta dal flow principale.
 
 Se ricarico la pagina durante l'analisi del paper mi riporta alla homepage. Sarebbe meglio se portasse a un link con un uuid riguardante il paper. 
-(e.g., https://paper-snitch.ing.unimore.it/analyze/<uuid>) e accedere a quel link porta alle analisi fatte. Attualmente l'unico modo per ripescare una analisi vecchia è caricare 
+(e.g., https://paper-snitch.online.com/analyze/<uuid>) e accedere a quel link porta alle analisi fatte. Attualmente l'unico modo per ripescare una analisi vecchia è caricare 
 il pdf caricato in precedenza. Avere un link diretto ad una analisi permetterebbe di linkare una analisi ad un feedback.
 
 Riguardo all'analisi fatta con GPT 5.1 su UNet Transplant.

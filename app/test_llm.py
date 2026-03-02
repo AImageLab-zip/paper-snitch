@@ -13,8 +13,14 @@ from openai import OpenAI
 
 # from webApp.models import Paper, Dataset, Conference
 from dotenv import load_dotenv, set_key, get_key
+from pathlib import Path
+import sys
 
-load_dotenv("/home/dsantoli/papersnitch/.env.local")
+
+BASE_DIR = Path(__file__).resolve().parent
+sys.path.append(str(BASE_DIR))
+
+load_dotenv(BASE_DIR / ".env.local")
 # PDF_DIR = BASE_DIR / "media" / "pdfs"
 
 

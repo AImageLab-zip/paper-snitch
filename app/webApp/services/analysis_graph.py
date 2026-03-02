@@ -377,7 +377,7 @@ if __name__ == "__main__":
 
     BASE_DIR = Path(__file__).resolve().parent.parent.parent
     sys.path.append(str(BASE_DIR))
-    load_dotenv("/home/dsantoli/papersnitch/.env.local")
+    load_dotenv(BASE_DIR / ".env.local")
     PDF_DIR = BASE_DIR / "media" / "pdfs"
 
     # ======= OPEN AI ========

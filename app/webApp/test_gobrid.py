@@ -208,7 +208,7 @@ def get_clean_content(pdf_path):
 # --- Utilizzo ---
 if __name__ == "__main__":
     # path = Path(
-    #     "/home/dsantoli/papersnitch/app/media/pdf/20251128163055_0308_paper.pdf"
+    #     BASE_DIR / "app/media/pdf/20251128163055_0308_paper.pdf"
     # )
     # titolo, testo = get_clean_content(path)
 

@@ -59,6 +59,7 @@ GEMINI_API_KEY=your_key   # For schema generation (first run only)
 ### Schema Caching
 
 Schemas are automatically cached in `media/scraper_schemas/`:
+
 - Generated once per conference using Gemini LLM
 - Reused on subsequent runs
 - Delete cached schema to regenerate
@@ -178,23 +179,25 @@ ERROR: Schema generation failed
 celery -A web inspect active
 
 # Restart workers
-sudo docker restart celery-worker-dev-bolelli celery-beat-dev-bolelli
+sudo docker restart celery-worker-DEV-STACK celery-beat-DEV-STACK
 ```
 
 ### Papers Not Saving
 
 Check logs for database errors:
+
 ```bash
-sudo docker logs django-web-dev-bolelli | grep ERROR
+sudo docker logs django-web-DEV-STACK | grep ERROR
 ```
 
 ## Performance
 
 - **Small conference** (50 papers): ~2-3 minutes
-- **Medium conference** (200 papers): ~8-12 minutes  
+- **Medium conference** (200 papers): ~8-12 minutes
 - **Large conference** (500+ papers): ~20-30 minutes
 
 Adjust `MAX_CONCURRENT_CRAWLS` based on:
+
 - Target website rate limits
 - Server resources
 - Network bandwidth

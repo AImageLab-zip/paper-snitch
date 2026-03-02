@@ -2,7 +2,7 @@ docker compose -p papersnitch-prod -f compose.prod.yml up -d --build
 docker compose -p papersnitch-dev -f compose.dev.yml up -d --build
 docker compose -p papersnitch-dev -f compose.dev.yml exec django-web-dev uv run 
 docker run --rm --init --ulimit core=0 -p 8070:8070 grobid/grobid:0.8.2-crf
-ssh -L 8000:localhost:8000 dsantoli@paper-snitch.ing.unimore.it
+
 
 
 

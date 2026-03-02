@@ -1,8 +1,18 @@
 import json
 
 # Configuration: File paths
-INPUT_FILE = "/home/dsantoli/papersnitch/app/annotator/fixtures/categories_embeddings_1536_colored.json"  # The file you want to read
-OUTPUT_FILE = "/home/dsantoli/papersnitch/app/annotator/fixtures/categories_embeddings_1536_colored.json"  # The file to save (safer not to overwrite immediately)
+from pathlib import Path
+import sys
+
+
+BASE_DIR = Path(__file__).resolve().parent
+sys.path.append(str(BASE_DIR))
+INPUT_FILE = (
+    BASE_DIR / "app/annotator/fixtures/categories_embeddings_1536_colored.json"
+)  # The file you want to read
+OUTPUT_FILE = (
+    BASE_DIR / "app/annotator/fixtures/categories_embeddings_1536_colored.json"
+)  # The file to save (safer not to overwrite immediately)
 
 # The ordered list of colors (32 items)
 NEW_COLORS = [

@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 sys.path.append(str(BASE_DIR))
-load_dotenv("/home/dsantoli/papersnitch/.env.local")
+load_dotenv(BASE_DIR / ".env.local")
 PDF_DIR = BASE_DIR / "media" / "pdfs"
 
 
@@ -737,7 +737,7 @@ if __name__ == "__main__":
 
     # from gitingest import ingest
 
-    # url = "/home/dsantoli/papersnitch/IM-Fuse"
+    # url = BASE_DIR /"/IM-Fuse"
     # _, _, content = ingest(
     #     url,
     #     include_patterns=["*.md"],
@@ -759,8 +759,10 @@ if __name__ == "__main__":
     }
     print(
         underline_text(
-            "/home/dsantoli/papersnitch/app/media/pdf/µ_2_Tokenizer_Differentiable_Multi-Scale_Multi-Modal_Tokenizer_for_Radiology_Report__zFZkv6h.pdf",
-            "/home/dsantoli/papersnitch/app/media/pdf/µ_2_Tokenizer_Differentiable_Multi-Scale_Multi-Modal_Tokenizer_for_Radiology_Report__zFZkv6h_underlined.pdf",
+            BASE_DIR
+            / "app/media/pdf/µ_2_Tokenizer_Differentiable_Multi-Scale_Multi-Modal_Tokenizer_for_Radiology_Report__zFZkv6h.pdf",
+            BASE_DIR
+            / "app/media/pdf/µ_2_Tokenizer_Differentiable_Multi-Scale_Multi-Modal_Tokenizer_for_Radiology_Report__zFZkv6h_underlined.pdf",
             ["""asd"""],
             HIGHLIGHTING_COLOR["orange"],
         )

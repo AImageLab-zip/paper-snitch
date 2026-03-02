@@ -177,8 +177,15 @@ from typing import List, Tuple, Dict
 from dotenv import load_dotenv
 from openai import OpenAI
 
+from pathlib import Path
+import sys
+
+
+BASE_DIR = Path(__file__).resolve().parent
+sys.path.append(str(BASE_DIR))
+
 # Load environment variables
-load_dotenv("/home/dsantoli/papersnitch/.env.local")
+load_dotenv(BASE_DIR / ".env.local")
 api_key = os.getenv("OPENAI_API_KEY")
 
 EMBEDDING_MODEL = "text-embedding-3-small"

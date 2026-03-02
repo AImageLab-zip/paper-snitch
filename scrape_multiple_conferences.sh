@@ -4,12 +4,24 @@
 
 set -e  # Exit on error
 
+# Check if the container suffix argument was provided
+if [ -z "$1" ]; then
+  echo "Error: Missing container suffix argument."
+  echo "Usage: ./scrape.sh <environment-suffix>"
+  echo "Example: ./scrape.sh DEV-STACK"
+  exit 1
+fi
+
+CONTAINER_SUFFIX="$1"
+CONTAINER_NAME="django-web-${CONTAINER_SUFFIX}"
+
 TIMESTAMP=$(date '+%Y-%m-%d_%H-%M-%S')
 LOG_DIR="/home/administrator/papersnitch/scraping_logs"
 mkdir -p "$LOG_DIR"
 
 echo "=========================================="
 echo "Starting sequential conference scraping"
+echo "Target Container: $CONTAINER_NAME"
 echo "Started at: $(date)"
 echo "=========================================="
 echo ""
@@ -18,7 +30,7 @@ echo ""
 echo "[1/3] Starting MICCAI 2024 scrape..."
 echo "URL: https://papers.miccai.org/miccai-2024/"
 echo "Started at: $(date)"
-sudo docker exec django-web-dev-bolelli python manage.py scrape_conference \
+sudo docker exec "$CONTAINER_NAME" python manage.py scrape_conference \
   "MICCAI 2024" \
   "https://papers.miccai.org/miccai-2024/" \
   --sync \
@@ -30,7 +42,7 @@ echo ""
 echo "[2/3] Starting MICCAI 2023 scrape..."
 echo "URL: https://conferences.miccai.org/2023/papers/"
 echo "Started at: $(date)"
-sudo docker exec django-web-dev-bolelli python manage.py scrape_conference \
+sudo docker exec "$CONTAINER_NAME" python manage.py scrape_conference \
   "MICCAI 2023" \
   "https://conferences.miccai.org/2023/papers/" \
   --sync \
@@ -42,7 +54,7 @@ echo ""
 echo "[3/3] Starting MICCAI 2022 scrape..."
 echo "URL: https://conferences.miccai.org/2022/papers/"
 echo "Started at: $(date)"
-sudo docker exec django-web-dev-bolelli python manage.py scrape_conference \
+sudo docker exec "$CONTAINER_NAME" python manage.py scrape_conference \
   "MICCAI 2022" \
   "https://conferences.miccai.org/2022/papers/" \
   --sync \
