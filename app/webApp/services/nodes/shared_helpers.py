@@ -42,11 +42,11 @@ logger = logging.getLogger(__name__)
 def prepare_paper_content(paper, max_chars: int = 12000) -> str:
     """
     Prepare paper content for analysis (fallback when sections not available).
-    
+
     Args:
         paper: Paper object
         max_chars: Maximum characters to extract from paper text
-        
+
     Returns:
         Formatted string with title, abstract, and truncated text
     """
@@ -68,17 +68,18 @@ def prepare_paper_content(paper, max_chars: int = 12000) -> str:
 # Embedding Similarity Utilities
 # ============================================================================
 
+
 async def retrieve_sections_by_embedding(
     paper,
     query_embedding: List[float],
     top_k: Optional[int] = None,
     min_similarity: Optional[float] = None,
     max_chars_per_section: Optional[int] = None,
-    token_budget: Optional[int] = None
+    token_budget: Optional[int] = None,
 ) -> List[Tuple[Any, float, str]]:
     """
     Low-level function to retrieve paper sections by embedding similarity.
-    
+
     Args:
         paper: Paper object or paper_id
         query_embedding: Pre-computed embedding vector to compare against
@@ -86,53 +87,59 @@ async def retrieve_sections_by_embedding(
         min_similarity: Minimum similarity threshold to include
         max_chars_per_section: Character limit per section
         token_budget: Token budget for selection (alternative to top_k)
-        
+
     Returns:
         List of (section_object, similarity, section_text) tuples
         Sorted by similarity (highest first)
     """
     from webApp.models import PaperSectionEmbedding
-    
+
     # Handle paper_id vs paper object
-    paper_id = paper.id if hasattr(paper, 'id') else paper
-    
+    paper_id = paper.id if hasattr(paper, "id") else paper
+
     # Get all section embeddings for this paper
     all_sections = await sync_to_async(
         lambda: list(
-            PaperSectionEmbedding.objects.filter(paper_id=paper_id).exclude(
-                section_text__isnull=True
-            ).exclude(section_text="")
+            PaperSectionEmbedding.objects.filter(paper_id=paper_id)
+            .exclude(section_text__isnull=True)
+            .exclude(section_text="")
         )
     )()
-    
+
     if not all_sections:
         logger.info(f"No section embeddings found for paper {paper_id}")
         return []
-    
+
     # Compute similarities using model method
     similarities = []
     for section in all_sections:
         similarity = section.compute_cosine_similarity(query_embedding)
-        
+
         # Apply minimum similarity filter if specified
         if min_similarity is not None and similarity < min_similarity:
             continue
-        
+
         similarities.append((section, similarity, section.section_text))
-    
+
     # Sort by similarity (highest first)
     similarities.sort(reverse=True, key=lambda x: x[1])
-    
+
     # Apply selection strategy
     selected = []
-    
+
     if token_budget is not None:
         # Token budget strategy: fill until budget exhausted
         tokens_used = 0
         for section, similarity, text in similarities:
             section_tokens = len(text) // 4  # Rough estimate
             if tokens_used + section_tokens <= token_budget:
-                selected.append((section, similarity, text[:max_chars_per_section] if max_chars_per_section else text))
+                selected.append(
+                    (
+                        section,
+                        similarity,
+                        text[:max_chars_per_section] if max_chars_per_section else text,
+                    )
+                )
                 tokens_used += section_tokens
             else:
                 break
@@ -140,38 +147,38 @@ async def retrieve_sections_by_embedding(
         # Top-k strategy: just take top K
         k = top_k if top_k is not None else len(similarities)
         selected = [
-            (section, similarity, text[:max_chars_per_section] if max_chars_per_section else text)
+            (
+                section,
+                similarity,
+                text[:max_chars_per_section] if max_chars_per_section else text,
+            )
             for section, similarity, text in similarities[:k]
         ]
-    
+
     avg_sim = np.mean([s[1] for s in selected]) if selected else 0.0
     logger.info(
         f"Found {len(all_sections)} sections for paper {paper_id}, "
         f"selected {len(selected)} (avg similarity: {avg_sim:.3f})"
     )
-    
+
     return selected
 
 
 async def get_relevant_sections_by_similarity(
-    paper,
-    query: str,
-    top_k: int = 4,
-    max_chars_per_section: int = 4000,
-    client = None
+    paper, query: str, top_k: int = 4, max_chars_per_section: int = 4000, client=None
 ) -> List[Tuple[float, str, str]]:
     """
     Retrieve paper sections most semantically relevant to a text query.
-    
+
     High-level convenience function that computes query embedding and retrieves sections.
-    
+
     Args:
         paper: Paper object
         query: Query text to find relevant sections
         top_k: Number of top sections to return
         max_chars_per_section: Maximum characters per section (for token management)
         client: OpenAI client (optional, will create if not provided)
-        
+
     Returns:
         List of tuples (similarity_score, section_type, section_text)
         Sorted by similarity (highest first)
@@ -181,29 +188,29 @@ async def get_relevant_sections_by_similarity(
         if client is None:
             from openai import OpenAI
             import os
+
             client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        
+
         # Compute query embedding
         query_response = client.embeddings.create(
-            model="text-embedding-3-small",
-            input=query
+            model="text-embedding-3-small", input=query
         )
         query_embedding = query_response.data[0].embedding
-        
+
         # Use low-level function
         results = await retrieve_sections_by_embedding(
             paper=paper,
             query_embedding=query_embedding,
             top_k=top_k,
-            max_chars_per_section=max_chars_per_section
+            max_chars_per_section=max_chars_per_section,
         )
-        
+
         # Convert to simplified format (similarity, section_type, section_text)
         return [
             (similarity, section.section_type, text)
             for section, similarity, text in results
         ]
-        
+
     except Exception as e:
         logger.warning(f"Could not retrieve sections by similarity: {e}")
         return []
@@ -212,6 +219,7 @@ async def get_relevant_sections_by_similarity(
 # ============================================================================
 # Reproducibility Scoring
 # ============================================================================
+
 
 def compute_reproducibility_score(
     methodology: Optional[ResearchMethodologyAnalysis],
@@ -244,7 +252,7 @@ def compute_reproducibility_score(
         "dataset_splits": 0.0,  # 0-2.0 points (adaptive)
         "documentation": 0.0,  # 2.0 points
     }
-    
+
     # Track max points for each component (for normalization to 0-100 scale)
     component_max = {
         "code_completeness": 0.0,
@@ -253,7 +261,7 @@ def compute_reproducibility_score(
         "dataset_splits": 0.0,
         "documentation": 2.0,
     }
-    
+
     recommendations = []
 
     # Determine methodology-specific weights
@@ -465,7 +473,7 @@ def compute_reproducibility_score(
 
     # Round to 1 decimal place
     total_score = round(total_score, 1)
-    
+
     # Scale each component breakdown to 0-100 based on its OWN max value
     breakdown_normalized = {}
     for component, raw_value in breakdown.items():
@@ -1237,7 +1245,9 @@ Output the complete JSON object with ALL fields filled in based on the analysis 
         logger.info(f"Score breakdown: {breakdown}")
 
         if node:
-            breakdown_text = "\n".join(f"  • {k}: {v}/100" for k, v in breakdown.items())
+            breakdown_text = "\n".join(
+                f"  • {k}: {v}/100" for k, v in breakdown.items()
+            )
             await async_ops.create_node_log(
                 node,
                 "INFO",

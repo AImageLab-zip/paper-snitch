@@ -7,7 +7,6 @@ from pathlib import Path as PathlibPath
 
 
 from workflow_engine.services.async_orchestrator import async_ops
-from .shared_helpers import analyze_repository_comprehensive
 from .shared_helpers_v2 import analyze_repository_with_aspects
 
 from webApp.services.pydantic_schemas import (
@@ -44,47 +43,59 @@ async def code_repository_analysis_node(
 
     # Get workflow node
     node = await async_ops.get_workflow_node(state["workflow_run_id"], node_id)
-    
+
     logger.info(f"Node status on entry: {node.status}")
 
     # Early exit if node is already marked as skipped (progressive skipping)
     if node.status == "skipped":
-        logger.info(f"Node already marked as skipped - exiting early (progressive skipping)")
+        logger.info(
+            f"Node already marked as skipped - exiting early (progressive skipping)"
+        )
         # Pass through state so final_aggregation has context
         return {
             "code_reproducibility_result": None,
             "code_availability_result": state.get("code_availability_result"),
-            "code_embedding_result": state.get("code_embedding_result")
+            "code_embedding_result": state.get("code_embedding_result"),
         }
 
     # Early exit if code is not available (should have been caught by progressive skipping)
     code_availability = state.get("code_availability_result")
-    logger.info(f"Code availability in state: {code_availability is not None}, code_available={code_availability.code_available if code_availability else 'N/A'}")
-    
+    logger.info(
+        f"Code availability in state: {code_availability is not None}, code_available={code_availability.code_available if code_availability else 'N/A'}"
+    )
+
     if not code_availability or not code_availability.code_available:
-        logger.warning(f"Code not available for paper {state['paper_id']} - marking as skipped")
+        logger.warning(
+            f"Code not available for paper {state['paper_id']} - marking as skipped"
+        )
         await async_ops.update_node_status(node, "skipped")
-        await async_ops.create_node_log(node, "INFO", "Skipped (no code repository available)")
+        await async_ops.create_node_log(
+            node, "INFO", "Skipped (no code repository available)"
+        )
         # Pass through state so final_aggregation has context
         return {
             "code_reproducibility_result": None,
             "code_availability_result": code_availability,
-            "code_embedding_result": state.get("code_embedding_result")
+            "code_embedding_result": state.get("code_embedding_result"),
         }
 
     # Early exit if code embedding is missing (should have been caught by progressive skipping)
     code_embedding = state.get("code_embedding_result")
     logger.info(f"Code embedding in state: {code_embedding is not None}")
-    
+
     if not code_embedding:
-        logger.warning(f"Code embedding not available for paper {state['paper_id']} - marking as skipped")
+        logger.warning(
+            f"Code embedding not available for paper {state['paper_id']} - marking as skipped"
+        )
         await async_ops.update_node_status(node, "skipped")
-        await async_ops.create_node_log(node, "INFO", "Skipped (code embedding not available)")
+        await async_ops.create_node_log(
+            node, "INFO", "Skipped (code embedding not available)"
+        )
         # Pass through state so final_aggregation has context
         return {
             "code_reproducibility_result": None,
             "code_availability_result": code_availability,
-            "code_embedding_result": None
+            "code_embedding_result": None,
         }
 
     # Update node status to running
@@ -110,25 +121,25 @@ async def code_repository_analysis_node(
 
                 result = CodeReproducibilityAnalysis(**previous["result"])
                 await async_ops.create_node_artifact(node, "result", result)
-                
+
                 # Copy tokens from previous execution
                 previous_node = await async_ops.get_most_recent_completed_node(
                     paper_id=state["paper_id"],
                     node_id=node_id,
-                    exclude_run_id=state["workflow_run_id"]
+                    exclude_run_id=state["workflow_run_id"],
                 )
-                
+
                 if previous_node:
                     await async_ops.update_node_tokens(
                         node,
                         input_tokens=previous_node.input_tokens,
                         output_tokens=previous_node.output_tokens,
-                        was_cached=True
+                        was_cached=True,
                     )
                     logger.info(
                         f"Copied tokens from previous execution: {previous_node.total_tokens} total"
                     )
-                
+
                 await async_ops.update_node_status(
                     node, "completed", completed_at=timezone.now()
                 )
@@ -223,13 +234,13 @@ async def code_repository_analysis_node(
                 "output_tokens": repo_analysis.get("output_tokens", 0),
             },
         )
-        
+
         # Update node token fields in database
         await async_ops.update_node_tokens(
             node,
             input_tokens=repo_analysis.get("input_tokens", 0),
             output_tokens=repo_analysis.get("output_tokens", 0),
-            was_cached=False
+            was_cached=False,
         )
 
         # Store detailed LLM analysis if available
