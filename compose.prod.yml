@@ -1,6 +1,5 @@
 services:
   django-web:
-    # image: paper-snitch-prod:latest     # <--- TODO
     build:
       context: ./app
       dockerfile: Dockerfile
@@ -11,10 +10,8 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - ./static:/app/staticfiles # <---- REMOVE
-      - ./media:/app/media # <---- REMOVE
-      # - static_volume:/app/staticfiles  # <--- TODO
-      # - media_volume:/app/media         # <--- TODO
+      - ./static:/app/staticfiles
+      - ./media:/app/media
       - /var/run/docker.sock:/var/run/docker.sock
     group_add:
       - "988"
@@ -27,16 +24,16 @@ services:
         condition: service_started
     environment:
       - HOST_PROJECT_PATH=${PWD}
-      - STACK_SUFFIX=
+      - UV_CACHE_DIR=/tmp/uv-cache
+      - PYTHONUNBUFFERED=1
     restart: unless-stopped
 
   celery-worker:
-    # image: paper-snitch-prod:latest     # <--- TODO
     build:
       context: ./app
       dockerfile: Dockerfile
     container_name: celery-worker-prod
-    command: celery -A web worker --loglevel=info
+    command: celery -A web worker --loglevel=info --concurrency=8 --max-tasks-per-child=1
     env_file:
       - .env.prod
     extra_hosts:
@@ -44,6 +41,7 @@ services:
     volumes:
       - ./static:/app/staticfiles
       - ./media:/app/media
+      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       mysql:
         condition: service_healthy
@@ -54,6 +52,7 @@ services:
     environment:
       - UV_CACHE_DIR=/tmp/uv-cache
       - PYTHONUNBUFFERED=1
+      - HOST_PROJECT_PATH=${PWD}
     restart: unless-stopped
 
   celery-beat:
@@ -69,6 +68,7 @@ services:
     volumes:
       - ./static:/app/staticfiles
       - ./media:/app/media
+      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       mysql:
         condition: service_healthy
@@ -77,6 +77,7 @@ services:
     environment:
       - UV_CACHE_DIR=/tmp/uv-cache
       - PYTHONUNBUFFERED=1
+      - HOST_PROJECT_PATH=${PWD}
     restart: unless-stopped
 
   nginx:
@@ -89,37 +90,36 @@ services:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf
       - ./certbot/conf:/etc/letsencrypt
       - ./certbot/www:/var/www/certbot
-      - ./static:/static # <--- REMOVE
-      # - static_volume:/static         # <--- TODO
+      - ./static:/static
     depends_on:
       - django-web
     restart: unless-stopped
 
   mysql:
     container_name: mysql-prod
-    image: mysql
+    image: mariadb:11.7
     env_file:
       - .env.prod
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
     volumes:
-      - ./mysql_prod/lib:/var/lib/mysql # <--- REMOVE
-      # - mysql_data_prod:/var/lib/mysql  # <--- TODO
-      - ./mysql_prod/my.cnf:/etc/mysql/my.cnf
+      - ./mysql_prod/lib:/var/lib/mysql
     restart: unless-stopped
     ports: []
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      test: ["CMD", "mariadb-admin", "ping", "-h", "localhost"]
       interval: 5s
       timeout: 5s
       retries: 10
-      start_period: 10s
+      start_period: 30s
 
   redis:
     image: redis:7-alpine
     container_name: redis-prod
     restart: unless-stopped
     volumes:
-      - redis_data:/data # <--- REMOVE
-      # - redis_data_prod:/data # <--- TODO
+      - redis-data-prod:/data
 
   grobid:
     image: grobid/grobid:0.8.2-crf
@@ -148,8 +148,4 @@ services:
       - ./certbot/www:/var/www/certbot
 
 volumes:
-  redis_data: # <--- REMOVE
-  # static_volume:          # <--- TODO
-  # media_volume:           # <--- TODO
-  # redis_data_prod:        # <--- TODO
-  # mysql_data_prod:        # <--- TODO
+  redis-data-prod:
