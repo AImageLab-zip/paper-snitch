@@ -4,7 +4,7 @@ mysql*/
 media_*/
 certbot/
 
-project_history.txt
+*project_history.*
 
 
 # directory used by create-dev-stack.sh to save PORT variables
