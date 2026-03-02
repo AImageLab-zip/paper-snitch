@@ -12,6 +12,8 @@ from django.core.paginator import Paginator
 from django.db.models import Q, Count, Max, Prefetch
 from webApp.models import Operations, Analysis, BugReport, Paper, Conference
 
+from django.db.models import Subquery, OuterRef, Avg, StdDev, Count
+
 from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
 import time
@@ -33,190 +35,138 @@ from workflow_engine.models import WorkflowRun, WorkflowNode, WorkflowDefinition
 def compute_conference_token_statistics(conferences):
     """
     Compute token statistics for conferences based on latest workflow run per paper.
-    
-    For each conference, computes:
-    - Average input/output/total tokens (latest run per paper only)
-    - Standard deviation for input/output/total tokens
-    
-    Results are added as attributes to conference objects:
-    - avg_input_tokens, stddev_input_tokens
-    - avg_output_tokens, stddev_output_tokens
-    - avg_total_tokens, stddev_total_tokens
+    Optimized to compute all aggregations natively inside the database.
     """
     if not conferences:
         return
-    
-    import statistics
-    from collections import defaultdict
-    from django.db.models import Max, Q
-    
+
     conference_ids = [c.id for c in conferences]
-    
-    # Get latest run per paper for these conferences
-    latest_per_paper = WorkflowRun.objects.filter(
-        paper__conference_id__in=conference_ids,
-        status='completed'
-    ).values('paper_id').annotate(
-        max_created=Max('created_at')
+
+    # 1. Subquery to find the ID of the latest completed run for each paper
+    latest_run_sq = (
+        WorkflowRun.objects.filter(paper_id=OuterRef("paper_id"), status="completed")
+        .order_by("-created_at")
+        .values("id")[:1]
     )
-    
-    # Build Q filter for (paper_id, created_at) combinations
-    q_filter = Q()
-    for lpp in latest_per_paper:
-        q_filter |= Q(paper_id=lpp['paper_id'], created_at=lpp['max_created'])
-    
-    if not q_filter:
-        # No completed runs, set all values to None
-        for conference in conferences:
-            conference.avg_input_tokens = None
-            conference.stddev_input_tokens = None
-            conference.avg_output_tokens = None
-            conference.stddev_output_tokens = None
-            conference.avg_total_tokens = None
-            conference.stddev_total_tokens = None
-        return
-    
-    # Fetch all latest runs
-    latest_runs = WorkflowRun.objects.filter(
-        q_filter,
-        status='completed'
-    ).select_related('paper').values('paper__conference_id', 'total_input_tokens', 'total_output_tokens', 'total_tokens')
-    
-    # Group by conference
-    conference_data = defaultdict(lambda: {
-        'input': [],
-        'output': [],
-        'total': []
-    })
-    
-    for run in latest_runs:
-        conf_id = run['paper__conference_id']
-        if run['total_input_tokens'] is not None:
-            conference_data[conf_id]['input'].append(run['total_input_tokens'])
-        if run['total_output_tokens'] is not None:
-            conference_data[conf_id]['output'].append(run['total_output_tokens'])
-        if run['total_tokens'] is not None:
-            conference_data[conf_id]['total'].append(run['total_tokens'])
-    
-    # Compute statistics for each conference
+
+    # 2. Query to aggregate stats grouped directly by conference_id
+    # We filter WorkflowRun to only include those latest runs for the current page of conferences
+    stats = (
+        WorkflowRun.objects.filter(
+            paper__conference_id__in=conference_ids,
+            status="completed",
+            id=Subquery(latest_run_sq),
+        )
+        .values("paper__conference_id")
+        .annotate(
+            avg_input=Avg("total_input_tokens"),
+            stddev_input=StdDev("total_input_tokens", sample=True),
+            avg_output=Avg("total_output_tokens"),
+            stddev_output=StdDev("total_output_tokens", sample=True),
+            avg_total=Avg("total_tokens"),
+            stddev_total=StdDev("total_tokens", sample=True),
+        )
+    )
+
+    # 3. Create a quick lookup dictionary mapping conference_id -> stats
+    stats_dict = {item["paper__conference_id"]: item for item in stats}
+
+    # 4. Attach the computed numbers to the conference objects in memory
     for conference in conferences:
-        data = conference_data[conference.id]
-        
-        # Input tokens
-        if data['input']:
-            conference.avg_input_tokens = statistics.mean(data['input'])
-            conference.stddev_input_tokens = statistics.stdev(data['input']) if len(data['input']) > 1 else 0
+        conf_stats = stats_dict.get(conference.id, {})
+
+        # Input
+        conference.avg_input_tokens = conf_stats.get("avg_input")
+        if conference.avg_input_tokens is not None:
+            # MariaDB returns None for StdDev if there's only 1 row. We default to 0.0 like your original code.
+            conference.stddev_input_tokens = (
+                conf_stats.get("stddev_input")
+                if conf_stats.get("stddev_input") is not None
+                else 0.0
+            )
         else:
-            conference.avg_input_tokens = None
             conference.stddev_input_tokens = None
-        
-        # Output tokens
-        if data['output']:
-            conference.avg_output_tokens = statistics.mean(data['output'])
-            conference.stddev_output_tokens = statistics.stdev(data['output']) if len(data['output']) > 1 else 0
+
+        # Output
+        conference.avg_output_tokens = conf_stats.get("avg_output")
+        if conference.avg_output_tokens is not None:
+            conference.stddev_output_tokens = (
+                conf_stats.get("stddev_output")
+                if conf_stats.get("stddev_output") is not None
+                else 0.0
+            )
         else:
-            conference.avg_output_tokens = None
             conference.stddev_output_tokens = None
-        
-        # Total tokens
-        if data['total']:
-            conference.avg_total_tokens = statistics.mean(data['total'])
-            conference.stddev_total_tokens = statistics.stdev(data['total']) if len(data['total']) > 1 else 0
+
+        # Total
+        conference.avg_total_tokens = conf_stats.get("avg_total")
+        if conference.avg_total_tokens is not None:
+            conference.stddev_total_tokens = (
+                conf_stats.get("stddev_total")
+                if conf_stats.get("stddev_total") is not None
+                else 0.0
+            )
         else:
-            conference.avg_total_tokens = None
             conference.stddev_total_tokens = None
 
 
 def compute_node_statistics(conference_id):
     """
     Compute per-node token statistics for a conference based on latest workflow runs.
-    
-    Returns a dict with structure:
-    {
-        'node_name': {
-            'avg_input_tokens': float,
-            'stddev_input_tokens': float,
-            'avg_output_tokens': float,
-            'stddev_output_tokens': float,
-            'avg_total_tokens': float,
-            'stddev_total_tokens': float,
-            'count': int  # number of papers with this node
-        }
-    }
+    Optimized to compute all aggregations natively inside the database.
     """
-    import statistics
-    from collections import defaultdict
-    from django.db.models import Max, Q
-    
-    # Get latest run per paper for this conference
-    latest_per_paper = WorkflowRun.objects.filter(
-        paper__conference_id=conference_id,
-        status='completed'
-    ).values('paper_id').annotate(
-        max_created=Max('created_at')
+    # 1. Subquery to find the ID of the latest completed run for each paper
+    latest_run_sq = (
+        WorkflowRun.objects.filter(paper_id=OuterRef("paper_id"), status="completed")
+        .order_by("-created_at")
+        .values("id")[:1]
     )
-    
-    # Build Q filter
-    q_filter = Q()
-    for lpp in latest_per_paper:
-        q_filter |= Q(workflow_run__paper_id=lpp['paper_id'], workflow_run__created_at=lpp['max_created'])
-    
-    if not q_filter:
+
+    # 2. Get the actual list of run IDs for this conference using the subquery
+    latest_run_ids = WorkflowRun.objects.filter(
+        paper__conference_id=conference_id,
+        status="completed",
+        id=Subquery(latest_run_sq),
+    ).values_list("id", flat=True)
+
+    if not latest_run_ids:
         return {}
-    
-    # Fetch all nodes from latest runs
-    nodes = WorkflowNode.objects.filter(
-        q_filter,
-        workflow_run__status='completed'
-    ).values('node_id', 'input_tokens', 'output_tokens', 'total_tokens')
-    
-    # Group by node_id
-    node_data = defaultdict(lambda: {
-        'input': [],
-        'output': [],
-        'total': []
-    })
-    
-    for node in nodes:
-        node_id = node['node_id']
-        if node['input_tokens'] is not None:
-            node_data[node_id]['input'].append(node['input_tokens'])
-        if node['output_tokens'] is not None:
-            node_data[node_id]['output'].append(node['output_tokens'])
-        if node['total_tokens'] is not None:
-            node_data[node_id]['total'].append(node['total_tokens'])
-    
-    # Compute statistics
+
+    # 3. Filter nodes belonging to those runs and compute math natively in the DB
+    # sample=True maps to STDDEV_SAMP, matching Python's statistics.stdev()
+    node_stats = (
+        WorkflowNode.objects.filter(workflow_run_id__in=latest_run_ids)
+        .values("node_id")
+        .annotate(
+            avg_input=Avg("input_tokens"),
+            stddev_input=StdDev("input_tokens", sample=True),
+            avg_output=Avg("output_tokens"),
+            stddev_output=StdDev("output_tokens", sample=True),
+            avg_total=Avg("total_tokens"),
+            stddev_total=StdDev("total_tokens", sample=True),
+            node_count=Count("id"),
+        )
+    )
+
+    # 4. Format the result to match the exact JSON dictionary expected by your view
     result = {}
-    for node_id, data in node_data.items():
-        result[node_id] = {}
-        
-        # Input tokens
-        if data['input']:
-            result[node_id]['avg_input_tokens'] = statistics.mean(data['input'])
-            result[node_id]['stddev_input_tokens'] = statistics.stdev(data['input']) if len(data['input']) > 1 else 0
-            result[node_id]['count'] = len(data['input'])
-        else:
-            result[node_id]['avg_input_tokens'] = None
-            result[node_id]['stddev_input_tokens'] = None
-            result[node_id]['count'] = 0
-        
-        # Output tokens
-        if data['output']:
-            result[node_id]['avg_output_tokens'] = statistics.mean(data['output'])
-            result[node_id]['stddev_output_tokens'] = statistics.stdev(data['output']) if len(data['output']) > 1 else 0
-        else:
-            result[node_id]['avg_output_tokens'] = None
-            result[node_id]['stddev_output_tokens'] = None
-        
-        # Total tokens
-        if data['total']:
-            result[node_id]['avg_total_tokens'] = statistics.mean(data['total'])
-            result[node_id]['stddev_total_tokens'] = statistics.stdev(data['total']) if len(data['total']) > 1 else 0
-        else:
-            result[node_id]['avg_total_tokens'] = None
-            result[node_id]['stddev_total_tokens'] = None
-    
+    for stat in node_stats:
+        result[stat["node_id"]] = {
+            "avg_input_tokens": stat["avg_input"],
+            "stddev_input_tokens": (
+                stat["stddev_input"] if stat["stddev_input"] is not None else 0.0
+            ),
+            "avg_output_tokens": stat["avg_output"],
+            "stddev_output_tokens": (
+                stat["stddev_output"] if stat["stddev_output"] is not None else 0.0
+            ),
+            "avg_total_tokens": stat["avg_total"],
+            "stddev_total_tokens": (
+                stat["stddev_total"] if stat["stddev_total"] is not None else 0.0
+            ),
+            "count": stat["node_count"],
+        }
+
     return result
 
 
@@ -734,7 +684,7 @@ class ConferenceListView(View):
     def get(self, request):
         """Display conferences with search and pagination."""
         from django.db.models import Sum
-        
+
         search_query = request.GET.get("q", "").strip()
 
         # Start with all conferences
@@ -743,7 +693,10 @@ class ConferenceListView(View):
         # Annotate with paper count and total tokens (sum of all completed runs)
         conferences = conferences.annotate(
             paper_count=Count("papers", distinct=True),
-            total_tokens=Sum("papers__workflow_runs__total_tokens", filter=Q(papers__workflow_runs__status="completed")),
+            total_tokens=Sum(
+                "papers__workflow_runs__total_tokens",
+                filter=Q(papers__workflow_runs__status="completed"),
+            ),
         )
 
         # Apply search filter
@@ -800,10 +753,9 @@ class ConferenceDetailView(View):
 
         # Subquery to get token count from latest completed workflow run
         latest_completed_tokens_subquery = Subquery(
-            WorkflowRun.objects.filter(
-                paper_id=OuterRef('pk'),
-                status='completed'
-            ).order_by('-created_at').values('total_tokens')[:1]
+            WorkflowRun.objects.filter(paper_id=OuterRef("pk"), status="completed")
+            .order_by("-created_at")
+            .values("total_tokens")[:1]
         )
 
         # Get papers for this conference with workflow stats annotated
@@ -815,7 +767,7 @@ class ConferenceDetailView(View):
             .only("id", "title", "doi", "authors", "conference__id", "conference__name")
             .annotate(
                 workflow_count=Count("workflow_runs"),
-                latest_run_tokens=latest_completed_tokens_subquery
+                latest_run_tokens=latest_completed_tokens_subquery,
             )
         )
 
@@ -858,10 +810,10 @@ class ConferencePaperStatusView(View):
         from django.db.models import Count, Prefetch
 
         conference = get_object_or_404(Conference, id=conference_id)
-        
+
         # Get paper IDs from query parameter (for pagination support)
-        paper_ids_param = request.GET.get('paper_ids', '')
-        
+        paper_ids_param = request.GET.get("paper_ids", "")
+
         # Prefetch latest workflow run for each paper
         latest_workflow_prefetch = Prefetch(
             "workflow_runs",
@@ -878,11 +830,13 @@ class ConferencePaperStatusView(View):
             .only("id")
             .annotate(workflow_count=Count("workflow_runs"))
         )
-        
+
         # Filter by paper IDs if provided
         if paper_ids_param:
             try:
-                paper_ids = [int(id.strip()) for id in paper_ids_param.split(',') if id.strip()]
+                paper_ids = [
+                    int(id.strip()) for id in paper_ids_param.split(",") if id.strip()
+                ]
                 papers = papers.filter(id__in=paper_ids)
             except ValueError:
                 pass  # Ignore invalid paper IDs
@@ -890,18 +844,18 @@ class ConferencePaperStatusView(View):
         # Build status response
         statuses = {}
         for paper in papers:
-            status = 'none'
+            status = "none"
             workflow_count = paper.workflow_count
-            
+
             if paper.latest_workflow_list:
                 status = paper.latest_workflow_list[0].status
-            
+
             statuses[str(paper.id)] = {
-                'status': status,
-                'workflow_count': workflow_count
+                "status": status,
+                "workflow_count": workflow_count,
             }
 
-        return JsonResponse({'statuses': statuses})
+        return JsonResponse({"statuses": statuses})
 
 
 class ConferenceNodeStatisticsView(View):
@@ -912,25 +866,49 @@ class ConferenceNodeStatisticsView(View):
         try:
             conference = get_object_or_404(Conference, id=conference_id)
         except Conference.DoesNotExist:
-            return JsonResponse({'error': 'Conference not found'}, status=404)
-        
+            return JsonResponse({"error": "Conference not found"}, status=404)
+
         # Compute node statistics
         node_statistics = compute_node_statistics(conference_id)
-        
+
         # Format for JSON response
         stats_json = {}
         for node_id, stats in node_statistics.items():
             stats_json[node_id] = {
-                'avg_input_tokens': float(stats['avg_input_tokens']) if stats['avg_input_tokens'] is not None else None,
-                'stddev_input_tokens': float(stats['stddev_input_tokens']) if stats['stddev_input_tokens'] is not None else None,
-                'avg_output_tokens': float(stats['avg_output_tokens']) if stats['avg_output_tokens'] is not None else None,
-                'stddev_output_tokens': float(stats['stddev_output_tokens']) if stats['stddev_output_tokens'] is not None else None,
-                'avg_total_tokens': float(stats['avg_total_tokens']) if stats['avg_total_tokens'] is not None else None,
-                'stddev_total_tokens': float(stats['stddev_total_tokens']) if stats['stddev_total_tokens'] is not None else None,
-                'count': stats['count']
+                "avg_input_tokens": (
+                    float(stats["avg_input_tokens"])
+                    if stats["avg_input_tokens"] is not None
+                    else None
+                ),
+                "stddev_input_tokens": (
+                    float(stats["stddev_input_tokens"])
+                    if stats["stddev_input_tokens"] is not None
+                    else None
+                ),
+                "avg_output_tokens": (
+                    float(stats["avg_output_tokens"])
+                    if stats["avg_output_tokens"] is not None
+                    else None
+                ),
+                "stddev_output_tokens": (
+                    float(stats["stddev_output_tokens"])
+                    if stats["stddev_output_tokens"] is not None
+                    else None
+                ),
+                "avg_total_tokens": (
+                    float(stats["avg_total_tokens"])
+                    if stats["avg_total_tokens"] is not None
+                    else None
+                ),
+                "stddev_total_tokens": (
+                    float(stats["stddev_total_tokens"])
+                    if stats["stddev_total_tokens"] is not None
+                    else None
+                ),
+                "count": stats["count"],
             }
-        
-        return JsonResponse({'node_statistics': stats_json})
+
+        return JsonResponse({"node_statistics": stats_json})
 
 
 class ActiveWorkflowsView(View):
@@ -945,20 +923,22 @@ class ActiveWorkflowsView(View):
             MAX_CONCURRENT_WORKFLOWS,
             cleanup_stale_workflows,
         )
-        
+
         # Clean up stale workflows (older than 30 minutes) - now async
         async_to_sync(cleanup_stale_workflows)(max_age_minutes=30)
-        
+
         # Get counts and workflows - now async
         active_count = async_to_sync(get_active_workflow_count)()
         active_workflows = async_to_sync(get_active_workflows)()
-        
-        return JsonResponse({
-            'active_count': active_count,
-            'max_concurrent': MAX_CONCURRENT_WORKFLOWS,
-            'available_slots': MAX_CONCURRENT_WORKFLOWS - active_count,
-            'workflows': active_workflows
-        })
+
+        return JsonResponse(
+            {
+                "active_count": active_count,
+                "max_concurrent": MAX_CONCURRENT_WORKFLOWS,
+                "available_slots": MAX_CONCURRENT_WORKFLOWS - active_count,
+                "workflows": active_workflows,
+            }
+        )
 
 
 class PaperDetailView(View):
@@ -1185,15 +1165,15 @@ class RerunWorkflowView(View):
         # Enqueue workflow as Celery task (non-blocking, queued for processing)
         try:
             from webApp.tasks import process_paper_workflow_task
-            
+
             # Submit task to Celery queue with selected workflow
             task = process_paper_workflow_task.delay(
                 paper_id=paper_id,
                 force_reprocess=force_reprocess,
                 model="gpt-5",
-                workflow_id=workflow_id  # Pass the selected workflow ID
+                workflow_id=workflow_id,  # Pass the selected workflow ID
             )
-            
+
             logger.info(
                 f"Workflow task enqueued for paper {paper_id}, "
                 f"workflow: {workflow_definition.description or workflow_definition.name}, "
@@ -1278,9 +1258,7 @@ class LatestWorkflowStatusView(View):
 
         # Get the most recent workflow run for this paper
         latest_run = (
-            WorkflowRun.objects.filter(paper=paper)
-            .order_by("-created_at")
-            .first()
+            WorkflowRun.objects.filter(paper=paper).order_by("-created_at").first()
         )
 
         if latest_run:
@@ -1536,7 +1514,7 @@ class RerunFromNodeView(View):
         force_reprocess = True
         try:
             body = json.loads(request.body) if request.body else {}
-            force_reprocess = body.get('force_reprocess', True)
+            force_reprocess = body.get("force_reprocess", True)
         except json.JSONDecodeError:
             pass
 
@@ -1580,7 +1558,9 @@ class RerunFromNodeView(View):
                 asyncio.set_event_loop(loop)
                 loop.run_until_complete(
                     _workflow_instance.execute_from_node(
-                        node_uuid=str(node.id), model="gpt-5", force_reprocess=force_reprocess
+                        node_uuid=str(node.id),
+                        model="gpt-5",
+                        force_reprocess=force_reprocess,
                     )
                 )
                 loop.close()
@@ -1645,7 +1625,7 @@ class BulkRerunPreviewView(View):
         if request.body:
             try:
                 data = json.loads(request.body)
-                limit = data.get('limit')
+                limit = data.get("limit")
                 if limit:
                     limit = int(limit)
             except (json.JSONDecodeError, ValueError):
@@ -1659,34 +1639,40 @@ class BulkRerunPreviewView(View):
             )[:1],
             to_attr="latest_workflow_list",
         )
-        
-        papers = Paper.objects.filter(conference=conference).prefetch_related(
-            latest_workflow_prefetch
-        ).order_by('id')
-        
+
+        papers = (
+            Paper.objects.filter(conference=conference)
+            .prefetch_related(latest_workflow_prefetch)
+            .order_by("id")
+        )
+
         # Apply limit if specified
         if limit and limit > 0:
             papers = papers[:limit]
-            
+
         # Build paper list
         paper_list = []
         for paper in papers:
-            status = 'none'
+            status = "none"
             if paper.latest_workflow_list:
                 status = paper.latest_workflow_list[0].status
-            
-            paper_list.append({
-                'id': paper.id,
-                'title': paper.title,
-                'authors': paper.authors[:100] + '...' if paper.authors and len(paper.authors) > 100 else paper.authors,
-                'status': status
-            })
 
-        return JsonResponse({
-            'success': True,
-            'papers': paper_list,
-            'total': len(paper_list)
-        })
+            paper_list.append(
+                {
+                    "id": paper.id,
+                    "title": paper.title,
+                    "authors": (
+                        paper.authors[:100] + "..."
+                        if paper.authors and len(paper.authors) > 100
+                        else paper.authors
+                    ),
+                    "status": status,
+                }
+            )
+
+        return JsonResponse(
+            {"success": True, "papers": paper_list, "total": len(paper_list)}
+        )
 
 
 class BulkRerunWorkflowsView(View):
@@ -1715,19 +1701,17 @@ class BulkRerunWorkflowsView(View):
         if request.body:
             try:
                 data = json.loads(request.body)
-                limit = data.get('limit')
+                limit = data.get("limit")
                 if limit:
                     limit = int(limit)
-                workflow_id = data.get('workflow_id')
-                force_reprocess = data.get('force_reprocess', True)
+                workflow_id = data.get("workflow_id")
+                force_reprocess = data.get("force_reprocess", True)
             except (json.JSONDecodeError, ValueError) as e:
                 logger.warning(f"Failed to parse request data: {e}")
 
         # Validate workflow_id is provided
         if not workflow_id:
-            return JsonResponse(
-                {"error": "workflow_id is required"}, status=400
-            )
+            return JsonResponse({"error": "workflow_id is required"}, status=400)
 
         # Validate workflow exists and is active
         try:
@@ -1741,11 +1725,11 @@ class BulkRerunWorkflowsView(View):
 
         # Get papers for this conference
         papers = Paper.objects.filter(conference=conference)
-        
+
         # Apply limit if specified
         if limit and limit > 0:
             papers = papers[:limit]
-            
+
         papers = list(papers)  # Convert to list for iteration
         total_papers = len(papers)
 
@@ -1763,11 +1747,9 @@ class BulkRerunWorkflowsView(View):
             )
 
             for running_workflow in running_workflows:
-                last_update = (
-                    running_workflow.started_at or running_workflow.created_at
-                )
+                last_update = running_workflow.started_at or running_workflow.created_at
                 time_since_update = timezone.now() - last_update
-                
+
                 # Force cleanup for bulk rerun (mark as cancelled regardless of time)
                 logger.warning(
                     f"Cancelling workflow {running_workflow.id} for paper {paper.id} "
@@ -1775,9 +1757,7 @@ class BulkRerunWorkflowsView(View):
                 )
                 running_workflow.status = "failed"
                 running_workflow.completed_at = timezone.now()
-                running_workflow.error_message = (
-                    f"Workflow cancelled for bulk rerun"
-                )
+                running_workflow.error_message = f"Workflow cancelled for bulk rerun"
                 running_workflow.save()
 
                 # Also mark all running/pending nodes as failed
@@ -1795,13 +1775,13 @@ class BulkRerunWorkflowsView(View):
 
         # Enqueue all workflow tasks to Celery (they'll be processed when workers are available)
         from webApp.tasks import process_paper_workflow_task
-        
+
         paper_ids = [p.id for p in papers]
         logger.info(
             f"Enqueueing {total_papers} workflow tasks for conference {conference_id}: {paper_ids} "
             f"(workflow: {workflow_definition.name} v{workflow_definition.version})"
         )
-        
+
         task_ids = []
         for idx, paper in enumerate(papers, 1):
             try:
@@ -1809,7 +1789,7 @@ class BulkRerunWorkflowsView(View):
                     paper_id=paper.id,
                     force_reprocess=force_reprocess,
                     model="gpt-5",
-                    workflow_id=workflow_id  # Pass the selected workflow ID
+                    workflow_id=workflow_id,  # Pass the selected workflow ID
                 )
                 task_ids.append(str(task.id))
                 logger.info(
@@ -1818,23 +1798,30 @@ class BulkRerunWorkflowsView(View):
             except Exception as e:
                 logger.error(
                     f"[{idx}/{total_papers}] Failed to enqueue task for paper {paper.id}: {e}",
-                    exc_info=True
+                    exc_info=True,
                 )
-        
+
         logger.info(
             f"Successfully enqueued {len(task_ids)} workflow tasks for conference {conference_id} "
             f"(workflow: {workflow_definition.name} v{workflow_definition.version})"
         )
 
         message = f"{len(task_ids)} workflow task{'s' if len(task_ids) != 1 else ''} queued for processing"
-        message += f" using '{workflow_definition.description or workflow_definition.name}'"
+        message += (
+            f" using '{workflow_definition.description or workflow_definition.name}'"
+        )
         if limit and limit > 0:
             message += f" (limited to {limit})"
-        
+
         # Get concurrency info
-        from webApp.services.graphs.paper_processing_workflow import MAX_CONCURRENT_WORKFLOWS
-        message += f". Celery workers will process {MAX_CONCURRENT_WORKFLOWS} at a time."
-        
+        from webApp.services.graphs.paper_processing_workflow import (
+            MAX_CONCURRENT_WORKFLOWS,
+        )
+
+        message += (
+            f". Celery workers will process {MAX_CONCURRENT_WORKFLOWS} at a time."
+        )
+
         return JsonResponse(
             {
                 "success": True,
@@ -1868,7 +1855,7 @@ class BulkStopWorkflowsView(View):
 
         # Get all papers for this conference
         papers = Paper.objects.filter(conference=conference)
-        paper_ids = list(papers.values_list('id', flat=True))
+        paper_ids = list(papers.values_list("id", flat=True))
 
         if not paper_ids:
             return JsonResponse(
