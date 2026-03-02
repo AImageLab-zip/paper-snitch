@@ -26,6 +26,7 @@ services:
       - UV_CACHE_DIR=/tmp/uv-cache # Cache in /tmp for development
       - PYTHONUNBUFFERED=1
       - HOST_PROJECT_PATH=${PWD}
+      - STACK_SUFFIX=${STACK_SUFFIX:-dev}
     develop:
       watch:
         - action: sync
@@ -77,6 +78,7 @@ services:
       - ./app:/app
       - django-venv:/app/.venv
       - ./media_${STACK_SUFFIX:-dev}:/app/media
+      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       mysql:
         condition: service_healthy
@@ -85,6 +87,8 @@ services:
     environment:
       - UV_CACHE_DIR=/tmp/uv-cache
       - PYTHONUNBUFFERED=1
+      - HOST_PROJECT_PATH=${PWD}
+      - STACK_SUFFIX=${STACK_SUFFIX:-dev}
     restart: unless-stopped
 
   celery-beat:
@@ -99,6 +103,7 @@ services:
       - ./app:/app
       - django-venv:/app/.venv
       - ./media_${STACK_SUFFIX:-dev}:/app/media
+      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       mysql:
         condition: service_healthy
@@ -107,6 +112,8 @@ services:
     environment:
       - UV_CACHE_DIR=/tmp/uv-cache
       - PYTHONUNBUFFERED=1
+      - HOST_PROJECT_PATH=${PWD}
+      - STACK_SUFFIX=${STACK_SUFFIX:-dev}
     restart: unless-stopped
 
   grobid:

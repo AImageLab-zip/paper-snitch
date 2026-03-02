@@ -121,7 +121,7 @@ class CodeOnlyWorkflow(BaseWorkflowGraph):
         paper_id: int,
         force_reprocess: bool = False,
         openai_api_key: Optional[str] = None,
-        model: str = "gpt-4o",
+        model: str = "gpt-5",
     ) -> Dict[str, Any]:
         """
         Execute the code-only workflow for a paper.
@@ -285,7 +285,7 @@ async def execute_workflow(
     paper_id: int,
     force_reprocess: bool = False,
     openai_api_key: Optional[str] = None,
-    model: str = "gpt-4o",
+    model: str = "gpt-5",
 ) -> Dict[str, Any]:
     """
     Execute the code-only workflow for a paper.

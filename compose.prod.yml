@@ -27,6 +27,7 @@ services:
         condition: service_started
     environment:
       - HOST_PROJECT_PATH=${PWD}
+      - STACK_SUFFIX=
     restart: unless-stopped
 
   celery-worker:

@@ -1190,7 +1190,7 @@ class RerunWorkflowView(View):
             task = process_paper_workflow_task.delay(
                 paper_id=paper_id,
                 force_reprocess=force_reprocess,
-                model="gpt-4o",
+                model="gpt-5",
                 workflow_id=workflow_id  # Pass the selected workflow ID
             )
             
@@ -1471,7 +1471,7 @@ class RerunSingleNodeView(View):
                 logger.info(f"Event loop created, executing node...")
                 result = loop.run_until_complete(
                     _workflow_instance.execute_a_node(
-                        node_uuid=str(node.id), force_reprocess=True, model="gpt-4o"
+                        node_uuid=str(node.id), force_reprocess=True, model="gpt-5"
                     )
                 )
                 logger.info(f"Node execution completed with result: {result}")
@@ -1580,7 +1580,7 @@ class RerunFromNodeView(View):
                 asyncio.set_event_loop(loop)
                 loop.run_until_complete(
                     _workflow_instance.execute_from_node(
-                        node_uuid=str(node.id), model="gpt-4o", force_reprocess=force_reprocess
+                        node_uuid=str(node.id), model="gpt-5", force_reprocess=force_reprocess
                     )
                 )
                 loop.close()
@@ -1808,7 +1808,7 @@ class BulkRerunWorkflowsView(View):
                 task = process_paper_workflow_task.delay(
                     paper_id=paper.id,
                     force_reprocess=force_reprocess,
-                    model="gpt-4o",
+                    model="gpt-5",
                     workflow_id=workflow_id  # Pass the selected workflow ID
                 )
                 task_ids.append(str(task.id))

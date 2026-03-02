@@ -230,7 +230,8 @@ Provide your assessment with:
                         {"role": "user", "content": user_prompt},
                     ],
                     response_format=SingleCriterionAnalysis,
-                    temperature=0.1,
+                    reasoning_effort="minimal",
+        #temperature=0.1,
                 )
                 
                 analysis = response.choices[0].message.parsed

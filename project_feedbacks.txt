@@ -40,6 +40,6 @@ comunque c'è il codice, quindi la mancanza di dettagli è abbastanza giustifica
 Per la Licenza si lamenta che non c'è niente e mi dà uno score di zero. "No IRB/ethics board approval statements, informed consent, anonymization details, or privacy discussions, 
 despite using medical imaging data." ma i dataset usati sono pubblici, non vedo perché dovrebbe esserci una roba del genere nel mio paper. Si lamenta anche che manca la licenza del codice.
 
-Riguardo alla Review fatta con GPT-5-mini:
+Riguardo alla Review fatta con gpt-5-mini:
 I dataset estratti sono molto meglio: 4 e corretti
 Il resto è abbastanza simile

@@ -74,17 +74,42 @@ def convert_pdf_to_html(document):
 
     # Try pdf2htmlEX via Docker first (preserves style)
     docker_available = shutil.which("docker") is not None
-    if docker_available:
+    if docker_available and host_project_path:
         try:
+            # Validate HOST_PROJECT_PATH is set
+            if not host_project_path:
+                raise ValueError("HOST_PROJECT_PATH environment variable is not set")
+            
+            # Get STACK_SUFFIX for media directory mapping
+            # In dev: media_dev, media_bolelli, etc.
+            # In prod: just media (no suffix)
+            stack_suffix = os.environ.get("STACK_SUFFIX", "")
+            
             rel_pdf_path = os.path.relpath(pdf_path, settings.BASE_DIR)
             rel_output_dir = os.path.relpath(output_dir, settings.BASE_DIR)
-            # Get absolute paths
+            
+            # Adjust paths to account for media_${STACK_SUFFIX} on host vs /app/media in container
+            # Inside container: /app/media/pdfs/file.pdf
+            # On host (dev): /path/to/project/media_dev/pdfs/file.pdf
+            # On host (prod): /path/to/project/media/pdfs/file.pdf
+            if stack_suffix and rel_pdf_path.startswith("media/"):
+                rel_pdf_path = rel_pdf_path.replace("media/", f"media_{stack_suffix}/", 1)
+            if stack_suffix and rel_output_dir.startswith("media/"):
+                rel_output_dir = rel_output_dir.replace("media/", f"media_{stack_suffix}/", 1)
+            
+            # Get absolute paths on host
             host_pdf_path = os.path.join(host_project_path, rel_pdf_path)
-            pdf_filename = os.path.basename(pdf_path)
-
             host_output_dir = os.path.join(host_project_path, rel_output_dir)
             host_pdf_dir = os.path.dirname(host_pdf_path)
             pdf_filename = os.path.basename(pdf_path)
+            
+            # Log paths for debugging
+            logger.info(f"PDF conversion paths:")
+            logger.info(f"  Container PDF path: {pdf_path}")
+            logger.info(f"  Host PDF path: {host_pdf_path}")
+            logger.info(f"  Host PDF dir: {host_pdf_dir}")
+            logger.info(f"  PDF filename: {pdf_filename}")
+            logger.info(f"  Host output dir: {host_output_dir}")
 
             DOCKER_IMAGE = (
                 "pdf2htmlex/pdf2htmlex:0.18.8.rc2-master-20200820-ubuntu-20.04-x86_64"
@@ -107,6 +132,8 @@ def convert_pdf_to_html(document):
                 f"/pdf/{pdf_filename}",
                 output_filename,
             ]
+            
+            logger.info(f"Running Docker command: {' '.join(cmd)}")
 
             result = subprocess.run(
                 cmd, capture_output=True, text=True, check=True, timeout=120
@@ -122,21 +149,29 @@ def convert_pdf_to_html(document):
 
             return output_path
 
-        except Exception as e:
-            error_msg = (
-                f"Docker conversion failed!\nSTDOUT: {e.stdout}\nSTDERR: {e.stderr}"
-            )
+        except subprocess.CalledProcessError as e:
+            error_msg = f"Docker conversion failed!\n"
+            error_msg += f"Command: {' '.join(cmd)}\n"
+            error_msg += f"Return code: {e.returncode}\n"
+            error_msg += f"STDOUT: {e.stdout}\n"
+            error_msg += f"STDERR: {e.stderr}"
             logger.error(error_msg)
-            print(error_msg)  # Stampalo anche a video per debug immediato
+            print(error_msg)
 
-            # Salva l'errore nel database per debug futuro
+            # Save error to database
             document.conversion_status = "failed"
-            document.conversion_error = (
-                e.stderr[:500] if e.stderr else "Unknown Docker Error"
-            )
+            document.conversion_error = e.stderr[:500] if e.stderr else f"Docker error (code {e.returncode})"
             document.save()
 
-            raise RuntimeError(f"PDF Conversion Failed: {e.stderr}")
+            # Don't raise, fall through to pypdf fallback
+            logger.info("Falling back to pypdf conversion")
+        except Exception as e:
+            error_msg = f"Docker conversion setup failed: {str(e)}"
+            logger.error(error_msg)
+            print(error_msg)
+
+            # Don't save to database, fall through to pypdf fallback
+            logger.info("Falling back to pypdf conversion")
     # Fallback to pypdf if pdf2htmlEX not available or failed
     try:
         from pypdf import PdfReader

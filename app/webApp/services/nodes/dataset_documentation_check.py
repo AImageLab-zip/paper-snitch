@@ -235,7 +235,8 @@ Provide your assessment with:
                         {"role": "user", "content": user_prompt},
                     ],
                     response_format=SingleDatasetCriterionAnalysis,
-                    temperature=0.1,
+                    reasoning_effort="minimal",
+                    # temperature=0.1,
                 )
 
                 analysis = response.choices[0].message.parsed
@@ -656,7 +657,7 @@ def _generate_programmatic_assessment(
 
     # Specific recommendations from critical gaps
     for analysis in critical_gaps[:3]:
-        recommendations.append(f"Add {analysis.criterion_name}...")
+        recommendations.append(f"Add {analysis.criterion_name} ...")
 
     # Fill with important missing criteria
     for analysis in absent_criteria:

@@ -201,8 +201,9 @@ Generate a JSON with:
                 {"role": "user", "content": overall_prompt}
             ],
             response_format={"type": "json_object"},
-            temperature=0.2,
-            max_tokens=1000
+            reasoning_effort="minimal",
+        #temperature=0.2,
+            #max_tokens=1000
         )
         
         overall_result = json.loads(overall_response.choices[0].message.content)

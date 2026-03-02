@@ -452,8 +452,9 @@ async def analyze_aspect(
             {"role": "user", "content": prompt}
         ],
         response_format={"type": "json_object"},
-        temperature=0.2,
-        max_tokens=1500
+        reasoning_effort="minimal",
+        #temperature=0.2
+        #max_tokens=1500
     )
     
     analysis_json = response.choices[0].message.content

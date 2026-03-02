@@ -142,7 +142,8 @@ Provide:
                     "schema": PaperTypeClassification.model_json_schema(),
                 },
             },
-            temperature=0.3,
+            reasoning_effort="minimal",
+        #temperature=0.3,
         )
 
         # Parse response

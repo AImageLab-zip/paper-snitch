@@ -380,7 +380,8 @@ Create a unified narrative connecting findings across all evaluation dimensions.
                 {"role": "user", "content": user_prompt},
             ],
             response_format=FinalQualitativeAssessment,
-            temperature=0.3,
+            reasoning_effort="minimal",
+        #temperature=0.3,
         )
         
         qualitative = response.choices[0].message.parsed

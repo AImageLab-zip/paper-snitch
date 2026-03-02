@@ -244,7 +244,7 @@ New Conference B: Expecting 50 papers
 Estimated tokens: 50 × 8,363 = 418,150 tokens
 Conservative estimate (mean + 1σ): 50 × (8,363 + 1,520) = 494,150 tokens
 
-Cost calculation (OpenAI gpt-4o-mini):
+Cost calculation (OpenAI gpt-5-mini):
 - Input: 50 × 8,200 × $0.003/1K = $1.23
 - Output: 50 × 163 × $0.012/1K = $0.10
 - Total: $1.33

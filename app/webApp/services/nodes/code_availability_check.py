@@ -191,6 +191,7 @@ Respond with your assessment."""
                                     {"role": "user", "content": verification_prompt}
                                 ],
                                 text_format=RepoVerification,
+                                reasoning={"effort":"minimal"},
                             )
 
                             verification = response.output_parsed
@@ -613,7 +614,8 @@ Provide:
             ],
             tools=[{"type": "web_search_preview"}],
             text_format=OnlineCodeSearch,
-            temperature=0.2,
+            #reasoning={"effort":"minimal"},
+        #temperature=02,
         )
 
         result = response.output_parsed
