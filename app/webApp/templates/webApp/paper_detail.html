@@ -387,7 +387,8 @@
                                 <i class="fas fa-sync-alt fa-spin"></i> Auto-updating
                             </span>
                             {% endif %}
-                            {% if selected_workflow.id == latest_workflow.id and selected_workflow.status not in 'running,pending' %}
+
+                            {% if selected_workflow.id == latest_workflow.id and selected_workflow.status not in 'running,pending' and user.is_authenticated%}
                             <button class="btn btn-sm btn-outline-primary ml-3" id="rerun-workflow-btn" onclick="rerunWorkflow({{ paper.id }})">
                                 <i class="fas fa-redo mr-1"></i> Rerun Analysis
                             </button>
@@ -595,12 +596,14 @@
                 </div>
             </div>
             <div class="modal-footer">
+                {% if user.is_authenticated %}
                 <button type="button" class="btn btn-warning" id="rerun-node-btn" onclick="rerunNode()">
                     <i class="fas fa-redo mr-2"></i>Rerun This Node
                 </button>
                 <button type="button" class="btn btn-info" id="rerun-from-node-btn" onclick="rerunFromNode()">
                     <i class="fas fa-play mr-2"></i>Rerun From Here
                 </button>
+                {% endif %}
                 <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
             </div>
         </div>

@@ -241,6 +241,12 @@ Added function to check if there are multiple dataset inside of a paper and chec
 
 20/02/2026
 
+2/3/2026
+Nascondere annotator e analyze button from navbar
+Togliere rerun analysis, rerun from this node and rerun this node se utente non registrato
+fixare dominio riaggiungengdo paper-snitch.ing.unimore.it come allowed host e trusted origin
+Aggiungere visualizzazione delle evidence locator quando si clicca sul final aggregation node
+
 
 
 
