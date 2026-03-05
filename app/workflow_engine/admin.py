@@ -396,7 +396,4 @@ class NodeLogAdmin(admin.ModelAdmin):
 
     message_short.short_description = "Message"
 
-
-
-
     node_link.short_description = "Node"

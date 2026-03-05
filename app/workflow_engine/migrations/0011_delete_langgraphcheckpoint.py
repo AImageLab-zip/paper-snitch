@@ -12,15 +12,15 @@ class Migration(migrations.Migration):
     """
 
     dependencies = [
-        ('workflow_engine', '0010_nodeartifact_file'),
+        ("workflow_engine", "0010_nodeartifact_file"),
     ]
 
     operations = [
         migrations.SeparateDatabaseAndState(
-            database_operations=[],   # do nothing in the DB (table doesn't exist)
+            database_operations=[],  # do nothing in the DB (table doesn't exist)
             state_operations=[
                 migrations.DeleteModel(
-                    name='LangGraphCheckpoint',
+                    name="LangGraphCheckpoint",
                 ),
             ],
         ),

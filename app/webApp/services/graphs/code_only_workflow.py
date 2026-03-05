@@ -115,7 +115,6 @@ class CodeOnlyWorkflow(BaseWorkflowGraph):
 
         return state
 
-
     async def execute_workflow(
         self,
         paper_id: int,
@@ -218,20 +217,21 @@ class CodeOnlyWorkflow(BaseWorkflowGraph):
             # Skipped nodes do not cause the run to be marked as failed
             from asgiref.sync import sync_to_async
             from workflow_engine.models import WorkflowNode
-            
+
             @sync_to_async
             def has_failed_nodes():
                 return WorkflowNode.objects.filter(
-                    workflow_run_id=workflow_run.id,
-                    status='failed'
+                    workflow_run_id=workflow_run.id, status="failed"
                 ).exists()
-            
+
             has_failures = await has_failed_nodes()
-            
+
             if has_failures:
                 errors = final_state.get("errors", [])
                 error_msg = "; ".join(errors) if errors else "Unknown error"
-                logger.error(f"Code-only workflow failed for paper {paper_id}: {error_msg}")
+                logger.error(
+                    f"Code-only workflow failed for paper {paper_id}: {error_msg}"
+                )
                 await async_ops.update_workflow_run_status(
                     workflow_run.id,
                     "failed",

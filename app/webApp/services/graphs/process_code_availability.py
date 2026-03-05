@@ -247,7 +247,7 @@ class CodeAvailabilityWorkflow(BaseWorkflowGraph):
             workflow = self.build_workflow()
 
             final_state = await workflow.ainvoke(initial_state)
-            
+
             # Aggregate token counts from all nodes
             await async_ops.aggregate_workflow_run_tokens(workflow_run.id)
 
@@ -256,14 +256,13 @@ class CodeAvailabilityWorkflow(BaseWorkflowGraph):
             # Skipped nodes do not cause the run to be marked as failed
             from asgiref.sync import sync_to_async
             from workflow_engine.models import WorkflowNode
-            
+
             @sync_to_async
             def has_failed_nodes():
                 return WorkflowNode.objects.filter(
-                    workflow_run_id=workflow_run.id,
-                    status='failed'
+                    workflow_run_id=workflow_run.id, status="failed"
                 ).exists()
-            
+
             has_failures = await has_failed_nodes()
             final_status = "failed" if has_failures else "completed"
             success = not has_failures
@@ -289,7 +288,7 @@ class CodeAvailabilityWorkflow(BaseWorkflowGraph):
                 },
                 error_message="; ".join(errors) if errors else None,
             )
-            
+
             # Reload workflow_run to get aggregated token counts
             workflow_run = await async_ops.get_workflow_run(workflow_run.id)
 

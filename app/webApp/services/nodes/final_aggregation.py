@@ -197,7 +197,9 @@ async def final_aggregation_node(
                 )
             }
         # Nothing to return - let execution continue (will fail gracefully below)
-        logger.warning("final_aggregation completed but no cached result found - re-executing")
+        logger.warning(
+            "final_aggregation completed but no cached result found - re-executing"
+        )
 
     # Update node status to running
     await async_ops.update_node_status(node, "running", started_at=timezone.now())

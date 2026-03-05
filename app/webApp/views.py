@@ -21,7 +21,6 @@ from django.db.models import (
     Avg,
     StdDev,
     Count,
-
 )
 from webApp.models import Operations, Analysis, BugReport, Paper, Conference
 from django.core.paginator import Paginator

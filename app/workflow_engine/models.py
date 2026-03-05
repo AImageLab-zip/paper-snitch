@@ -568,6 +568,3 @@ class NodeLog(models.Model):
 
     def __str__(self):
         return f"[{self.level}] {self.node.node_id}: {self.message[:50]}"
-
-
-
