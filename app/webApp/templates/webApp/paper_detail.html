@@ -640,6 +640,19 @@
                         Select a workflow to run
                     </small>
                 </div>
+
+                <!-- LLM Model Selection -->
+                <div class="form-group">
+                    <label for="llm-model-select" class="font-weight-bold">
+                        <i class="fas fa-robot mr-1"></i>Select LLM Model:
+                    </label>
+                    <select class="form-control" id="llm-model-select">
+                        <option value="" disabled>Loading models...</option>
+                    </select>
+                    <small class="form-text text-muted">
+                        Active model configurations from the LLM Model Configurations table
+                    </small>
+                </div>
                 
                 <!-- Force Reprocess Option -->
                 <div class="form-group">
@@ -1856,6 +1869,9 @@ function loadAvailableWorkflows(paperId) {
     const select = $('#workflow-type-select');
     select.html('<option value="" disabled selected>Loading workflows...</option>');
     
+    const modelSelect = $('#llm-model-select');
+    modelSelect.html('<option value="" disabled selected>Loading models...</option>');
+    
     $.ajax({
         url: `/paper/${paperId}/rerun-workflow/`,
         method: 'GET',
@@ -1879,6 +1895,22 @@ function loadAvailableWorkflows(paperId) {
                     select.append(option);
                 });
             }
+
+            // Add LLM model options
+            modelSelect.empty();
+            if (response.llm_models && response.llm_models.length > 0) {
+                response.llm_models.forEach(function(llm, idx) {
+                    const opt = $('<option></option>')
+                        .attr('value', llm.model)
+                        .text(llm.visual_name);
+                    if (idx === 0) {
+                        opt.attr('selected', 'selected');
+                    }
+                    modelSelect.append(opt);
+                });
+            } else {
+                modelSelect.html('<option value="" disabled selected>No active models found</option>');
+            }
             
             // Enable the confirm button
             $('#confirm-rerun-btn').prop('disabled', false);
@@ -1886,6 +1918,7 @@ function loadAvailableWorkflows(paperId) {
         error: function(xhr) {
             console.error('Failed to load workflows:', xhr);
             select.html('<option value="" disabled selected>Error loading workflows</option>');
+            modelSelect.html('<option value="" disabled selected>Error loading models</option>');
             $('#confirm-rerun-btn').prop('disabled', true);
         }
     });
@@ -1901,6 +1934,7 @@ $('#workflow-type-select').on('change', function() {
 $('#confirm-rerun-btn').on('click', function() {
     const paperId = $('#rerunWorkflowModal').data('paperId');
     const workflowType = $('#workflow-type-select').val();
+    const model = $('#llm-model-select').val();
     const btn = $(this);
     const originalHtml = btn.html();
     
@@ -1931,7 +1965,8 @@ $('#confirm-rerun-btn').on('click', function() {
         method: 'POST',
         data: {
             'workflow_type': workflowType,
-            'force_reprocess': forceReprocess
+            'force_reprocess': forceReprocess,
+            'model': model
         },
         headers: {
             'X-CSRFToken': csrfToken

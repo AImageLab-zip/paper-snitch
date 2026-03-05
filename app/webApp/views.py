@@ -22,7 +22,14 @@ from django.db.models import (
     StdDev,
     Count,
 )
-from webApp.models import Operations, Analysis, BugReport, Paper, Conference
+from webApp.models import (
+    Operations,
+    Analysis,
+    BugReport,
+    Paper,
+    Conference,
+    LLMModelConfig,
+)
 from django.core.paginator import Paginator
 
 from django.core.files.storage import default_storage
@@ -1078,12 +1085,21 @@ class RerunWorkflowView(View):
             if idx == 0:
                 default_workflow_id = workflow_id
 
+        # Query active LLM model configurations
+        active_llm_models = [
+            {"model": cfg.model, "visual_name": cfg.visual_name}
+            for cfg in LLMModelConfig.objects.filter(is_active=True).order_by(
+                "visual_name"
+            )
+        ]
+
         return JsonResponse(
             {
                 "paper_id": paper_id,
                 "paper_title": paper.title,
                 "workflows": workflows,
                 "default_workflow": default_workflow_id,
+                "llm_models": active_llm_models,
             }
         )
 
@@ -1097,9 +1113,10 @@ class RerunWorkflowView(View):
         except Paper.DoesNotExist:
             return JsonResponse({"error": "Paper not found"}, status=404)
 
-        # Get workflow ID and force_reprocess flag from request
+        # Get workflow ID, force_reprocess flag, and model key from request
         workflow_id = request.POST.get("workflow_type")
         force_reprocess = request.POST.get("force_reprocess", "true").lower() == "true"
+        model = request.POST.get("model", "")
 
         if not workflow_id:
             return JsonResponse(
@@ -1179,11 +1196,26 @@ class RerunWorkflowView(View):
         try:
             from webApp.tasks import process_paper_workflow_task
 
+            # Resolve model string from model_key.
+            # TODO: refactor process_paper_workflow_task (and all downstream node functions)
+            # TODO: to accept a full model config dict (model, temperature, reasoning_effort,
+            # TODO: api_key_env_var, base_url, …) instead of a plain model name string,
+            # TODO: so all settings from LLMModelConfig can be forwarded without hard-coding.
+            resolved_model = "gpt-5-nano"  # fallback default
+            if model:
+                try:
+                    llm_cfg = LLMModelConfig.objects.get(model=model, is_active=True)
+                    resolved_model = llm_cfg.model
+                except LLMModelConfig.DoesNotExist:
+                    logger.warning(
+                        f"model '{model}' not found or inactive, falling back to default model"
+                    )
+
             # Submit task to Celery queue with selected workflow
             task = process_paper_workflow_task.delay(
                 paper_id=paper_id,
                 force_reprocess=force_reprocess,
-                model="gpt-5-nano",
+                model=resolved_model,
                 workflow_id=workflow_id,  # Pass the selected workflow ID
             )
 
