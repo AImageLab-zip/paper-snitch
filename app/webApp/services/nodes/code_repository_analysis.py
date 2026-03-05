@@ -120,7 +120,6 @@ async def code_repository_analysis_node(
                 )
 
                 result = CodeReproducibilityAnalysis(**previous["result"])
-                await async_ops.create_node_artifact(node, "result", result)
 
                 # Copy tokens from previous execution
                 previous_node = await async_ops.get_most_recent_completed_node(
@@ -138,6 +137,37 @@ async def code_repository_analysis_node(
                     )
                     logger.info(
                         f"Copied tokens from previous execution: {previous_node.total_tokens} total"
+                    )
+
+                    # Copy all artifacts from previous node to current node
+                    # This ensures the frontend can display the full results even when using cache
+                    previous_artifacts = await async_ops.get_node_artifacts(
+                        previous_node
+                    )
+                    for artifact in previous_artifacts:
+                        await async_ops.create_node_artifact(
+                            node,
+                            name=artifact.name,
+                            data=(
+                                artifact.inline_data
+                                if artifact.artifact_type == "inline"
+                                else {
+                                    "type": artifact.artifact_type,
+                                    "file_path": artifact.file_path,
+                                    "url": artifact.url,
+                                    "mime_type": artifact.mime_type,
+                                    "size_bytes": artifact.size_bytes,
+                                    "metadata": artifact.metadata,
+                                }
+                            ),
+                            artifact_type=artifact.artifact_type,
+                            mime_type=artifact.mime_type,
+                            size_bytes=artifact.size_bytes,
+                            metadata=artifact.metadata,
+                        )
+
+                    logger.info(
+                        f"Copied {len(previous_artifacts)} artifact(s) from previous node"
                     )
 
                 await async_ops.update_node_status(

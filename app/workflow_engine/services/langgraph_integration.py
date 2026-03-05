@@ -9,7 +9,7 @@ import logging
 from typing import Optional, Dict, Any, Iterator, Tuple
 from datetime import datetime
 
-from workflow_engine.models import WorkflowNode, LangGraphCheckpoint
+from workflow_engine.models import WorkflowNode
 
 logger = logging.getLogger(__name__)
 
@@ -32,95 +32,21 @@ class MySQLCheckpointer:
         self.node = node
         self.thread_id = f"node_{node.id}"
     
-    def put(
-        self,
-        checkpoint_id: str,
-        checkpoint_data: Dict[str, Any],
-        metadata: Dict[str, Any] = None,
-        parent_checkpoint_id: Optional[str] = None
-    ) -> None:
-        """
-        Save a checkpoint to the database.
-        
-        Args:
-            checkpoint_id: Unique identifier for this checkpoint
-            checkpoint_data: The checkpoint state to save
-            metadata: Optional metadata about the checkpoint
-            parent_checkpoint_id: ID of the parent checkpoint (for branching)
-        """
-        try:
-            LangGraphCheckpoint.objects.create(
-                node=self.node,
-                thread_id=self.thread_id,
-                checkpoint_id=checkpoint_id,
-                checkpoint_data=checkpoint_data,
-                metadata=metadata or {},
-                parent_checkpoint_id=parent_checkpoint_id
-            )
-            
-            logger.debug(
-                f"Saved LangGraph checkpoint {checkpoint_id} for node {self.node.node_id}"
-            )
-            
-        except Exception as e:
-            logger.error(f"Failed to save LangGraph checkpoint: {e}")
-            raise
-    
+    def put(self, checkpoint_id: str, checkpoint_data: Dict[str, Any], metadata: Dict[str, Any] = None, parent_checkpoint_id: Optional[str] = None) -> None:
+        """No-op: checkpoint table has been removed."""
+        pass
+
     def get(self, checkpoint_id: str) -> Optional[Dict[str, Any]]:
-        """
-        Retrieve a checkpoint by ID.
-        
-        Args:
-            checkpoint_id: The checkpoint ID to retrieve
-            
-        Returns:
-            Checkpoint data or None if not found
-        """
-        try:
-            checkpoint = LangGraphCheckpoint.objects.get(
-                node=self.node,
-                thread_id=self.thread_id,
-                checkpoint_id=checkpoint_id
-            )
-            return checkpoint.checkpoint_data
-            
-        except LangGraphCheckpoint.DoesNotExist:
-            return None
-    
-    def get_latest(self) -> Optional[Tuple[str, Dict[str, Any]]]:
-        """
-        Get the most recent checkpoint.
-        
-        Returns:
-            Tuple of (checkpoint_id, checkpoint_data) or None
-        """
-        checkpoint = LangGraphCheckpoint.objects.filter(
-            node=self.node,
-            thread_id=self.thread_id
-        ).order_by('-created_at').first()
-        
-        if checkpoint:
-            return (checkpoint.checkpoint_id, checkpoint.checkpoint_data)
+        """No-op: checkpoint table has been removed."""
         return None
-    
+
+    def get_latest(self) -> Optional[Tuple[str, Dict[str, Any]]]:
+        """No-op: checkpoint table has been removed."""
+        return None
+
     def list(self) -> Iterator[Tuple[str, Dict[str, Any], Dict[str, Any]]]:
-        """
-        List all checkpoints for this thread.
-        
-        Yields:
-            Tuples of (checkpoint_id, checkpoint_data, metadata)
-        """
-        checkpoints = LangGraphCheckpoint.objects.filter(
-            node=self.node,
-            thread_id=self.thread_id
-        ).order_by('-created_at')
-        
-        for checkpoint in checkpoints:
-            yield (
-                checkpoint.checkpoint_id,
-                checkpoint.checkpoint_data,
-                checkpoint.metadata
-            )
+        """No-op: checkpoint table has been removed."""
+        return iter([])
 
 
 class LangGraphNodeHandler:

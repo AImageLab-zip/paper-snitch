@@ -61,26 +61,56 @@ async def code_availability_check_node(
                 )
 
                 result = CodeAvailabilityCheck(**previous["result"])
-                await async_ops.create_node_artifact(node, "result", result)
-                
+
                 # Copy tokens from previous execution
                 previous_node = await async_ops.get_most_recent_completed_node(
                     paper_id=state["paper_id"],
                     node_id=node_id,
-                    exclude_run_id=state["workflow_run_id"]
+                    exclude_run_id=state["workflow_run_id"],
                 )
-                
+
                 if previous_node:
                     await async_ops.update_node_tokens(
                         node,
                         input_tokens=previous_node.input_tokens,
                         output_tokens=previous_node.output_tokens,
-                        was_cached=True
+                        was_cached=True,
                     )
                     logger.info(
                         f"Copied tokens from previous execution: {previous_node.total_tokens} total"
                     )
-                
+
+                    # Copy all artifacts from previous node to current node
+                    # This ensures the frontend can display the full results even when using cache
+                    previous_artifacts = await async_ops.get_node_artifacts(
+                        previous_node
+                    )
+                    for artifact in previous_artifacts:
+                        await async_ops.create_node_artifact(
+                            node,
+                            name=artifact.name,
+                            data=(
+                                artifact.inline_data
+                                if artifact.artifact_type == "inline"
+                                else {
+                                    "type": artifact.artifact_type,
+                                    "file_path": artifact.file_path,
+                                    "url": artifact.url,
+                                    "mime_type": artifact.mime_type,
+                                    "size_bytes": artifact.size_bytes,
+                                    "metadata": artifact.metadata,
+                                }
+                            ),
+                            artifact_type=artifact.artifact_type,
+                            mime_type=artifact.mime_type,
+                            size_bytes=artifact.size_bytes,
+                            metadata=artifact.metadata,
+                        )
+
+                    logger.info(
+                        f"Copied {len(previous_artifacts)} artifact(s) from previous node"
+                    )
+
                 await async_ops.update_node_status(
                     node, "completed", completed_at=timezone.now()
                 )
@@ -95,7 +125,7 @@ async def code_availability_check_node(
         code_url = None
         found_online = False
         search_notes = ""
-        
+
         # Token tracking across all API calls
         total_input_tokens = 0
         total_output_tokens = 0
@@ -191,13 +221,13 @@ Respond with your assessment."""
                                     {"role": "user", "content": verification_prompt}
                                 ],
                                 text_format=RepoVerification,
-                                reasoning={"effort":"minimal"},
+                                reasoning={"effort": "minimal"},
                             )
 
                             verification = response.output_parsed
                             input_tokens = response.usage.input_tokens
                             output_tokens = response.usage.output_tokens
-                            
+
                             # Accumulate tokens from verification call
                             total_input_tokens += input_tokens
                             total_output_tokens += output_tokens
@@ -258,8 +288,10 @@ Respond with your assessment."""
             )
 
             try:
-                search_result, search_input_tokens, search_output_tokens = await search_code_online(paper, client, model, node)
-                
+                search_result, search_input_tokens, search_output_tokens = (
+                    await search_code_online(paper, client, model, node)
+                )
+
                 # Accumulate tokens from online search
                 total_input_tokens += search_input_tokens
                 total_output_tokens += search_output_tokens
@@ -483,7 +515,7 @@ Respond with your assessment."""
 
         # Store result as artifact
         await async_ops.create_node_artifact(node, "result", result)
-        
+
         # Store token usage as artifact
         await async_ops.create_node_artifact(
             node,
@@ -494,13 +526,13 @@ Respond with your assessment."""
                 "total_tokens": total_input_tokens + total_output_tokens,
             },
         )
-        
+
         # Update node token fields in database
         await async_ops.update_node_tokens(
             node,
             input_tokens=total_input_tokens,
             output_tokens=total_output_tokens,
-            was_cached=False
+            was_cached=False,
         )
 
         # Log success
@@ -614,8 +646,8 @@ Provide:
             ],
             tools=[{"type": "web_search_preview"}],
             text_format=OnlineCodeSearch,
-            #reasoning={"effort":"minimal"},
-        #temperature=02,
+            # reasoning={"effort":"minimal"},
+            # temperature=02,
         )
 
         result = response.output_parsed
@@ -642,9 +674,13 @@ Provide:
             "INFO",
             f"Error in online code search: {e}",
         )
-        return OnlineCodeSearch(
-            repository_url=None,
-            confidence=0.0,
-            search_strategy="Error occurred",
-            notes=f"Search failed: {str(e)}",
-        ), 0, 0
+        return (
+            OnlineCodeSearch(
+                repository_url=None,
+                confidence=0.0,
+                search_strategy="Error occurred",
+                notes=f"Search failed: {str(e)}",
+            ),
+            0,
+            0,
+        )

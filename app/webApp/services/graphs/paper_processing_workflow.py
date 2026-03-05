@@ -9,7 +9,7 @@ Sequential nodes:
 
 Parallel branches (execute simultaneously):
 - Dataset Documentation Check: Evaluate dataset docs (for dataset/both papers)
-- Reproducibility Checklist: Evaluate 26 MICCAI criteria (all papers)  
+- Reproducibility Checklist: Evaluate 26 MICCAI criteria (all papers)
 - Node B: Code Availability Check (agentic analysis of code availability)
 
 Synchronization:
@@ -87,12 +87,12 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
     Nodes:
     1. paper_type_classification (A): Classify paper type
     2. section_embeddings (D): Compute embeddings for paper sections
-    
+
     Parallel branches (execute simultaneously):
     3. dataset_documentation_check: Evaluate dataset documentation (dataset/both papers)
     4. reproducibility_checklist: Evaluate reproducibility criteria (all papers)
     5. code_availability_check (B): Check code availability
-    
+
     6. join_parallel_branches: Join results from parallel execution
     7. code_embedding (F): Ingest and embed code repository (conditional)
     8. code_repository_analysis (C): Comprehensive code analysis (conditional)
@@ -121,12 +121,12 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
         Workflow structure (fan-out/fan-in with parallel execution):
         - Node A (paper_type_classification): Classify paper type
         - Node D (section_embeddings): Compute embeddings for paper sections
-        
+
         PARALLEL BRANCHES (execute simultaneously):
         - dataset_documentation_check: Evaluate dataset docs (skips if not dataset/both)
         - reproducibility_checklist: Evaluate MICCAI criteria (all papers)
         - code_availability_check: Check code availability
-        
+
         - join_parallel_branches: Consolidate parallel results
         - code_embedding: Ingest repository (conditional on code availability)
         - code_repository_analysis: Comprehensive analysis (conditional)
@@ -144,7 +144,9 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
         # Add all nodes
         workflow.add_node("paper_type_classification", paper_type_classification_node)
         workflow.add_node("section_embeddings", section_embeddings_node)
-        workflow.add_node("dataset_documentation_check", dataset_documentation_check_node)
+        workflow.add_node(
+            "dataset_documentation_check", dataset_documentation_check_node
+        )
         workflow.add_node("reproducibility_checklist", reproducibility_checklist_node)
         workflow.add_node("code_availability_check", code_availability_check_node)
         workflow.add_node("code_embedding", code_embedding_node)
@@ -167,7 +169,11 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
                 return ["reproducibility_checklist"]
 
             logger.info("Non-theoretical paper - routing to all evaluation branches")
-            return ["dataset_documentation_check", "reproducibility_checklist", "code_availability_check"]
+            return [
+                "dataset_documentation_check",
+                "reproducibility_checklist",
+                "code_availability_check",
+            ]
 
         # Note: No routing function needed for code branch
         # Progressive skipping in code_availability_check marks downstream nodes as skipped when no code
@@ -261,7 +267,7 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
                             f"Loaded paper_type_result for reproducibility_checklist: {state['paper_type_result'].paper_type}"
                         )
                         break
-            
+
             # Also optionally load code availability result if it completed before us
             code_avail_node = await async_ops.get_workflow_node(
                 str(workflow_run.id), "code_availability_check"
@@ -362,7 +368,7 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
         elif node.node_id == "final_aggregation":
             # Need results from reproducibility_checklist, code_repository_analysis (if available), and dataset_documentation (if available)
             # Also need paper_type and code_availability for context
-            
+
             # Load paper type (always needed)
             paper_type_node = await async_ops.get_workflow_node(
                 str(workflow_run.id), "paper_type_classification"
@@ -374,7 +380,7 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
                             **paper_type_node.output_data["paper_type_result"]
                         )
                         logger.info("Loaded paper_type_result for final_aggregation")
-            
+
             # Load reproducibility checklist (always needed)
             repro_node = await async_ops.get_workflow_node(
                 str(workflow_run.id), "reproducibility_checklist"
@@ -382,11 +388,20 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
             if repro_node and repro_node.status == "completed":
                 if repro_node.output_data:
                     if "reproducibility_checklist_result" in repro_node.output_data:
-                        from webApp.services.pydantic_schemas import AggregatedReproducibilityAnalysis
-                        state["reproducibility_checklist_result"] = AggregatedReproducibilityAnalysis(
-                            **repro_node.output_data["reproducibility_checklist_result"]
+                        from webApp.services.pydantic_schemas import (
+                            AggregatedReproducibilityAnalysis,
                         )
-                        logger.info("Loaded reproducibility_checklist_result for final_aggregation")
+
+                        state["reproducibility_checklist_result"] = (
+                            AggregatedReproducibilityAnalysis(
+                                **repro_node.output_data[
+                                    "reproducibility_checklist_result"
+                                ]
+                            )
+                        )
+                        logger.info(
+                            "Loaded reproducibility_checklist_result for final_aggregation"
+                        )
 
             # Load code availability (needed to understand code analysis context)
             code_avail_node = await async_ops.get_workflow_node(
@@ -395,11 +410,16 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
             if code_avail_node and code_avail_node.status == "completed":
                 if code_avail_node.output_data:
                     if "code_availability_result" in code_avail_node.output_data:
-                        from webApp.services.pydantic_schemas import CodeAvailabilityAnalysis
+                        from webApp.services.pydantic_schemas import (
+                            CodeAvailabilityAnalysis,
+                        )
+
                         state["code_availability_result"] = CodeAvailabilityAnalysis(
                             **code_avail_node.output_data["code_availability_result"]
                         )
-                        logger.info("Loaded code_availability_result for final_aggregation")
+                        logger.info(
+                            "Loaded code_availability_result for final_aggregation"
+                        )
 
             # Load code analysis (if it was executed)
             code_analysis_node = await async_ops.get_workflow_node(
@@ -408,11 +428,20 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
             if code_analysis_node and code_analysis_node.status == "completed":
                 if code_analysis_node.output_data:
                     if "code_reproducibility_result" in code_analysis_node.output_data:
-                        from webApp.services.pydantic_schemas import CodeReproducibilityAnalysis
-                        state["code_reproducibility_result"] = CodeReproducibilityAnalysis(
-                            **code_analysis_node.output_data["code_reproducibility_result"]
+                        from webApp.services.pydantic_schemas import (
+                            CodeReproducibilityAnalysis,
                         )
-                        logger.info("Loaded code_reproducibility_result for final_aggregation")
+
+                        state["code_reproducibility_result"] = (
+                            CodeReproducibilityAnalysis(
+                                **code_analysis_node.output_data[
+                                    "code_reproducibility_result"
+                                ]
+                            )
+                        )
+                        logger.info(
+                            "Loaded code_reproducibility_result for final_aggregation"
+                        )
 
             # Load dataset documentation (if it was executed)
             dataset_doc_node = await async_ops.get_workflow_node(
@@ -421,11 +450,20 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
             if dataset_doc_node and dataset_doc_node.status == "completed":
                 if dataset_doc_node.output_data:
                     if "dataset_documentation_result" in dataset_doc_node.output_data:
-                        from webApp.services.pydantic_schemas import AggregatedDatasetDocumentationAnalysis
-                        state["dataset_documentation_result"] = AggregatedDatasetDocumentationAnalysis(
-                            **dataset_doc_node.output_data["dataset_documentation_result"]
+                        from webApp.services.pydantic_schemas import (
+                            AggregatedDatasetDocumentationAnalysis,
                         )
-                        logger.info("Loaded dataset_documentation_result for final_aggregation")
+
+                        state["dataset_documentation_result"] = (
+                            AggregatedDatasetDocumentationAnalysis(
+                                **dataset_doc_node.output_data[
+                                    "dataset_documentation_result"
+                                ]
+                            )
+                        )
+                        logger.info(
+                            "Loaded dataset_documentation_result for final_aggregation"
+                        )
 
         return state
 
@@ -472,8 +510,8 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
                         **artifact.inline_data
                     )
                 elif node_id == "reproducibility_checklist":
-                    state["reproducibility_checklist_result"] = ReproducibilityChecklist(
-                        **artifact.inline_data
+                    state["reproducibility_checklist_result"] = (
+                        ReproducibilityChecklist(**artifact.inline_data)
                     )
                 elif node_id == "code_availability_check":
                     state["code_availability_result"] = CodeAvailabilityCheck(
@@ -495,7 +533,7 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
     ) -> None:
         """
         Mark nodes as skipped when they were intentionally bypassed due to workflow routing decisions.
-        
+
         Nodes are marked as skipped when:
         - Paper is theoretical -> skip dataset analysis and code branches (no dataset/code needed)
         - Paper doesn't propose dataset -> skip dataset_documentation_check
@@ -506,7 +544,7 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
         code_availability = final_state.get("code_availability_result")
         paper_type = final_state.get("paper_type_result")
         code_embedding = final_state.get("code_embedding_result")
-        
+
         # If paper is theoretical, skip dataset and code branches
         if paper_type and paper_type.paper_type == "theoretical":
             skipped_nodes = [
@@ -520,20 +558,26 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
                 if node and node.status == "pending":
                     await async_ops.update_node_status(node, "skipped")
                     await async_ops.create_node_log(
-                        node, "INFO", "Skipped (theoretical paper - no dataset/code analysis needed)"
+                        node,
+                        "INFO",
+                        "Skipped (theoretical paper - no dataset/code analysis needed)",
                     )
                     logger.info(f"Marked node {node_id} as skipped (theoretical paper)")
-        
+
         # If paper doesn't propose dataset (method only), skip dataset documentation check
         elif paper_type and paper_type.paper_type == "method":
-            node = await async_ops.get_workflow_node(workflow_run_id, "dataset_documentation_check")
+            node = await async_ops.get_workflow_node(
+                workflow_run_id, "dataset_documentation_check"
+            )
             if node and node.status == "pending":
                 await async_ops.update_node_status(node, "skipped")
                 await async_ops.create_node_log(
                     node, "INFO", "Skipped (method-only paper - no dataset proposed)"
                 )
-                logger.info("Marked dataset_documentation_check as skipped (method-only paper)")
-        
+                logger.info(
+                    "Marked dataset_documentation_check as skipped (method-only paper)"
+                )
+
         # If no code available, skip code embedding and analysis
         if code_availability and not code_availability.code_available:
             for node_id in ["code_embedding", "code_repository_analysis"]:
@@ -543,17 +587,23 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
                     await async_ops.create_node_log(
                         node, "INFO", "Skipped (no code repository available)"
                     )
-                    logger.info(f"Marked node {node_id} as skipped (no code repository)")
-        
+                    logger.info(
+                        f"Marked node {node_id} as skipped (no code repository)"
+                    )
+
         # If code_embedding didn't produce results, skip code_repository_analysis
         elif not code_embedding:
-            node = await async_ops.get_workflow_node(workflow_run_id, "code_repository_analysis")
+            node = await async_ops.get_workflow_node(
+                workflow_run_id, "code_repository_analysis"
+            )
             if node and node.status == "pending":
                 await async_ops.update_node_status(node, "skipped")
                 await async_ops.create_node_log(
                     node, "INFO", "Skipped (code embedding failed or not executed)"
                 )
-                logger.info("Marked code_repository_analysis as skipped (code embedding failed)")
+                logger.info(
+                    "Marked code_repository_analysis as skipped (code embedding failed)"
+                )
 
     async def execute_workflow(
         self,
@@ -638,7 +688,6 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
                             "description": "Check if code repository exists (database/text/online search)",
                             "config": {},
                         },
-
                         {
                             "id": "code_embedding",
                             "type": "python",
@@ -768,17 +817,34 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
             # Check for errors
             errors = final_state.get("errors", [])
             success = len(errors) == 0
-            
+
             # Mark unexecuted nodes as skipped based on workflow routing decisions
             await self._mark_skipped_nodes(workflow_run.id, final_state)
-            
+
             # Aggregate token counts from all nodes
             await async_ops.aggregate_workflow_run_tokens(workflow_run.id)
+
+            # Check for failed nodes to determine workflow run status
+            # Run is only marked as failed if there are actual failed nodes
+            # Skipped nodes do not cause the run to be marked as failed
+            from asgiref.sync import sync_to_async
+            from workflow_engine.models import WorkflowNode
+
+            @sync_to_async
+            def has_failed_nodes():
+                return WorkflowNode.objects.filter(
+                    workflow_run_id=workflow_run.id, status="failed"
+                ).exists()
+
+            has_failures = await has_failed_nodes()
+            final_status = "failed" if has_failures else "completed"
+
+            print(f"Final state for workflow run {workflow_run.id}: {final_state}")
 
             # Update workflow run status
             await async_ops.update_workflow_run_status(
                 workflow_run.id,
-                "completed" if success else "failed",
+                final_status,
                 completed_at=timezone.now(),
                 output_data={
                     "success": success,
@@ -806,7 +872,7 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
                 },
                 error_message="; ".join(errors) if errors else None,
             )
-            
+
             # Reload workflow_run to get aggregated token counts
             workflow_run = await async_ops.get_workflow_run(workflow_run.id)
 
@@ -831,7 +897,9 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
             logger.info(
                 f"Workflow run {workflow_run.id} completed. Status: {'success' if success else 'failed'}"
             )
-            logger.info(f"Tokens used: {workflow_run.total_input_tokens} input, {workflow_run.total_output_tokens} output")
+            logger.info(
+                f"Tokens used: {workflow_run.total_input_tokens} input, {workflow_run.total_output_tokens} output"
+            )
 
             return results
 
@@ -937,7 +1005,9 @@ async def execute_from_node(
 
     Convenience function that uses the singleton workflow instance.
     """
-    return await _workflow_instance.execute_from_node(node_uuid, openai_api_key, model, force_reprocess)
+    return await _workflow_instance.execute_from_node(
+        node_uuid, openai_api_key, model, force_reprocess
+    )
 
 
 # ============================================================================

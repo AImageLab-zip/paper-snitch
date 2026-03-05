@@ -1062,8 +1062,8 @@ NOTE: Do NOT compute a numeric score - focus on extracting factual information o
                 {"role": "user", "content": analysis_prompt},
             ],
             reasoning_effort="minimal",
-        #temperature=0.2,
-            #max_output_tokens=4000,
+            # temperature=0.2,
+            # max_output_tokens=4000,
         )
 
         # Parse LLM response
@@ -1155,6 +1155,7 @@ Output the complete JSON object with ALL fields filled in based on the analysis 
                 node, "INFO", "Structuring analysis into schema..."
             )
 
+        # Call OpenAI API
         structured_response = client.chat.completions.create(
             model=model,
             messages=[
@@ -1166,8 +1167,8 @@ Output the complete JSON object with ALL fields filled in based on the analysis 
             ],
             response_format={"type": "json_object"},
             reasoning_effort="minimal",
-        #temperature=0.0,
-            #max_tokens=2000,
+            # temperature=0.0,
+            # max_tokens=2000,
         )
 
         structured_data = json.loads(structured_response.choices[0].message.content)

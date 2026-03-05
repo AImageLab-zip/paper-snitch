@@ -437,14 +437,27 @@ class BaseWorkflowGraph(ABC):
                         else:
                             state[key] = value
 
-            # Check for errors
-            errors = state.get("errors", [])
-            success = len(errors) == 0
+            # Check for failed nodes to determine workflow run status
+            # Run is only marked as failed if there are actual failed nodes
+            # Skipped nodes do not cause the run to be marked as failed
+            from workflow_engine.models import WorkflowNode
+            
+            @sync_to_async
+            def has_failed_nodes():
+                return WorkflowNode.objects.filter(
+                    workflow_run_id=workflow_run.id,
+                    status='failed'
+                ).exists()
+            
+            has_failures = await has_failed_nodes()
+            final_status = "failed" if has_failures else "completed"
+            success = not has_failures
 
             # Update workflow run status
+            errors = state.get("errors", [])
             await async_ops.update_workflow_run_status(
                 workflow_run.id,
-                "completed" if success else "failed",
+                final_status,
                 completed_at=timezone.now(),
                 error_message="; ".join(errors) if errors else None,
             )

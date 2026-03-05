@@ -50,26 +50,56 @@ async def paper_type_classification_node(state: PaperProcessingState) -> Dict[st
                 )
 
                 result = PaperTypeClassification(**previous["result"])
-                await async_ops.create_node_artifact(node, "result", result)
-                
+
                 # Copy tokens from previous execution
                 previous_node = await async_ops.get_most_recent_completed_node(
                     paper_id=state["paper_id"],
                     node_id=node_id,
-                    exclude_run_id=state["workflow_run_id"]
+                    exclude_run_id=state["workflow_run_id"],
                 )
-                
+
                 if previous_node:
                     await async_ops.update_node_tokens(
                         node,
                         input_tokens=previous_node.input_tokens,
                         output_tokens=previous_node.output_tokens,
-                        was_cached=True
+                        was_cached=True,
                     )
                     logger.info(
                         f"Copied tokens from previous execution: {previous_node.total_tokens} total"
                     )
-                
+
+                    # Copy all artifacts from previous node to current node
+                    # This ensures the frontend can display the full results even when using cache
+                    previous_artifacts = await async_ops.get_node_artifacts(
+                        previous_node
+                    )
+                    for artifact in previous_artifacts:
+                        await async_ops.create_node_artifact(
+                            node,
+                            name=artifact.name,
+                            data=(
+                                artifact.inline_data
+                                if artifact.artifact_type == "inline"
+                                else {
+                                    "type": artifact.artifact_type,
+                                    "file_path": artifact.file_path,
+                                    "url": artifact.url,
+                                    "mime_type": artifact.mime_type,
+                                    "size_bytes": artifact.size_bytes,
+                                    "metadata": artifact.metadata,
+                                }
+                            ),
+                            artifact_type=artifact.artifact_type,
+                            mime_type=artifact.mime_type,
+                            size_bytes=artifact.size_bytes,
+                            metadata=artifact.metadata,
+                        )
+
+                    logger.info(
+                        f"Copied {len(previous_artifacts)} artifact(s) from previous node"
+                    )
+
                 await async_ops.update_node_status(
                     node, "completed", completed_at=timezone.now()
                 )
@@ -128,7 +158,8 @@ Provide:
         )
 
         # Call OpenAI API
-        response = state["client"].chat.completions.create(
+        client = state["client"]
+        response = client.chat.completions.create(
             model=state["model"],
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -143,7 +174,7 @@ Provide:
                 },
             },
             reasoning_effort="minimal",
-        #temperature=0.3,
+            # temperature=0.3,
         )
 
         # Parse response
@@ -170,13 +201,13 @@ Provide:
                 "total_tokens": input_tokens + output_tokens,
             },
         )
-        
+
         # Update node token fields in database
         await async_ops.update_node_tokens(
             node,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
-            was_cached=False
+            was_cached=False,
         )
 
         # Log success
