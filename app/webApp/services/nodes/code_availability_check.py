@@ -472,7 +472,9 @@ Respond with your assessment."""
                     except Exception as e:
                         logger.warning(f"Error verifying repository content: {e}")
                         await async_ops.create_node_log(
-                            node, "WARNING", f"Error during shallow clone: {str(e)}"
+                            node,
+                            "WARNING",
+                            f"Error during shallow clone({code_url}): {str(e)}",
                         )
                         result = CodeAvailabilityCheck(
                             code_available=False,
