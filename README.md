@@ -13,23 +13,23 @@
 
 ---
 
-## 📖 Table of Contents
+## Table of Contents
 
-- [Rationale & Vision](#-rationale--vision)
-- [Key Features](#-key-features)
-- [Architecture Overview](#-architecture-overview)
-- [Prerequisites](#-prerequisites)
-- [Installation & Setup](#-installation--setup)
-- [Running the System](#-running-the-system)
-- [How It Works](#-how-it-works)
-- [Configuration](#-configuration)
-- [Development Workflow](#-development-workflow)
-- [Troubleshooting](#-troubleshooting)
-- [Additional Documentation](#-additional-documentation)
+- [Rationale & Vision](#rationale--vision)
+- [Key Features](#key-features)
+- [Architecture Overview](#architecture-overview)
+- [Prerequisites](#prerequisites)
+- [Installation & Setup](#installation--setup)
+- [Running the System](#running-the-system)
+- [How It Works](#how-it-works)
+- [Configuration](#configuration)
+- [Development Workflow](#development-workflow)
+- [Troubleshooting](#troubleshooting)
+- [Additional Documentation](#additional-documentation)
 
 ---
 
-## 🎯 Rationale & Vision
+## Rationale & Vision
 
 ### The Reproducibility Crisis
 
@@ -42,6 +42,7 @@ The scientific community faces a **reproducibility crisis**: many published rese
 - **Inconsistent reporting of statistical procedures**
 
 Manual evaluation of paper reproducibility is:
+
 - **Time-consuming**: Requires expert reviewers to spend hours per paper
 - **Inconsistent**: Different reviewers may apply different standards
 - **Not scalable**: Impossible to evaluate thousands of papers at conferences
@@ -60,6 +61,7 @@ Manual evaluation of paper reproducibility is:
 ### Research Impact
 
 This system enables:
+
 - **Large-scale conference analysis**: Process hundreds of papers efficiently
 - **Consistent evaluation standards**: Same criteria applied uniformly
 - **Actionable feedback**: Specific recommendations for improving reproducibility
@@ -68,27 +70,31 @@ This system enables:
 
 ---
 
-## ✨ Key Features
+## Key Features
 
-### 🤖 Intelligent Analysis
+### Intelligent Analysis
+
 - **Paper Type Classification**: Automatically identifies papers as dataset/method/both/theoretical
 - **Adaptive Scoring**: Weights criteria based on paper type (e.g., datasets more important for dataset papers)
 - **Code Intelligence**: LLM-guided selection of reproducibility-critical files from repositories
 - **Multi-Criterion Evaluation**: 20 reproducibility criteria + 10 dataset documentation criteria + 6 code analysis components
 
-### 📊 Comprehensive Assessment
+### Comprehensive Assessment
+
 - **Paper-Level Analysis**: Evaluates mathematical descriptions, experimental protocols, statistical reporting
 - **Code-Level Analysis**: Checks for training code, evaluation scripts, checkpoints, dependencies
 - **Dataset Documentation**: Assesses data collection, annotation protocols, ethical compliance
 - **Evidence-Based Scoring**: Links each evaluation to specific paper sections
 
-### 🔄 Scalable Workflow
+### Scalable Workflow
+
 - **Distributed Execution**: Celery workers for parallel paper processing
 - **Database-Backed**: MySQL persistence for all workflow states and results
 - **Fault Tolerant**: Automatic retries, error isolation, partial result aggregation
 - **Token Tracking**: Fine-grained cost accounting per workflow node
 
-### 🌐 Web Interface
+### Web Interface
+
 - **PDF Upload**: Direct paper upload with automatic text extraction (GROBID)
 - **Conference Scraping**: Batch import papers from conference websites (MICCAI, etc.)
 - **Analysis Dashboard**: View results, scores, and detailed criterion evaluations
@@ -96,7 +102,7 @@ This system enables:
 
 ---
 
-## 🏗️ Architecture Overview
+## Architecture Overview
 
 ### Technology Stack
 
@@ -128,20 +134,20 @@ This system enables:
 
 ### Core Components
 
-| Component | Technology | Purpose |
-|-----------|-----------|---------|
-| **Web Framework** | Django 5.2.7 | HTTP server, ORM, admin interface |
-| **Workflow Engine** | LangGraph 1.0.6 | DAG-based workflow orchestration |
-| **Task Queue** | Celery 5.x | Distributed async task execution |
-| **Message Broker** | Redis 7 | Celery task queue backend |
-| **Database** | MariaDB 11.7 | Persistent storage (MySQL 8.0 compatible) |
-| **Document Processing** | GROBID 0.8.0 | PDF → structured XML extraction |
-| **Web Scraping** | Crawl4AI 0.7.6 | Conference website data extraction |
-| **Code Ingestion** | GitIngest 0.3.1 | Repository cloning and file extraction |
-| **LLM Integration** | OpenAI SDK 2.7.2 | gpt-5 API calls with structured outputs |
-| **Embeddings** | text-embedding-3-small | 1536-dim semantic vectors for RAG |
+| Component               | Technology             | Purpose                                   |
+| ----------------------- | ---------------------- | ----------------------------------------- |
+| **Web Framework**       | Django 5.2.7           | HTTP server, ORM, admin interface         |
+| **Workflow Engine**     | LangGraph 1.0.6        | DAG-based workflow orchestration          |
+| **Task Queue**          | Celery 5.x             | Distributed async task execution          |
+| **Message Broker**      | Redis 7                | Celery task queue backend                 |
+| **Database**            | MariaDB 11.7           | Persistent storage (MySQL 8.0 compatible) |
+| **Document Processing** | GROBID 0.8.0           | PDF → structured XML extraction           |
+| **Web Scraping**        | Crawl4AI 0.7.6         | Conference website data extraction        |
+| **Code Ingestion**      | GitIngest 0.3.1        | Repository cloning and file extraction    |
+| **LLM Integration**     | OpenAI SDK 2.7.2       | gpt-5 API calls with structured outputs   |
+| **Embeddings**          | text-embedding-3-small | 1536-dim semantic vectors for RAG         |
 
-### Workflow Version 8 (Current)
+### Paper Process Workflow
 
 The analysis pipeline consists of 8 nodes executed as a directed acyclic graph (DAG):
 
@@ -153,50 +159,66 @@ The analysis pipeline consists of 8 nodes executed as a directed acyclic graph (
                     └──────────────┬──────────────────┘
                                    │
                     ┌──────────────▼──────────────────┐
-                    │ D. Section Embeddings           │
+                    │ B. Section Embeddings           │
                     │    (text-embedding-3-small)     │
                     └──────────────┬──────────────────┘
                                    │
-                ┌──────────────────┼──────────────────┐
-                │                  │                  │
-    ┌───────────▼──────────┐  ┌───▼────────────┐  ┌─▼─────────────────┐
-    │ G. Reproducibility   │  │ H. Dataset     │  │ B. Code           │
-    │    Checklist         │  │    Docs Check  │  │    Availability   │
-    │    (20 criteria)     │  │    (10 crit.)  │  │    Check          │
-    └───────────┬──────────┘  └───┬────────────┘  └─┬─────────────────┘
-                │                  │                  │
-                │                  │     ┌────────────▼──────────────┐
-                │                  │     │ F. Code Embedding          │
-                │                  │     │    (repo ingestion)        │
-                │                  │     └────────────┬───────────────┘
-                │                  │                  │
-                │                  │     ┌────────────▼──────────────┐
-                │                  │     │ C. Code Repository         │
-                │                  │     │    Analysis               │
-                │                  │     └────────────┬───────────────┘
-                │                  │                  │
-                └──────────────────┴──────────────────┴──────────────┐
-                                                                       │
-                                        ┌──────────────────────────────▼─┐
-                                        │ I. Final Aggregation            │
-                                        │    (weighted scoring + LLM)     │
-                                        └─────────────────────────────────┘
+                ┌──────────────────┼────────────────────┐
+                │                  │                    │
+    ┌───────────▼───────┐  ┌────▼──────────┐    ┌───────▼────────┐
+    │ C. Reproducibility│  │ D. Dataset    │    │ E. Code        │
+    │    Checklist      │  │    Docs Check │    │    Availability│
+    │    (20 criteria)  │  │    (10 crit.) │    │    Check       │
+    └───────────┬───────┘  └───────┬───────┘    └───────┬────────┘
+                │                  │                    │
+                │                  │          ┌─────────▼───────────┐
+                │                  │          │ F. Code Embedding   │
+                │                  │          │    (repo ingestion) │
+                │                  │          └─────────┬───────────┘
+                │                  │                    │
+                │                  │          ┌─────────▼───────────┐
+                │                  │          │ G. Code Repository  │
+                │                  │          │    Analysis         │
+                │                  │          └─────────┬───────────┘
+                │                  │                    │
+                └──────────────────┼────────────────────┴
+                                   │
+                   ┌───────────────▼─────────────────┐
+                   │ H. Final Aggregation            │
+                   │    (weighted scoring + LLM)     │
+                   └─────────────────────────────────┘
 ```
 
 **Node Responsibilities:**
 
 - **Node A**: Classify paper type using title + abstract
-- **Node B**: Search for code URLs in paper (GitHub, GitLab, etc.)
-- **Node C**: Analyze code repository structure and reproducibility artifacts
-- **Node D**: Generate embeddings for all paper sections
+- **Node B**: Generate embeddings for all paper sections
+- **Node C**: Evaluate 20 reproducibility criteria via multi-step RAG
+- **Node D**: Evaluate 10 dataset documentation criteria
+- **Node E**: Search for code URLs in paper (GitHub, GitLab, etc.)
 - **Node F**: Ingest code repository, select critical files, embed chunks
-- **Node G**: Evaluate 20 reproducibility criteria via multi-step RAG
-- **Node H**: Evaluate 10 dataset documentation criteria
+- **Node G**: Analyze code repository structure and reproducibility artifacts
 - **Node I**: Aggregate scores, generate qualitative assessment
 
 ---
 
-## 📋 Prerequisites
+## Web interface
+
+### Conferences tab
+
+The conference tab is where conferences already scraped are shown.
+
+### Conference tab
+
+Inside of each conference there are the tokens statistics and the list of papers related to it with a summary .
+
+### Paper tab
+
+In the paper page the workflow of the selected analysis is shown on the top, and a list of all analyses performed is shown on the bottom.
+
+---
+
+## Prerequisites
 
 ### Required Software
 
@@ -207,72 +229,40 @@ The analysis pipeline consists of 8 nodes executed as a directed acyclic graph (
 ### API Keys
 
 You'll need an OpenAI API key with access to:
-- **gpt-5**: For structured analysis (`gpt-5-2024-11-20` or later)
+
+- **Any gpt model**: compatible with Responses API for structured analysis
 - **text-embedding-3-small**: For semantic embeddings
 
 ### Hardware Recommendations
 
 **Minimum:**
+
 - 4 CPU cores
 - 16 GB RAM
 - 50 GB disk space
 
 **Recommended:**
+
 - 8 CPU cores
 - 32 GB RAM
 - 100 GB SSD storage
 
 ---
 
-## 🚀 Installation & Setup
+## Installation & Setup
 
-### Step 1: Clone the Repository
+#### Step 1: Clone the Repository
 
 ```bash
 git clone https://github.com/yourusername/papersnitch.git
 cd papersnitch
 ```
 
-### Step 2: Environment Configuration
+#### Step 2: Environment Configuration
 
-Create your local environment file:
+A `template_env` is provided. Rename as `.env.local` and set all the pasword and API keys.
 
-```bash
-cp .env.example .env.local
-```
-
-Edit `.env.local` with your settings:
-
-```bash
-# Database Configuration
-MYSQL_ROOT_PASSWORD=your_secure_root_password
-MYSQL_DATABASE=papersnitch
-MYSQL_USER=papersnitch
-MYSQL_PASSWORD=your_secure_password
-
-# Django Configuration
-DJANGO_SECRET_KEY=your_very_long_random_secret_key_here
-DJANGO_DEBUG=True
-DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1
-
-# OpenAI API
-OPENAI_API_KEY=sk-proj-your-api-key-here
-
-# Celery Configuration
-CELERY_BROKER_URL=redis://redis:6379/0
-CELERY_RESULT_BACKEND=redis://redis:6379/0
-
-# GROBID Configuration (optional - uses public server by default)
-GROBID_SERVER=https://cloud.science-miner.com/grobid
-
-# Stack Configuration (auto-generated by create-dev-stack.sh)
-STACK_SUFFIX=dev
-HOST_PROJECT_PATH=/home/youruser/papersnitch
-```
-
-**Security Note:** Never commit `.env.local` to version control!
-
-### Step 3: Launch Development Stack
+#### Step 3: Launch Development Stack
 
 Use the provided script to start all services:
 
@@ -281,9 +271,10 @@ Use the provided script to start all services:
 ```
 
 **What this does:**
-1. Finds available ports (8000 for Django, 3307 for MySQL, 6380 for Redis, 8071 for GROBID)
+
+1. Finds available ports (8000 for Django, 3306 for MySQL, 6379 for Redis, 8071 for GROBID)
 2. Creates stack-specific directories (`mysql_dev`, `media_dev`, `static_dev`)
-3. Generates `.env.dev` with port configuration
+3. Generates `.env.dev` with port configuration (starting from `.env.local`)
 4. Starts Docker Compose services:
    - `django-web-dev`: Django application server
    - `mysql`: MariaDB 11.7 database
@@ -291,22 +282,7 @@ Use the provided script to start all services:
    - `celery-worker`: Background task processor
    - `celery-beat`: Periodic task scheduler
 
-**Expected output:**
-```
-🚀 Starting development stack: dev
-📍 Base port requested: 8000
-
-✅ Available ports found:
-   Django:  8000
-   MySQL:   3307
-   Redis:   6380
-   GROBID:  8071
-
-✅ Created .env.dev from .env.local with port config
-🐳 Starting containers...
-```
-
-### Step 4: Database Initialization
+#### Step 4: Database Initialization
 
 Wait for database to be healthy, then run migrations:
 
@@ -321,7 +297,7 @@ docker exec django-web-dev python manage.py migrate
 docker exec -it django-web-dev python manage.py createsuperuser
 ```
 
-### Step 5: Initialize Criteria Embeddings
+#### Step 5: Initialize Criteria Embeddings
 
 Pre-compute embeddings for reproducibility criteria (one-time setup):
 
@@ -330,34 +306,18 @@ docker exec django-web-dev python manage.py initialize_criteria_embeddings
 ```
 
 **What this does:**
+
 - Creates embeddings for 20 reproducibility checklist criteria
 - Creates embeddings for 10 dataset documentation criteria
 - Stores in database for semantic retrieval during analysis
 
-### Step 6: Verify Installation
+#### Step 6: Start a conference scraping
 
-Access the web interface:
-
-```
-http://localhost:8000
-```
-
-Check service health:
-
-```bash
-# View all running containers
-docker ps
-
-# Check Django logs
-docker logs django-web-dev
-
-# Check Celery worker logs
-docker logs celery-worker-dev
-```
+Working in progress
 
 ---
 
-## 🎮 Running the System
+## Running the System
 
 ### Starting/Stopping Services
 
@@ -373,17 +333,13 @@ docker logs celery-worker-dev
 
 # View logs (all services)
 ./create-dev-stack.sh logs 8000 dev
-
-# View specific service logs
-docker logs -f django-web-dev
-docker logs -f celery-worker-dev
 ```
 
 ### Running Analysis
 
 #### Option 1: Web Interface
 
-1. Navigate to `http://localhost:8000`
+1. Navigate to `http://localhost:8000/analyze`
 2. Log in with superuser credentials
 3. Upload a PDF or paste arXiv URL
 4. Click "Analyze Reproducibility"
@@ -411,7 +367,7 @@ from webApp.services.workflow_orchestrator import WorkflowOrchestrator
 # Get paper and workflow
 paper = Paper.objects.first()
 workflow_def = WorkflowDefinition.objects.get(
-    name="paper_processing_with_reproducibility", 
+    name="paper_processing_with_reproducibility",
     version=8
 )
 
@@ -432,6 +388,7 @@ print(f"Workflow run created: {workflow_run.id}")
 ### Monitoring Workflows
 
 View workflow progress in Django admin at:
+
 ```
 http://localhost:8000/admin/workflow_engine/workflowrun/
 ```
@@ -442,20 +399,20 @@ Or query the database:
 docker exec -it mysql-dev mariadb -u papersnitch -ppapersnitch papersnitch
 
 # Check workflow status
-SELECT id, status, started_at, completed_at 
-FROM workflow_runs 
+SELECT id, status, started_at, completed_at
+FROM workflow_runs
 ORDER BY created_at DESC LIMIT 10;
 
 # Check node status
 SELECT node_id, status, duration_seconds, input_tokens, output_tokens
-FROM workflow_nodes 
+FROM workflow_nodes
 WHERE workflow_run_id = 'your-workflow-run-id'
 ORDER BY started_at;
 ```
 
 ---
 
-## 🔍 How It Works
+## How It Works
 
 ### High-Level Overview
 
@@ -478,6 +435,7 @@ PaperSnitch uses an **8-node DAG workflow** to comprehensively evaluate research
 ### Key Technical Innovations
 
 **Multi-Step RAG for Criterion Evaluation:**
+
 ```python
 # For each criterion:
 1. Retrieve top-3 most relevant paper sections via cosine similarity
@@ -487,6 +445,7 @@ PaperSnitch uses an **8-node DAG workflow** to comprehensively evaluate research
 ```
 
 **Adaptive Code Scoring:**
+
 ```python
 # Scoring adapts to research methodology
 if methodology == "deep_learning":
@@ -506,6 +465,7 @@ elif methodology == "theoretical":
 ```
 
 **LLM-Guided Code File Selection:**
+
 ```python
 # Instead of embedding entire repository:
 1. Extract README + file tree
@@ -518,7 +478,7 @@ For detailed technical documentation, see [TECHNICAL_DESCRIPTION_FOR_PAPER.md](T
 
 ---
 
-## ⚙️ Configuration
+## Configuration
 
 ### Environment Variables
 
@@ -572,7 +532,7 @@ criterion.save()
 
 ---
 
-## 👨‍💻 Development Workflow
+## Development Workflow
 
 ### Running Multiple Stacks
 
@@ -624,17 +584,19 @@ docker exec django-web-dev coverage html
 
 ---
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
 ### Common Issues
 
 **Port Already in Use:**
+
 ```bash
 # Use different port
 ./create-dev-stack.sh up 8001 dev
 ```
 
 **MySQL Connection Refused:**
+
 ```bash
 # Check MySQL health
 docker exec mysql-dev mariadb -u papersnitch -ppapersnitch -e "SELECT 1"
@@ -644,6 +606,7 @@ docker restart mysql-dev
 ```
 
 **Celery Workers Not Processing:**
+
 ```bash
 # Check worker status
 docker exec django-web-dev celery -A web inspect active
@@ -653,12 +616,14 @@ docker restart celery-worker-dev
 ```
 
 **OpenAI Rate Limits:**
+
 ```bash
 # Reduce concurrency in compose.dev.yml:
 command: celery -A web worker --concurrency=2
 ```
 
 **Out of Memory:**
+
 ```bash
 # Increase Docker memory limit (Docker Desktop → Settings → Resources)
 # Or reduce Celery concurrency
@@ -680,7 +645,7 @@ python verify_workflow_installation.py
 
 ---
 
-## 📚 Additional Documentation
+## Additional Documentation
 
 - **[TECHNICAL_DESCRIPTION_FOR_PAPER.md](TECHNICAL_DESCRIPTION_FOR_PAPER.md)**: Complete technical specification for academic paper
 - **[WORKFLOW_ENGINE_DELIVERY.md](WORKFLOW_ENGINE_DELIVERY.md)**: Workflow engine implementation details
@@ -690,13 +655,13 @@ python verify_workflow_installation.py
 
 ---
 
-## 📄 License
+## License
 
 This project is licensed under the MIT License.
 
 ---
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - **GROBID**: PDF text extraction
 - **LangGraph**: Workflow orchestration
@@ -710,6 +675,6 @@ This project is licensed under the MIT License.
 
 **Built with ❤️ for the research community**
 
-*Making reproducibility the norm, not the exception*
+_Making reproducibility the norm, not the exception_
 
 </div>
