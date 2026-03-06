@@ -247,6 +247,15 @@ Togliere rerun analysis, rerun from this node and rerun this node se utente non 
 fixare dominio riaggiungengdo paper-snitch.ing.unimore.it come allowed host e trusted origin
 Aggiungere visualizzazione delle evidence locator quando si clicca sul final aggregation node
 
+3/3/2026
+Iniziato ad aggiungere la visualizzazione delle frasi estratte dall'llm nel pdf. I problemi sono molteplici:
+- le frasi estratte non sono esatte perchè il testo formattato con grobid non è perfetto (es impaginazione, formule, etc)
+- Le frasi prodotte dall'LLM non sempre sono tratte dal testo
+
+4/3/2026
+
+add highlighted pdf (pymupdf) annotator view missing, make faster the paper load webpage. Fix the force_reprocesson several nodes. Removed embedding in the visual result of the code embeddings nodes. 
+Fix paper_type viene runnato anche con force_reprocess false, e la run è failed anche se non sono presenti nodi failed.
 
 
 

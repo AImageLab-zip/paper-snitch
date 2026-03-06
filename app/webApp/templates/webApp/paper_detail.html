@@ -388,7 +388,7 @@
                             </span>
                             {% endif %}
 
-                            {% if selected_workflow.id == latest_workflow.id and selected_workflow.status not in 'running,pending' and user.is_authenticated%}
+                            {% if selected_workflow.status not in 'running,pending' and user.is_authenticated%}
                             <button class="btn btn-sm btn-outline-primary ml-3" id="rerun-workflow-btn" onclick="rerunWorkflow({{ paper.id }})">
                                 <i class="fas fa-redo mr-1"></i> Rerun Analysis
                             </button>
@@ -604,6 +604,9 @@
                     <i class="fas fa-play mr-2"></i>Rerun From Here
                 </button>
                 {% endif %}
+                <button type="button" class="btn btn-success" id="view-highlighted-pdf-btn" onclick="viewHighlightedPDF()">
+                    <i class="fas fa-file-pdf mr-2"></i>View Highlighted PDF
+                </button>
                 <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
             </div>
         </div>
@@ -635,6 +638,19 @@
                     </select>
                     <small class="form-text text-muted" id="workflow-description">
                         Select a workflow to run
+                    </small>
+                </div>
+
+                <!-- LLM Model Selection -->
+                <div class="form-group">
+                    <label for="llm-model-select" class="font-weight-bold">
+                        <i class="fas fa-robot mr-1"></i>Select LLM Model:
+                    </label>
+                    <select class="form-control" id="llm-model-select">
+                        <option value="" disabled>Loading models...</option>
+                    </select>
+                    <small class="form-text text-muted">
+                        Active model configurations from the LLM Model Configurations table
                     </small>
                 </div>
                 
@@ -1266,12 +1282,12 @@ function renderNodeDetails(node) {
                     
                     // Paper Checklist Details - All details including criteria and category scores
                     if (result.evaluation_details.paper_checklist) {
-                        const criteriaCount = result.evaluation_details.paper_checklist.criteria ? result.evaluation_details.paper_checklist.criteria.length : 0;
+
                         html += `
                                 <div class="card">
                                     <div class="card-header p-2" id="paperChecklistHeader">
                                         <button class="btn btn-link btn-sm btn-block text-left" type="button" data-toggle="collapse" data-target="#paperChecklistCollapse">
-                                            <i class="fas fa-file-alt mr-2"></i>Paper Checklist (${criteriaCount} criteria + scores)
+                                            <i class="fas fa-file-alt mr-2"></i>Paper Checklist
                                             <i class="fas fa-chevron-down float-right mt-1"></i>
                                         </button>
                                     </div>
@@ -1305,12 +1321,12 @@ function renderNodeDetails(node) {
                     
                     // Dataset Documentation Details
                     if (result.evaluation_details.dataset_documentation) {
-                        const datasetCriteriaCount = result.evaluation_details.dataset_documentation.criteria ? result.evaluation_details.dataset_documentation.criteria.length : 0;
+                        
                         html += `
                                 <div class="card">
                                     <div class="card-header p-2" id="datasetDocsHeader">
                                         <button class="btn btn-link btn-sm btn-block text-left" type="button" data-toggle="collapse" data-target="#datasetDocsCollapse">
-                                            <i class="fas fa-database mr-2"></i>Dataset Documentation (${datasetCriteriaCount} criteria + scores)
+                                            <i class="fas fa-database mr-2"></i>Dataset Documentation 
                                             <i class="fas fa-chevron-down float-right mt-1"></i>
                                         </button>
                                     </div>
@@ -1853,6 +1869,9 @@ function loadAvailableWorkflows(paperId) {
     const select = $('#workflow-type-select');
     select.html('<option value="" disabled selected>Loading workflows...</option>');
     
+    const modelSelect = $('#llm-model-select');
+    modelSelect.html('<option value="" disabled selected>Loading models...</option>');
+    
     $.ajax({
         url: `/paper/${paperId}/rerun-workflow/`,
         method: 'GET',
@@ -1876,6 +1895,22 @@ function loadAvailableWorkflows(paperId) {
                     select.append(option);
                 });
             }
+
+            // Add LLM model options
+            modelSelect.empty();
+            if (response.llm_models && response.llm_models.length > 0) {
+                response.llm_models.forEach(function(llm, idx) {
+                    const opt = $('<option></option>')
+                        .attr('value', llm.model)
+                        .text(llm.visual_name);
+                    if (idx === 0) {
+                        opt.attr('selected', 'selected');
+                    }
+                    modelSelect.append(opt);
+                });
+            } else {
+                modelSelect.html('<option value="" disabled selected>No active models found</option>');
+            }
             
             // Enable the confirm button
             $('#confirm-rerun-btn').prop('disabled', false);
@@ -1883,6 +1918,7 @@ function loadAvailableWorkflows(paperId) {
         error: function(xhr) {
             console.error('Failed to load workflows:', xhr);
             select.html('<option value="" disabled selected>Error loading workflows</option>');
+            modelSelect.html('<option value="" disabled selected>Error loading models</option>');
             $('#confirm-rerun-btn').prop('disabled', true);
         }
     });
@@ -1898,6 +1934,7 @@ $('#workflow-type-select').on('change', function() {
 $('#confirm-rerun-btn').on('click', function() {
     const paperId = $('#rerunWorkflowModal').data('paperId');
     const workflowType = $('#workflow-type-select').val();
+    const model = $('#llm-model-select').val();
     const btn = $(this);
     const originalHtml = btn.html();
     
@@ -1928,7 +1965,8 @@ $('#confirm-rerun-btn').on('click', function() {
         method: 'POST',
         data: {
             'workflow_type': workflowType,
-            'force_reprocess': forceReprocess
+            'force_reprocess': forceReprocess,
+            'model': model
         },
         headers: {
             'X-CSRFToken': csrfToken
@@ -2233,6 +2271,55 @@ function rerunFromNode() {
     
     // Show confirmation modal
     $('#rerunFromNodeModal').modal('show');
+}
+
+// Function to view highlighted PDF
+function viewHighlightedPDF() {
+    console.log('viewHighlightedPDF called, workflowRunId:', workflowRunId);
+    if (!workflowRunId) {
+        alert('No workflow run available');
+        return;
+    }
+    
+    // Show loading state on button
+    const btn = $('#view-highlighted-pdf-btn');
+    const originalHtml = btn.html();
+    btn.prop('disabled', true);
+    btn.html('<i class="fas fa-spinner fa-spin mr-2"></i>Generating...');
+    
+    // Make AJAX request to generate/get highlighted PDF
+    $.ajax({
+        url: `/workflow/${workflowRunId}/highlighted-pdf/`,
+        method: 'GET',
+        success: function(response) {
+            if (response.success && response.pdf_url) {
+                // Open PDF in new tab
+                window.open(response.pdf_url, '_blank');
+                
+                // Show success message
+                if (response.cached) {
+                    console.log('Opened cached highlighted PDF');
+                } else {
+                    console.log(`Generated new highlighted PDF with ${response.highlights_count} highlights`);
+                }
+            } else {
+                alert('Failed to generate highlighted PDF: ' + (response.error || 'Unknown error'));
+            }
+        },
+        error: function(xhr, status, error) {
+            console.error('Error generating highlighted PDF:', error);
+            let errorMsg = 'Failed to generate highlighted PDF';
+            if (xhr.responseJSON && xhr.responseJSON.error) {
+                errorMsg = xhr.responseJSON.error;
+            }
+            alert(errorMsg);
+        },
+        complete: function() {
+            // Restore button state
+            btn.prop('disabled', false);
+            btn.html(originalHtml);
+        }
+    });
 }
 
 // Helper function to get CSRF cookie

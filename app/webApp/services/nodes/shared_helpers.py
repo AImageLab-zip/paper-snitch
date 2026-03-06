@@ -550,6 +550,21 @@ async def ingest_with_steroids(
             # Parse the repository URL
             query = await parse_remote_repo(source, token=token)
 
+            # Restore original URL case: gitingest's _get_user_and_repo_from_path
+            # lowercases the entire path (owner/repo), but the GitHub REST API
+            # (used by check_repo_exists when GITHUB_TOKEN is set) is case-sensitive.
+            # e.g. "DCTM" → "dctm" causes a 404 on api.github.com/repos/.../dctm
+            #      while the web URL github.com/owner/dctm just redirects to DCTM.
+            # We rebuild query.url using the original-cased path segments from source.
+            parsed_source = urlparse(source)
+            if parsed_source.scheme in ("https", "http") and parsed_source.netloc:
+                src_parts = parsed_source.path.strip("/").split("/")
+                if len(src_parts) >= 2:
+                    query.url = (
+                        f"{parsed_source.scheme}://{parsed_source.netloc}"
+                        f"/{src_parts[0]}/{src_parts[1]}"
+                    )
+
             temp_dir = tempfile.mkdtemp(prefix="gitingest_steroids_")
             clone_path = PathlibPath(temp_dir) / query.slug
 
@@ -1062,8 +1077,8 @@ NOTE: Do NOT compute a numeric score - focus on extracting factual information o
                 {"role": "user", "content": analysis_prompt},
             ],
             reasoning_effort="minimal",
-        #temperature=0.2,
-            #max_output_tokens=4000,
+            # temperature=0.2,
+            # max_output_tokens=4000,
         )
 
         # Parse LLM response
@@ -1155,6 +1170,7 @@ Output the complete JSON object with ALL fields filled in based on the analysis 
                 node, "INFO", "Structuring analysis into schema..."
             )
 
+        # Call OpenAI API
         structured_response = client.chat.completions.create(
             model=model,
             messages=[
@@ -1166,8 +1182,8 @@ Output the complete JSON object with ALL fields filled in based on the analysis 
             ],
             response_format={"type": "json_object"},
             reasoning_effort="minimal",
-        #temperature=0.0,
-            #max_tokens=2000,
+            # temperature=0.0,
+            # max_tokens=2000,
         )
 
         structured_data = json.loads(structured_response.choices[0].message.content)

@@ -1,24 +1,50 @@
 import tempfile
 import os
+import sys
 from django.shortcuts import render, get_object_or_404
 from django.contrib.auth.views import LoginView
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth import login
 from django.contrib import messages
-from django.http import JsonResponse
+from django.http import JsonResponse, FileResponse
+import json
 from django.views import View
 from django.core.paginator import Paginator
-from django.db.models import Q, Count, Max, Prefetch
-from webApp.models import Operations, Analysis, BugReport, Paper, Conference
-
-from django.db.models import Subquery, OuterRef, Avg, StdDev, Count
+from django.db.models import (
+    Q,
+    Count,
+    Prefetch,
+    Sum,
+    Subquery,
+    OuterRef,
+    Avg,
+    StdDev,
+    Count,
+)
+from webApp.models import (
+    Operations,
+    Analysis,
+    BugReport,
+    Paper,
+    Conference,
+    LLMModelConfig,
+)
+from django.core.paginator import Paginator
 
 from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
+from django.utils import timezone
 import time
 from django.shortcuts import render, redirect
 from .functions import get_pdf_content
+import pymupdf
+
+from django.utils import timezone
+import logging
+import asyncio
+import threading
+from datetime import timedelta
 
 from .tasks import (
     run_analysis_celery_task,
@@ -29,7 +55,12 @@ from .tasks import (
 )
 
 # Import workflow models
-from workflow_engine.models import WorkflowRun, WorkflowNode, WorkflowDefinition
+from workflow_engine.models import (
+    WorkflowRun,
+    WorkflowNode,
+    WorkflowDefinition,
+    NodeArtifact,
+)
 
 
 def compute_conference_token_statistics(conferences):
@@ -65,6 +96,7 @@ def compute_conference_token_statistics(conferences):
             stddev_output=StdDev("total_output_tokens", sample=True),
             avg_total=Avg("total_tokens"),
             stddev_total=StdDev("total_tokens", sample=True),
+            sum_total=Sum("total_tokens"),
         )
     )
 
@@ -109,6 +141,9 @@ def compute_conference_token_statistics(conferences):
         else:
             conference.stddev_total_tokens = None
 
+        # Sum of latest-run tokens per paper (replaces the old annotation)
+        conference.total_tokens = conf_stats.get("sum_total")
+
 
 def compute_node_statistics(conference_id):
     """
@@ -132,10 +167,15 @@ def compute_node_statistics(conference_id):
     if not latest_run_ids:
         return {}
 
-    # 3. Filter nodes belonging to those runs and compute math natively in the DB
+    # 3. Filter nodes belonging to those runs and compute math natively in the DB.
+    # Exclude nodes with zero or null total_tokens (e.g. cached runs that tracked
+    # no tokens) so that they do not artificially deflate averages and inflate stddev.
     # sample=True maps to STDDEV_SAMP, matching Python's statistics.stdev()
     node_stats = (
-        WorkflowNode.objects.filter(workflow_run_id__in=latest_run_ids)
+        WorkflowNode.objects.filter(
+            workflow_run_id__in=latest_run_ids,
+            total_tokens__gt=0,
+        )
         .values("node_id")
         .annotate(
             avg_input=Avg("input_tokens"),
@@ -421,7 +461,6 @@ class AnalyzePaperView(View):
     def get(self, request):
         """Display the upload form with available models."""
         from annotator.models import AnnotationCategory
-        import json
 
         available_models = get_available_models()
 
@@ -462,8 +501,6 @@ class AnalyzePaperView(View):
         paper_id = request.POST.get("paper_id")
 
         if paper_id:
-            from django.shortcuts import get_object_or_404
-
             paper = get_object_or_404(Paper, id=paper_id)
 
         elif "pdf_file" in request.FILES:
@@ -661,7 +698,6 @@ class AnnotatePaperView(LoginRequiredMixin, View):
     login_url = "/accounts/login/"
 
     def get(self, request, paper_id):
-        from django.shortcuts import get_object_or_404
 
         paper = get_object_or_404(Paper, id=paper_id)
 
@@ -683,20 +719,16 @@ class ConferenceListView(View):
 
     def get(self, request):
         """Display conferences with search and pagination."""
-        from django.db.models import Sum
 
         search_query = request.GET.get("q", "").strip()
 
         # Start with all conferences
         conferences = Conference.objects.all()
 
-        # Annotate with paper count and total tokens (sum of all completed runs)
+        # Annotate with paper count only; total_tokens is computed per-latest-run
+        # inside compute_conference_token_statistics() below.
         conferences = conferences.annotate(
             paper_count=Count("papers", distinct=True),
-            total_tokens=Sum(
-                "papers__workflow_runs__total_tokens",
-                filter=Q(papers__workflow_runs__status="completed"),
-            ),
         )
 
         # Apply search filter
@@ -733,8 +765,6 @@ class ConferenceDetailView(View):
 
     def get(self, request, conference_id):
         """Display conference with its papers, search, and pagination."""
-        from django.db.models import Count, Prefetch, OuterRef, Subquery
-        from django.core.paginator import Paginator
 
         conference = get_object_or_404(Conference, id=conference_id)
         search_query = request.GET.get("q", "").strip()
@@ -807,7 +837,6 @@ class ConferencePaperStatusView(View):
 
     def get(self, request, conference_id):
         """Return current workflow statuses for papers in the conference."""
-        from django.db.models import Count, Prefetch
 
         conference = get_object_or_404(Conference, id=conference_id)
 
@@ -950,56 +979,50 @@ class PaperDetailView(View):
         """Display paper with workflow diagram and run history."""
         paper = get_object_or_404(Paper, id=paper_id)
 
-        # Get all workflow runs for this paper
-        workflow_runs = (
+        # 1. Fetch all runs AND prefetch all their nodes!
+        workflow_runs = list(
             WorkflowRun.objects.filter(paper=paper)
             .select_related("workflow_definition", "created_by")
+            .prefetch_related("nodes")  # <-- THIS SAVES YOUR DATABASE
             .order_by("-created_at")
         )
 
-        # Add progress to each run
+        # 2. Add progress to each run safely (0 extra DB queries)
         for run in workflow_runs:
             run.progress = run.get_progress()
 
-        # Get the workflow run to display (from URL parameter or latest)
+        # 3. Determine which workflow to display in the main view
         workflow_run_id = request.GET.get("workflow_run")
-        if workflow_run_id:
-            try:
-                selected_workflow = WorkflowRun.objects.get(
-                    id=workflow_run_id, paper=paper
-                )
-            except WorkflowRun.DoesNotExist:
-                # If invalid ID, fall back to latest
-                selected_workflow = workflow_runs.first()
-        else:
-            selected_workflow = workflow_runs.first()
+        selected_workflow = None
 
-        # Get latest workflow run for comparison for comparison
-        latest_workflow = workflow_runs.first()
+        if workflow_run_id:
+            selected_workflow = next(
+                (run for run in workflow_runs if str(run.id) == workflow_run_id), None
+            )
+
+        if not selected_workflow and workflow_runs:
+            selected_workflow = workflow_runs[0]
+
+        latest_workflow = workflow_runs[0] if workflow_runs else None
+
         workflow_nodes_json = {}
         workflow_edges = []
 
         if selected_workflow:
-            # Get the DAG structure from the workflow definition
+            # Get the nodes for the selected workflow directly from the prefetched list!
+            nodes = list(selected_workflow.nodes.all())
+
+            # Build the DAG and Mermaid dictionaries
             dag_structure = selected_workflow.workflow_definition.dag_structure
             workflow_edges = dag_structure.get("edges", [])
 
-            # Get all nodes for this workflow run
-            nodes = WorkflowNode.objects.filter(workflow_run=selected_workflow)
+            # Create an instant O(1) lookup dictionary
+            dag_nodes_dict = {n["id"]: n for n in dag_structure.get("nodes", [])}
 
-            # Build nodes dictionary for Mermaid
             for node in nodes:
-                # Get display name from DAG structure
-                node_def = next(
-                    (
-                        n
-                        for n in dag_structure.get("nodes", [])
-                        if n["id"] == node.node_id
-                    ),
-                    None,
-                )
+                node_def = dag_nodes_dict.get(node.node_id)
                 display_name = (
-                    node_def["name"]
+                    node_def.get("name")
                     if node_def and "name" in node_def
                     else node.node_id.replace("_", " ").title()
                 )
@@ -1062,20 +1085,26 @@ class RerunWorkflowView(View):
             if idx == 0:
                 default_workflow_id = workflow_id
 
+        # Query active LLM model configurations
+        active_llm_models = [
+            {"model": cfg.model, "visual_name": cfg.visual_name}
+            for cfg in LLMModelConfig.objects.filter(is_active=True).order_by(
+                "visual_name"
+            )
+        ]
+
         return JsonResponse(
             {
                 "paper_id": paper_id,
                 "paper_title": paper.title,
                 "workflows": workflows,
                 "default_workflow": default_workflow_id,
+                "llm_models": active_llm_models,
             }
         )
 
     def post(self, request, paper_id):
         """Trigger workflow rerun for the specified paper."""
-        from django.utils import timezone
-        from datetime import timedelta
-        import logging
 
         logger = logging.getLogger(__name__)
 
@@ -1084,9 +1113,10 @@ class RerunWorkflowView(View):
         except Paper.DoesNotExist:
             return JsonResponse({"error": "Paper not found"}, status=404)
 
-        # Get workflow ID and force_reprocess flag from request
+        # Get workflow ID, force_reprocess flag, and model key from request
         workflow_id = request.POST.get("workflow_type")
         force_reprocess = request.POST.get("force_reprocess", "true").lower() == "true"
+        model = request.POST.get("model", "")
 
         if not workflow_id:
             return JsonResponse(
@@ -1166,11 +1196,26 @@ class RerunWorkflowView(View):
         try:
             from webApp.tasks import process_paper_workflow_task
 
+            # Resolve model string from model_key.
+            # TODO: refactor process_paper_workflow_task (and all downstream node functions)
+            # TODO: to accept a full model config dict (model, temperature, reasoning_effort,
+            # TODO: api_key_env_var, base_url, …) instead of a plain model name string,
+            # TODO: so all settings from LLMModelConfig can be forwarded without hard-coding.
+            resolved_model = "gpt-5-nano"  # fallback default
+            if model:
+                try:
+                    llm_cfg = LLMModelConfig.objects.get(model=model, is_active=True)
+                    resolved_model = llm_cfg.model
+                except LLMModelConfig.DoesNotExist:
+                    logger.warning(
+                        f"model '{model}' not found or inactive, falling back to default model"
+                    )
+
             # Submit task to Celery queue with selected workflow
             task = process_paper_workflow_task.delay(
                 paper_id=paper_id,
                 force_reprocess=force_reprocess,
-                model="gpt-5",
+                model=resolved_model,
                 workflow_id=workflow_id,  # Pass the selected workflow ID
             )
 
@@ -1305,7 +1350,20 @@ class WorkflowNodeDetailView(View):
             artifacts_data = {}
             for artifact in artifacts:
                 if artifact.artifact_type == "inline":
-                    artifacts_data[artifact.name] = artifact.inline_data
+                    inline_data = artifact.inline_data
+
+                    # For code_embedding node's result artifact, exclude embedded_files to reduce size
+                    # (embeddings are stored in DB, not needed for display)
+                    if (
+                        node.node_id == "code_embedding"
+                        and artifact.name == "result"
+                        and inline_data
+                    ):
+                        inline_data = inline_data.copy()
+                        if "embedded_files" in inline_data:
+                            inline_data["embedded_files"] = []
+
+                    artifacts_data[artifact.name] = inline_data
                 else:
                     artifacts_data[artifact.name] = {
                         "type": artifact.artifact_type,
@@ -1350,9 +1408,6 @@ class RerunSingleNodeView(View):
 
     def post(self, request, node_id):
         """Rerun a single node."""
-        from django.utils import timezone
-        from datetime import timedelta
-        import logging
 
         logger = logging.getLogger(__name__)
 
@@ -1428,13 +1483,9 @@ class RerunSingleNodeView(View):
         from webApp.services.graphs.paper_processing_workflow import (
             _workflow_instance,
         )
-        import asyncio
-        import threading
 
         def run_node_in_background():
             """Run node in background thread."""
-            import sys
-            from django.utils import timezone
 
             try:
                 logger.info(
@@ -1505,8 +1556,6 @@ class RerunFromNodeView(View):
 
     def post(self, request, node_id):
         """Rerun workflow from the specified node onwards."""
-        import logging
-        import json
 
         logger = logging.getLogger(__name__)
 
@@ -1548,8 +1597,6 @@ class RerunFromNodeView(View):
         from webApp.services.graphs.paper_processing_workflow import (
             _workflow_instance,
         )
-        import asyncio
-        import threading
 
         def run_workflow_from_node_in_background():
             """Run workflow from node in background thread."""
@@ -1576,8 +1623,6 @@ class RerunFromNodeView(View):
         workflow_thread.start()
 
         # Wait briefly for workflow run to be created
-        import time
-
         time.sleep(0.5)
 
         # Get the latest workflow run
@@ -1607,13 +1652,218 @@ class RerunFromNodeView(View):
             )
 
 
+class GenerateHighlightedPDFView(View):
+    """API view to generate highlighted PDF with evidence from workflow run."""
+
+    # Color mapping for different criterion categories
+    CATEGORY_COLORS = {
+        "models": (1.0, 0.8, 0.0),  # Yellow
+        "datasets": (0.0, 0.8, 1.0),  # Cyan
+        "code": (0.8, 0.0, 1.0),  # Purple
+        "reproducibility": (1.0, 0.5, 0.0),  # Orange
+        "experiments": (0.0, 1.0, 0.5),  # Green
+        "default": (1.0, 1.0, 0.0),  # Yellow (fallback)
+    }
+
+    def get(self, request, workflow_run_id):
+        """Generate or retrieve highlighted PDF for workflow run."""
+
+        logger = logging.getLogger(__name__)
+
+        try:
+            workflow_run = WorkflowRun.objects.get(id=workflow_run_id)
+        except WorkflowRun.DoesNotExist:
+            return JsonResponse({"error": "Workflow run not found"}, status=404)
+
+        paper = workflow_run.paper
+
+        # Check if paper has a PDF file
+        if not paper.file:
+            return JsonResponse(
+                {"error": "No PDF file available for this paper"}, status=404
+            )
+
+        # Check if highlighted PDF artifact already exists in any of the workflow nodes
+        existing_artifact = NodeArtifact.objects.filter(
+            node__workflow_run=workflow_run,
+            name="highlighted_pdf",
+            artifact_type="file",
+        ).first()
+
+        if existing_artifact and existing_artifact.file:
+            # Return the existing highlighted PDF URL
+            return JsonResponse(
+                {"success": True, "pdf_url": existing_artifact.file.url, "cached": True}
+            )
+
+        # Generate the highlighted PDF
+        try:
+            # Try to get evaluation details from workflow run output_data first
+            evaluation_details = workflow_run.output_data.get("evaluation_details", {})
+
+            # If not in output_data, try to find it in NodeArtifacts
+            if not evaluation_details:
+                # Look for artifacts containing evaluation details in workflow nodes
+                artifacts = NodeArtifact.objects.filter(
+                    node__workflow_run=workflow_run, artifact_type="inline"
+                ).order_by("-created_at")
+
+                for artifact in artifacts:
+                    if artifact.inline_data and isinstance(artifact.inline_data, dict):
+                        if "evaluation_details" in artifact.inline_data:
+                            evaluation_details = artifact.inline_data[
+                                "evaluation_details"
+                            ]
+                            break
+                        # Check if the artifact itself is the evaluation details
+                        elif "paper_checklist" in artifact.inline_data:
+                            evaluation_details = artifact.inline_data
+                            break
+
+            if not evaluation_details:
+                return JsonResponse(
+                    {
+                        "error": "No evaluation details found in workflow output or artifacts"
+                    },
+                    status=400,
+                )
+
+            paper_checklist = evaluation_details.get("paper_checklist", {})
+            criteria_obj = paper_checklist.get("criteria", {})
+
+            # Handle both direct array and {value: [...]} structures
+            if isinstance(criteria_obj, dict):
+                criteria = criteria_obj.get("value", [])
+            else:
+                criteria = criteria_obj if isinstance(criteria_obj, list) else []
+
+            if not criteria:
+                return JsonResponse(
+                    {"error": "No evaluation criteria found in workflow output"},
+                    status=400,
+                )
+
+            # Prepare text to highlight with colors
+            text_color_map = []
+            total_evidence_count = 0
+            all_criteria = []
+            for criterion in criteria:
+                all_criteria.append(criterion.get("criterion_name", "unknown"))
+                evidence_text = criterion.get("evidence_text", "")
+                category = criterion.get("category", "default")
+
+                # Skip empty evidence
+                if not evidence_text or evidence_text.strip() == "":
+                    continue
+
+                # Get color for this category
+                color = self.CATEGORY_COLORS.get(
+                    category, self.CATEGORY_COLORS["default"]
+                )
+                text_color_map.append((evidence_text, color))
+                total_evidence_count += 1
+            if not text_color_map:
+                return JsonResponse(
+                    {"error": "No evidence text found to highlight"}, status=400
+                )
+
+            # Generate highlighted PDF
+            input_pdf_path = paper.file.path
+            output_filename = f"highlighted_{workflow_run.id}.pdf"
+            output_pdf_path = os.path.join(tempfile.gettempdir(), output_filename)
+
+            # Open the document
+            doc = pymupdf.open(input_pdf_path)
+            total_instances = 0
+            highlighted_crit = []
+            for text_to_search, color in text_color_map:
+                for page in doc:
+                    # Find the coordinates (quads) of the text to search
+                    instances = page.search_for(text_to_search)
+
+                    if len(instances) != 0:
+                        total_instances += 1
+
+                    # Apply highlight for each occurrence found
+                    for inst in instances:
+                        annot = page.add_highlight_annot(inst)
+                        annot.set_colors(stroke=color)
+                        annot.update()
+
+            # Save the result
+            doc.save(output_pdf_path)
+            doc.close()
+
+            logger.info(
+                f"Generated highlighted PDF with {total_instances} highlights for workflow run {workflow_run.id}"
+            )
+
+            # Save as NodeArtifact
+            # Find a suitable node to attach the artifact to (prefer last completed node)
+            target_node = (
+                workflow_run.nodes.filter(status="completed")
+                .order_by("-completed_at")
+                .first()
+            )
+
+            if not target_node:
+                # Fallback to any node if no completed nodes
+                target_node = workflow_run.nodes.first()
+
+            if not target_node:
+                return JsonResponse(
+                    {"error": "No nodes found in workflow run to attach artifact"},
+                    status=400,
+                )
+
+            # Read file content
+            with open(output_pdf_path, "rb") as f:
+                file_content = f.read()
+
+            # Create NodeArtifact with FileField
+            artifact = NodeArtifact.objects.create(
+                node=target_node,
+                artifact_type="file",
+                name="highlighted_pdf",
+                mime_type="application/pdf",
+                size_bytes=len(file_content),
+                metadata={
+                    "highlights_found": f"{total_instances}/{total_evidence_count}",
+                    "generated_at": timezone.now().isoformat(),
+                    "paper_id": paper.id,
+                    "workflow_run_id": str(workflow_run.id),
+                },
+            )
+
+            # Save file to the artifact's file field
+            artifact.file.save(output_filename, ContentFile(file_content), save=True)
+
+            # Clean up temp file
+            os.remove(output_pdf_path)
+
+            file_url = artifact.file.url
+
+            return JsonResponse(
+                {
+                    "success": True,
+                    "pdf_url": file_url,
+                    "cached": False,
+                    "highlights_count": total_instances,
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Error generating highlighted PDF: {e}", exc_info=True)
+            return JsonResponse(
+                {"error": f"Failed to generate highlighted PDF: {str(e)}"}, status=500
+            )
+
+
 class BulkRerunPreviewView(View):
     """API view to preview papers that will be affected by bulk rerun."""
 
     def post(self, request, conference_id):
         """Return list of papers that would be affected by bulk rerun."""
-        import json
-        from django.db.models import Prefetch
 
         try:
             conference = Conference.objects.get(id=conference_id)
@@ -1680,12 +1930,6 @@ class BulkRerunWorkflowsView(View):
 
     def post(self, request, conference_id):
         """Trigger workflow reruns for all papers in the specified conference."""
-        from django.utils import timezone
-        from datetime import timedelta
-        import logging
-        import threading
-        import asyncio
-        import json
 
         logger = logging.getLogger(__name__)
 
@@ -1841,9 +2085,6 @@ class BulkStopWorkflowsView(View):
 
     def post(self, request, conference_id):
         """Stop all running and pending workflows for the specified conference."""
-        from django.utils import timezone
-        import logging
-        import json
         from celery import current_app
 
         logger = logging.getLogger(__name__)

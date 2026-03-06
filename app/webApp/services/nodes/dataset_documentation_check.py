@@ -106,23 +106,32 @@ async def dataset_documentation_check_node(
 
         # Check if already analyzed
         if not force_reprocess:
-            previous = await async_ops.check_previous_analysis(
-                state["paper_id"], node_id
+            previous_node = await async_ops.get_most_recent_completed_node(
+                paper_id=state["paper_id"],
+                node_id=node_id,
+                exclude_run_id=state["workflow_run_id"],
             )
-            if previous:
-                logger.info(f"Found previous analysis from {previous['completed_at']}")
-                await async_ops.create_node_log(
-                    node, "INFO", f"Using cached result from run {previous['run_id']}"
+
+            if previous_node:
+                # Get the result from the previous node's artifact
+                previous_artifact = await async_ops.get_node_artifact(
+                    previous_node, "result"
                 )
+                if previous_artifact and previous_artifact.inline_data:
+                    logger.info(
+                        f"Found previous analysis from {previous_node.completed_at}"
+                    )
+                    await async_ops.create_node_log(
+                        node,
+                        "INFO",
+                        f"Using cached result from run {previous_node.workflow_run_id}",
+                    )
 
-                result = AggregatedDatasetDocumentationAnalysis(**previous["result"])
+                    result = AggregatedDatasetDocumentationAnalysis(
+                        **previous_artifact.inline_data
+                    )
 
-                # Copy previous node for token tracking
-                previous_node = await async_ops.get_workflow_node(
-                    previous["run_id"], node_id
-                )
-
-                if previous_node:
+                    # Copy tokens from previous node
                     await async_ops.update_node_tokens(
                         node,
                         input_tokens=previous_node.input_tokens,
@@ -131,6 +140,37 @@ async def dataset_documentation_check_node(
                     )
                     logger.info(
                         f"Copied tokens from previous execution: {previous_node.total_tokens} total"
+                    )
+
+                    # Copy all artifacts from previous node to current node
+                    # This ensures the frontend can display the full results even when using cache
+                    previous_artifacts = await async_ops.get_node_artifacts(
+                        previous_node
+                    )
+                    for artifact in previous_artifacts:
+                        await async_ops.create_node_artifact(
+                            node,
+                            name=artifact.name,
+                            data=(
+                                artifact.inline_data
+                                if artifact.artifact_type == "inline"
+                                else {
+                                    "type": artifact.artifact_type,
+                                    "file_path": artifact.file_path,
+                                    "url": artifact.url,
+                                    "mime_type": artifact.mime_type,
+                                    "size_bytes": artifact.size_bytes,
+                                    "metadata": artifact.metadata,
+                                }
+                            ),
+                            artifact_type=artifact.artifact_type,
+                            mime_type=artifact.mime_type,
+                            size_bytes=artifact.size_bytes,
+                            metadata=artifact.metadata,
+                        )
+
+                    logger.info(
+                        f"Copied {len(previous_artifacts)} artifact(s) from previous node"
                     )
 
                 await async_ops.update_node_status(
@@ -226,9 +266,9 @@ Provide your assessment with:
 5. Additional notes if needed
 6. Importance level for dataset papers: 'critical', 'important', or 'optional'"""
 
-            # Call LLM
+            # Call OpenAI API
             try:
-                response = client.beta.chat.completions.parse(
+                response = client.chat.completions.parse(
                     model=model,
                     messages=[
                         {"role": "system", "content": system_prompt},
