@@ -415,7 +415,7 @@ async def _retrieve_sections_for_criterion(
 
     # Take top_k sections
     top_sections = similarities[:top_k]
-
+    # TODO Is the truncation useful?
     # Format results with text truncation
     results = []
     for similarity, section in top_sections:

@@ -21,11 +21,11 @@
 - [Prerequisites](#prerequisites)
 - [Installation & Setup](#installation--setup)
 - [Running the System](#running-the-system)
-- [How It Works](#how-it-works)
 - [Configuration](#configuration)
 - [Development Workflow](#development-workflow)
 - [Troubleshooting](#troubleshooting)
 - [Additional Documentation](#additional-documentation)
+- [Acknowledgments](#acknowledgments)
 
 ---
 
@@ -33,40 +33,30 @@
 
 ### The Reproducibility Crisis
 
-The scientific community faces a **reproducibility crisis**: many published research papers cannot be independently replicated due to:
+Reproducibility is a cornerstone of the scientific method, yet the research community — particularly in fields like medical image computing — faces a persistent **reproducibility crisis**. Studies have shown that a significant fraction of published results cannot be independently replicated, undermining trust in research outcomes and slowing scientific progress. At major venues like MICCAI, where hundreds of papers are accepted each year, understanding and improving reproducibility at scale is essential.
 
-- **Missing or incomplete code repositories**
-- **Unavailable or poorly documented datasets**
-- **Ambiguous experimental protocols and hyperparameters**
-- **Lack of detailed methodology descriptions**
-- **Inconsistent reporting of statistical procedures**
+The root causes are:
 
-Manual evaluation of paper reproducibility is:
+- **Missing or incomplete code**: Source code is often not released, or released in an unusable state.
+- **Undocumented datasets**: Training data, splits, and preprocessing steps are frequently omitted.
+- **Ambiguous methodology**: Hyperparameters, architectural choices, and evaluation protocols are underspecified.
+- **Inconsistent reporting**: Statistical procedures, hardware environments, and training details vary wildly in granularity.
 
-- **Time-consuming**: Requires expert reviewers to spend hours per paper
-- **Inconsistent**: Different reviewers may apply different standards
-- **Not scalable**: Impossible to evaluate thousands of papers at conferences
-- **Subjective**: Human bias in interpretation of criteria
+Manual evaluation of reproducibility, such as the structured checklists adopted by MICCAI, does not scale. Human reviewers must spend considerable time per paper, assessments vary across reviewers, and the process cannot keep up with the volume of submissions at large conferences.
 
 ### Our Solution
 
-**PaperSnitch** automates the reproducibility assessment process using:
+**PaperSnitch** automates and standardizes the reproducibility assessment process. Given a research paper (PDF), the system extracts its full text via GROBID, classifies the paper type to determine which evaluation branches apply, and then runs three parallel assessment tracks — a reproducibility checklist, dataset documentation analysis, and code repository analysis — each powered by a Retrieval-Augmented Generation (RAG) pipeline that grounds every LLM judgment in evidence retrieved from the paper or codebase via semantic similarity. A final aggregation step merges all branch results into a single weighted score with a qualitative narrative.
 
-1. **Multi-Step Retrieval-Augmented Generation (RAG)**: Intelligently retrieves relevant paper sections for each evaluation criterion using semantic embeddings
-2. **Structured LLM Analysis**: Uses gpt-5 with Pydantic schemas for deterministic, parseable outputs
-3. **Programmatic Scoring**: Combines LLM-based text analysis with rules-based scoring algorithms
-4. **Code Repository Analysis**: Automatically ingests, analyzes, and embeds source code to evaluate reproducibility artifacts
-5. **Workflow Orchestration**: LangGraph-based DAG execution with database persistence and fault tolerance
+The entire pipeline runs as an **8-node directed acyclic graph (DAG)** orchestrated by LangGraph, with database-backed state, distributed Celery workers, and full audit trails. Each node in the workflow is described in detail in the [Paper Processing Workflow](#paper-processing-workflow) section.
 
 ### Research Impact
 
-This system enables:
-
-- **Large-scale conference analysis**: Process hundreds of papers efficiently
-- **Consistent evaluation standards**: Same criteria applied uniformly
-- **Actionable feedback**: Specific recommendations for improving reproducibility
-- **Quantifiable metrics**: Numerical scores for comparison and benchmarking
-- **Research insights**: Understanding reproducibility trends across domains
+- **Large-scale conference analysis**: Process hundreds of papers with consistent, repeatable evaluation.
+- **Standardized criteria**: The same 20+10+6 criteria applied uniformly to every paper.
+- **Actionable feedback**: Per-criterion evidence and specific recommendations for improving reproducibility.
+- **Quantifiable metrics**: Numerical scores (overall, per-category, per-criterion) for comparison and benchmarking.
+- **Research insights**: Understanding reproducibility trends across conferences, years, and research areas.
 
 ---
 
@@ -74,31 +64,32 @@ This system enables:
 
 ### Intelligent Analysis
 
-- **Paper Type Classification**: Automatically identifies papers as dataset/method/both/theoretical
-- **Adaptive Scoring**: Weights criteria based on paper type (e.g., datasets more important for dataset papers)
-- **Code Intelligence**: LLM-guided selection of reproducibility-critical files from repositories
-- **Multi-Criterion Evaluation**: 20 reproducibility criteria + 10 dataset documentation criteria + 6 code analysis components
+- **Paper Type Classification**: Automatically classifies papers (choosing from dataset, method, both, theoretical or unknown), adapting the entire evaluation pipeline accordingly.
+- **Adaptive Scoring**: Weights reproducibility categories (models, datasets, experiments) based on paper type — e.g., dataset papers weight dataset criteria at 40% and paper criteria at 60%, method papers weight code criteria at 60 and paper criteria at 40%.
+- **Multi-Step RAG Evaluation**: For each of 20 reproducibility criteria, retrieves the top-3 most relevant paper sections via cosine similarity, then prompts the LLM for structured, evidence-based analysis.
+- **Code Intelligence**: LLM-guided selection of reproducibility-critical files from repositories within a 100k-token budget, followed by mandatory embedding of all selected files for evidence-based code analysis.
+- **Multi-Criterion Evaluation**: 20 reproducibility criteria (models, datasets, experiments) + 10 dataset documentation criteria + 6 code analysis components.
 
 ### Comprehensive Assessment
 
-- **Paper-Level Analysis**: Evaluates mathematical descriptions, experimental protocols, statistical reporting
-- **Code-Level Analysis**: Checks for training code, evaluation scripts, checkpoints, dependencies
-- **Dataset Documentation**: Assesses data collection, annotation protocols, ethical compliance
-- **Evidence-Based Scoring**: Links each evaluation to specific paper sections
+- **Paper-Level Analysis**: Evaluates mathematical descriptions, hyperparameter reporting, experimental protocols, statistical procedures, and ablation studies.
+- **Code-Level Analysis**: Structured 6-component evaluation covering code completeness, dependency documentation, training code, evaluation scripts, pretrained checkpoints, and dataset split handling.
+- **Dataset Documentation**: Assesses data collection methodology, annotation protocols, data format documentation, and ethical compliance.
+- **Evidence-Based Scoring**: Every criterion evaluation is linked to specific paper sections (with similarity scores) or code snippets, providing full traceability.
 
 ### Scalable Workflow
 
-- **Distributed Execution**: Celery workers for parallel paper processing
-- **Database-Backed**: MySQL persistence for all workflow states and results
-- **Fault Tolerant**: Automatic retries, error isolation, partial result aggregation
-- **Token Tracking**: Fine-grained cost accounting per workflow node
+- **Distributed Execution**: Celery workers running in parallel, coordinated via MySQL row-level locking (`SELECT ... FOR UPDATE SKIP LOCKED`).
+- **Database-Backed**: All workflow states, node outputs, artifacts, and logs persisted in MariaDB.
+- **Fault Tolerant**: Automatic retries with configurable limits, fail-fast propagation, stale claim cleanup, and progressive node skipping.
+- **Token Tracking**: Per-node and per-workflow LLM token usage tracking with caching support across runs.
 
 ### Web Interface
 
-- **PDF Upload**: Direct paper upload with automatic text extraction (GROBID)
-- **Conference Scraping**: Batch import papers from conference websites (MICCAI, etc.)
-- **Analysis Dashboard**: View results, scores, and detailed criterion evaluations
-- **User Management**: Profile-based tracking of analysis history
+- **PDF Upload**: Direct paper upload with automatic text extraction and section parsing via GROBID.
+- **Conference Scraping**: Batch import papers from conference websites (e.g., MICCAI proceedings).
+- **Analysis Dashboard**: Real-time workflow progress, per-node results, highlighted PDFs, and detailed criterion-level evaluations.
+- **Admin Interface**: Rich Django admin with status badges, progress bars, DAG visualizations, artifact browsing, and structured log viewing.
 
 ---
 
@@ -147,74 +138,134 @@ This system enables:
 | **LLM Integration**     | OpenAI SDK 2.7.2       | gpt-5 API calls with structured outputs   |
 | **Embeddings**          | text-embedding-3-small | 1536-dim semantic vectors for RAG         |
 
-### Paper Process Workflow
+### Paper Processing Workflow
 
 The analysis pipeline consists of 8 nodes executed as a directed acyclic graph (DAG):
 
 ```
-                    ┌─────────────────────────────────┐
-                    │ A. Paper Type Classification    │
-                    │    (dataset/method/both/        │
-                    │     theoretical)                │
-                    └──────────────┬──────────────────┘
-                                   │
-                    ┌──────────────▼──────────────────┐
-                    │ B. Section Embeddings           │
-                    │    (text-embedding-3-small)     │
-                    └──────────────┬──────────────────┘
-                                   │
-                ┌──────────────────┼────────────────────┐
-                │                  │                    │
-    ┌───────────▼───────┐  ┌────▼──────────┐    ┌───────▼────────┐
-    │ C. Reproducibility│  │ D. Dataset    │    │ E. Code        │
-    │    Checklist      │  │    Docs Check │    │    Availability│
-    │    (20 criteria)  │  │    (10 crit.) │    │    Check       │
-    └───────────┬───────┘  └───────┬───────┘    └───────┬────────┘
-                │                  │                    │
-                │                  │          ┌─────────▼───────────┐
-                │                  │          │ F. Code Embedding   │
-                │                  │          │    (repo ingestion) │
-                │                  │          └─────────┬───────────┘
-                │                  │                    │
-                │                  │          ┌─────────▼───────────┐
-                │                  │          │ G. Code Repository  │
-                │                  │          │    Analysis         │
-                │                  │          └─────────┬───────────┘
-                │                  │                    │
-                └──────────────────┼────────────────────┴
-                                   │
-                   ┌───────────────▼─────────────────┐
-                   │ H. Final Aggregation            │
-                   │    (weighted scoring + LLM)     │
-                   └─────────────────────────────────┘
+                      ┌──────────────────────────────┐
+                      │  Paper Type Classification   │
+                      │  (dataset/method/both/       │
+                      │   theoretical)               │
+                      └──────────────┬───────────────┘
+                                     │
+                      ┌──────────────▼───────────────┐
+                      │  Section Embeddings          │
+                      │  (text-embedding-3-small)    │
+                      └──────────────┬───────────────┘
+                                     │
+          ┌──────────────────────────┼──────────────────────────┐
+          │                          │                          │
+┌─────────▼──────────┐  ┌───────────▼───────────┐  ┌───────────▼────────────┐
+│  Reproducibility   │  │  Dataset Docs Check   │  │  Code Availability     │
+│  Checklist         │  │  (10 criteria)        │  │  Check                 │
+│  (20 criteria)     │  │                       │  │                        │
+└─────────┬──────────┘  └───────────┬───────────┘  └───────────┬────────────┘
+          │                         │                          │
+          │                         │              ┌───────────▼────────────┐
+          │                         │              │  Code Embedding        │
+          │                         │              │  (repo ingestion)      │
+          │                         │              └───────────┬────────────┘
+          │                         │                          │
+          │                         │              ┌───────────▼────────────┐
+          │                         │              │  Code Repository       │
+          │                         │              │  Analysis (6 comp.)    │
+          │                         │              └───────────┬────────────┘
+          │                         │                          │
+          └─────────────────────────┴──────────────────────────┘
+                                    │
+                     ┌──────────────▼───────────────┐
+                     │  Final Aggregation           │
+                     │  (weighted scoring + LLM     │
+                     │   qualitative assessment)    │
+                     └──────────────────────────────┘
 ```
 
-**Node Responsibilities:**
+**Node details:**
 
-- **Node A**: Classify paper type using title + abstract
-- **Node B**: Generate embeddings for all paper sections
-- **Node C**: Evaluate 20 reproducibility criteria via multi-step RAG
-- **Node D**: Evaluate 10 dataset documentation criteria
-- **Node E**: Search for code URLs in paper (GitHub, GitLab, etc.)
-- **Node F**: Ingest code repository, select critical files, embed chunks
-- **Node G**: Analyze code repository structure and reproducibility artifacts
-- **Node I**: Aggregate scores, generate qualitative assessment
+#### 1. Paper Type Classification
+
+Classifies the paper into one of five categories — **dataset**, **method**, **both**, **theoretical**, or **unknown** — using LLM analysis of the full text. The model returns a structured response containing the predicted type, a confidence score, reasoning, and key evidence quotes. This classification determines all downstream routing: theoretical papers skip the dataset and code branches entirely, dataset papers skip code analysis, method papers skip dataset analysis, and unknown papers are treated as method papers.
+
+#### 2. Section Embeddings
+
+Extracts the paper's sections via regex-based header detection, filtering to sections between 100 and 8,000 characters. Each section is embedded as a single vector using OpenAI `text-embedding-3-small` (1,536 dimensions), and the resulting `PaperSectionEmbedding` records are stored in the database. These embeddings serve as the retrieval index for the downstream RAG-based evaluation nodes. Results are cached: if embeddings already exist from a previous run, this node returns immediately.
+
+#### 3. Reproducibility Checklist
+
+Evaluates **20 reproducibility criteria** (6 model criteria, 8 dataset criteria, 6 experiment criteria) adapted from the MICCAI reproducibility checklist. Each criterion has a pre-computed embedding stored in the database. For every criterion, the node performs a two-step RAG process:
+
+1. **Retrieval** — computes cosine similarity between the criterion embedding and all paper section embeddings, selects the **top-3 sections** (minimum similarity threshold of 0.15).
+2. **LLM analysis** — sends the retrieved sections along with the criterion description and paper metadata to an LLM call with a Pydantic structured output schema, producing a `present`/`absent` judgment, confidence score, evidence quote, and importance rating (`critical` / `important` / `optional`).
+
+After all 20 LLM calls, a **programmatic aggregation** (no LLM) computes per-category scores (models, datasets, experiments) as the confidence-weighted fraction of satisfied criteria within each category, then applies **paper-type-adaptive weights** to produce a final weighted score. For example, method papers weight the datasets category at 20%, models at 45% and experiments at 35%
+
+#### 4. Dataset Documentation Check
+
+Evaluates **10 dataset documentation criteria** organized into three categories — Data Collection (3 criteria, weight 35%), Annotation (4 criteria, weight 40%), and Ethics & Availability (3 criteria, weight 25%). The RAG process is identical to the Reproducibility Checklist: top-3 section retrieval via cosine similarity, followed by per-criterion LLM analysis with structured output. Scores are aggregated programmatically per category with the above weights. **This node runs only for papers classified as "dataset" or "both"**.
+
+#### 5. Code Availability Check
+
+Searches for the paper's source code repository using a three-step strategy:
+
+1. **Database check** — uses a previously stored `code_url` if available.
+2. **Text extraction** — scans the paper text with a regex matching git repository URLs. If found, an LLM API call is performed to validate whether it's the one associated with the paper (to avoid using one just cited by the authors)
+3. **LLM-powered online search** — if no URL is found in the text, we perform an LLM API call equipped with a web search tool, using the paper's title and abstract to search online for the code URL.
+
+If URL found, verify it's actually accessible and it contains actual code by attempting to clone it.
+**If no code is found, downstream code nodes are progressively skipped.** This node is skipped entirely for theoretical papers.
+
+#### 6. Code Embedding
+
+Clones the repository found by Code Availability Check and prepares it for evidence-based analysis:
+
+1. **Initial ingestion** — clones the repo via GitIngest and extracts the README plus the full file tree with per-file token counts.
+2. **LLM-based file selection** — the LLM receives the README and file tree, then selects a set of include patterns targeting reproducibility-critical files (e.g., main implementation, training scripts, configs) within a **100,000-token budget**, explicitly excluding comparison models, benchmarks, and visualization scripts.
+3. **Selective re-ingestion** — re-clones with only the LLM-selected patterns.
+4. **Chunking and embedding** — every selected file is split into chunks of up to **20,000 characters** (at word/line boundaries, no overlap), and **every chunk is mandatorily embedded** via `text-embedding-3-small` (1,536 dimensions). Embeddings are stored as `CodeFileEmbedding` records, including content hashes for integrity.
+
+The clone is preserved on disk so that Code Repository Analysis can reuse it without re-cloning.
+
+#### 7. Code Repository Analysis
+
+Performs a structured **6-component analysis** of the repository using the code embeddings from the previous node as the evidence retrieval index:
+
+1. **Research Methodology Detection** — the LLM identifies whether the project uses deep learning, machine learning, algorithmic, simulation, or data-analysis methodology and flags requirements (training, datasets, splits).
+2. **Code Completeness** — checks for training code, evaluation scripts, and documented execution commands.
+3. **Dependency Documentation** — checks for requirements files, environment specifications, and version pinning.
+4. **Artifacts** — checks for pretrained checkpoints, model weights, and configuration files.
+5. **Dataset Splits** — checks for train/validation/test split definitions and data loading code.
+6. **Documentation** — checks for README quality, usage instructions, and example commands.
+
+Each component is analyzed via a separate LLM call with Pydantic structured output. Component scores are then combined via **adaptive scoring**: maximum points per component vary based on the detected methodology (e.g., deep learning projects require training code, so `code_completeness` has a higher ceiling). The final code reproducibility score is normalized to a 0–100 scale.
+
+#### 8. Final Aggregation
+
+Merges all branch results into a single assessment. The node waits for all required dependencies (Reproducibility Checklist is mandatory; Code Repository Analysis and Dataset Documentation Check are optional depending on paper type and code availability), then:
+
+1. **Weighted score computation** — combines component scores using availability-dependent weights:
+   - All three components present: Checklist 50%, Code 20%, Dataset 30%.
+   - Checklist + Code only: 60% / 40%.
+   - Checklist + Dataset only: 60% / 40%.
+   - Checklist only: 100%.
+2. **Programmatic recommendation generation** — aggregates and deduplicates recommendations from all upstream nodes, prioritized by paper-type relevance and severity, limited to the top 7.
+3. **LLM qualitative assessment** (single LLM call) — receives the pre-computed scores and all upstream analyses, and generates an executive summary (2–3 paragraphs), a strengths list, and a weaknesses list. The LLM is explicitly instructed not to recompute scores or generate recommendations — those are already determined programmatically.
 
 ---
 
-## Web interface
+## Web Interface
 
-### Conferences tab
+### Conferences
 
-The conference tab is where conferences already scraped are shown.
+The conferences page lists all conferences that have been scraped, with aggregate statistics (number of papers, token usage, analysis completion rates).
 
-### Conference tab
+### Conference Detail
 
-Inside of each conference there are the tokens statistics and the list of papers related to it with a summary .
+Inside each conference: token usage statistics, a summary table of all papers with their analysis status and scores, and links to individual paper pages.
 
-### Paper tab
+### Paper Detail
 
-In the paper page the workflow of the selected analysis is shown on the top, and a list of all analyses performed is shown on the bottom.
+The paper page shows the DAG visualization of the selected analysis run at the top (with per-node status indicators), followed by the full list of all analysis runs performed on that paper. Completed analyses display criterion-level results, scores, and links to highlighted PDFs.
 
 ---
 
@@ -228,24 +279,17 @@ In the paper page the workflow of the selected analysis is shown on the top, and
 
 ### API Keys
 
-You'll need an OpenAI API key with access to:
+An OpenAI API key with access to:
 
-- **Any gpt model**: compatible with Responses API for structured analysis
-- **text-embedding-3-small**: For semantic embeddings
+- A **GPT model** compatible with the Responses API for structured analysis (e.g., `gpt-4o`, `gpt-5`)
+- **text-embedding-3-small** for semantic embeddings (1536 dimensions)
 
 ### Hardware Recommendations
 
-**Minimum:**
-
-- 4 CPU cores
-- 16 GB RAM
-- 50 GB disk space
-
-**Recommended:**
-
-- 8 CPU cores
-- 32 GB RAM
-- 100 GB SSD storage
+|                 | CPU     | RAM   | Disk       |
+| --------------- | ------- | ----- | ---------- |
+| **Minimum**     | 4 cores | 16 GB | 50 GB      |
+| **Recommended** | 8 cores | 32 GB | 100 GB SSD |
 
 ---
 
@@ -254,66 +298,77 @@ You'll need an OpenAI API key with access to:
 #### Step 1: Clone the Repository
 
 ```bash
-git clone https://github.com/yourusername/papersnitch.git
+git clone https://github.com/AImageLab-zip/papersnitch.git
 cd papersnitch
 ```
 
 #### Step 2: Environment Configuration
 
-A `template_env` is provided. Rename as `.env.local` and set all the pasword and API keys.
+Copy `env_template` to `.env.local` and fill in passwords and API keys:
+
+```bash
+cp env_template .env.local
+```
+
+Required variables (see `env_template` for the full list):
+
+```bash
+# Django
+DJANGO_SECRET_KEY=<generate-a-secret-key>
+DJANGO_SETTINGS_MODULE=web.settings.development
+
+# Database (must match MariaDB container vars)
+DATABASE_PASSWORD=<choose-a-password>
+MARIADB_ROOT_PASSWORD=<root-password>
+MARIADB_PASSWORD=<same-as-DATABASE_PASSWORD>
+
+# API Keys
+OPENAI_API_KEY=<your-openai-key>
+```
 
 #### Step 3: Launch Development Stack
-
-Use the provided script to start all services:
 
 ```bash
 ./create-dev-stack.sh up 8000 dev
 ```
 
-**What this does:**
+This script:
 
-1. Finds available ports (8000 for Django, 3306 for MySQL, 6379 for Redis, 8071 for GROBID)
-2. Creates stack-specific directories (`mysql_dev`, `media_dev`, `static_dev`)
-3. Generates `.env.dev` with port configuration (starting from `.env.local`)
-4. Starts Docker Compose services:
-   - `django-web-dev`: Django application server
-   - `mysql`: MariaDB 11.7 database
-   - `redis`: Redis message broker
-   - `celery-worker`: Background task processor
-   - `celery-beat`: Periodic task scheduler
+1. Finds available ports starting from the requested base (Django, MySQL, Redis, GROBID)
+2. Creates stack-isolated directories (`mysql_dev/`, `media_dev/`, `static_dev/`)
+3. Generates `.env.dev` with the port configuration
+4. Starts all Docker Compose services:
 
-#### Step 4: Database Initialization
+| Service          | Description                              |
+| ---------------- | ---------------------------------------- |
+| `django-web-dev` | Django development server (hot-reload)   |
+| `mysql`          | MariaDB 11.7 database                    |
+| `redis`          | Redis 7 (Celery broker & result backend) |
+| `celery-worker`  | Celery worker (concurrency=8)            |
+| `celery-beat`    | Celery Beat periodic task scheduler      |
+| `grobid`         | GROBID 0.8.2 PDF parsing service         |
 
-Wait for database to be healthy, then run migrations:
+Database migrations and fixture loading run automatically on container startup via the entrypoint script.
+
+#### Step 4: Create Admin User
 
 ```bash
-# Check if MySQL is ready
-docker exec mysql-dev mariadb -u papersnitch -ppapersnitch -e "SELECT 1"
-
-# Run Django migrations
-docker exec django-web-dev python manage.py migrate
-
-# Create superuser for admin access
-docker exec -it django-web-dev python manage.py createsuperuser
+docker exec -it django-web-dev uv run python manage.py createsuperuser
 ```
 
 #### Step 5: Initialize Criteria Embeddings
 
-Pre-compute embeddings for reproducibility criteria (one-time setup):
+Pre-compute embeddings for the reproducibility and dataset documentation criteria (one-time setup, requires OpenAI API key):
 
 ```bash
-docker exec django-web-dev python manage.py initialize_criteria_embeddings
+docker exec django-web-dev uv run python manage.py initialize_criteria_embeddings
 ```
 
-**What this does:**
+This creates embeddings for 20 reproducibility checklist criteria and 10 dataset documentation criteria, stored in the database for semantic retrieval during analysis.
 
-- Creates embeddings for 20 reproducibility checklist criteria
-- Creates embeddings for 10 dataset documentation criteria
-- Stores in database for semantic retrieval during analysis
+#### Step 6: Verify
 
-#### Step 6: Start a conference scraping
-
-Working in progress
+Open `http://localhost:8000` in a browser. Log in with the superuser credentials. The admin interface is at `http://localhost:8000/admin/`.
 
 ---
 
@@ -412,99 +467,7 @@ ORDER BY started_at;
 
 ---
 
-## How It Works
-
-### High-Level Overview
-
-PaperSnitch uses an **8-node DAG workflow** to comprehensively evaluate research paper reproducibility:
-
-1. **Paper Type Classification (Node A)**: Determines if paper is dataset/method/both/theoretical using LLM analysis of title and abstract
-
-2. **Section Embeddings (Node D)**: Generates semantic embeddings for all paper sections (abstract, intro, methods, results, etc.) using `text-embedding-3-small`
-
-3. **Parallel Analysis**:
-   - **Reproducibility Checklist (Node G)**: Evaluates 20 criteria using multi-step RAG (retrieves relevant sections per criterion, then analyzes with LLM)
-   - **Dataset Documentation (Node H)**: Evaluates 10 dataset-specific criteria
-   - **Code Workflow (Nodes B→F→C)**:
-     - **Node B**: Searches for code repository URLs
-     - **Node F**: Ingests repo, LLM selects critical files, embeds all file chunks
-     - **Node C**: Analyzes repository structure, artifacts, and reproducibility
-
-4. **Final Aggregation (Node I)**: Combines all scores with adaptive weighting, generates qualitative assessment
-
-### Key Technical Innovations
-
-**Multi-Step RAG for Criterion Evaluation:**
-
-```python
-# For each criterion:
-1. Retrieve top-3 most relevant paper sections via cosine similarity
-2. Provide sections + criterion description to LLM
-3. Get structured analysis (present/absent, confidence, evidence)
-4. Aggregate 20 criterion analyses → category scores → overall score
-```
-
-**Adaptive Code Scoring:**
-
-```python
-# Scoring adapts to research methodology
-if methodology == "deep_learning":
-    # Requires: training code + checkpoints + datasets
-    max_score_components = {
-        "code_completeness": 3.0,
-        "artifacts": 2.5,  # Checkpoints critical
-        "dataset_splits": 2.0
-    }
-elif methodology == "theoretical":
-    # Requires: implementation code only
-    max_score_components = {
-        "code_completeness": 2.5,
-        "artifacts": 0.5,  # Checkpoints not applicable
-        "dataset_splits": 0.5
-    }
-```
-
-**LLM-Guided Code File Selection:**
-
-```python
-# Instead of embedding entire repository:
-1. Extract README + file tree
-2. LLM selects reproducibility-critical files (within 100k token budget)
-3. Only embed selected files (20k char chunks)
-4. Use embeddings for evidence-based component analysis
-```
-
-For detailed technical documentation, see [TECHNICAL_DESCRIPTION_FOR_PAPER.md](TECHNICAL_DESCRIPTION_FOR_PAPER.md).
-
----
-
 ## Configuration
-
-### Environment Variables
-
-Key variables in `.env.local`:
-
-```bash
-# OpenAI API
-OPENAI_API_KEY=sk-proj-...
-DEFAULT_LLM_MODEL=gpt-5-2024-11-20
-EMBEDDING_MODEL=text-embedding-3-small
-
-# Database
-MYSQL_DATABASE=papersnitch
-MYSQL_USER=papersnitch
-MYSQL_PASSWORD=your_password
-
-# Celery
-CELERY_BROKER_URL=redis://redis:6379/0
-CELERY_CONCURRENCY=8  # Tasks per worker
-CELERY_MAX_TASKS_PER_CHILD=1  # Restart after 1 task
-
-# Security
-DJANGO_SECRET_KEY=...
-DJANGO_DEBUG=True
-DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1
-```
 
 ### Workflow Customization
 
@@ -534,48 +497,39 @@ criterion.save()
 
 ## Development Workflow
 
-### Running Multiple Stacks
+### Production Deployment
 
-Support for parallel development environments:
+**Production mode** (Gunicorn behind Nginx with SSL):
 
 ```bash
-# Main dev stack on port 8000
-./create-dev-stack.sh up 8000 dev
-
-# Feature branch on port 8001
-./create-dev-stack.sh up 8001 feature-x
-
-# Personal stack on port 8002
-./create-dev-stack.sh up 8002 my-name
-
-# Each stack has isolated database, media files, and Redis
+cp env_template .env.prod
+# Edit .env.prod with production values
+docker compose -f compose.prod.yml up --build -d
 ```
 
-### Hot Reload
-
-Django auto-reloads on code changes via Docker Compose watch mode.
+Both modes automatically run database migrations and load fixtures on container startup (via the entrypoint scripts).
 
 ### Database Migrations
 
 ```bash
 # Create migration
-docker exec django-web-dev python manage.py makemigrations
+docker exec django-web-dev uv run manage.py makemigrations
 
 # Apply migrations
-docker exec django-web-dev python manage.py migrate
+docker exec django-web-dev uv run manage.py migrate
 
 # Rollback
-docker exec django-web-dev python manage.py migrate workflow_engine 0001
+docker exec django-web-dev uv run manage.py migrate workflow_engine 0001
 ```
 
 ### Running Tests
 
 ```bash
 # All tests
-docker exec django-web-dev python manage.py test
+docker exec django-web-dev uv run manage.py test
 
 # Specific app
-docker exec django-web-dev python manage.py test webApp.tests
+docker exec django-web-dev uv run manage.py test webApp.tests
 
 # With coverage
 docker exec django-web-dev coverage run manage.py test
@@ -587,48 +541,6 @@ docker exec django-web-dev coverage html
 ## Troubleshooting
 
 ### Common Issues
-
-**Port Already in Use:**
-
-```bash
-# Use different port
-./create-dev-stack.sh up 8001 dev
-```
-
-**MySQL Connection Refused:**
-
-```bash
-# Check MySQL health
-docker exec mysql-dev mariadb -u papersnitch -ppapersnitch -e "SELECT 1"
-
-# Restart MySQL
-docker restart mysql-dev
-```
-
-**Celery Workers Not Processing:**
-
-```bash
-# Check worker status
-docker exec django-web-dev celery -A web inspect active
-
-# Restart workers
-docker restart celery-worker-dev
-```
-
-**OpenAI Rate Limits:**
-
-```bash
-# Reduce concurrency in compose.dev.yml:
-command: celery -A web worker --concurrency=2
-```
-
-**Out of Memory:**
-
-```bash
-# Increase Docker memory limit (Docker Desktop → Settings → Resources)
-# Or reduce Celery concurrency
-command: celery -A web worker --concurrency=2 --max-tasks-per-child=1
-```
 
 ### Debug Scripts
 
@@ -647,11 +559,8 @@ python verify_workflow_installation.py
 
 ## Additional Documentation
 
-- **[TECHNICAL_DESCRIPTION_FOR_PAPER.md](TECHNICAL_DESCRIPTION_FOR_PAPER.md)**: Complete technical specification for academic paper
-- **[WORKFLOW_ENGINE_DELIVERY.md](WORKFLOW_ENGINE_DELIVERY.md)**: Workflow engine implementation details
-- **[CODE_REPRODUCIBILITY_ANALYSIS.md](app/webApp/services/CODE_REPRODUCIBILITY_ANALYSIS.md)**: Code analysis node documentation
-- **[DEPLOYMENT_CHECKLIST.md](DEPLOYMENT_CHECKLIST.md)**: Production deployment guide
-- **[DOMAIN_SETUP_GUIDE.md](DOMAIN_SETUP_GUIDE.md)**: SSL and domain configuration
+- **[Workflow implementation](WORKFLOW_ENGINE_DELIVERY.md)**
+- **[Code analysis](app/webApp/services/CODE_REPRODUCIBILITY_ANALYSIS.md)**
 
 ---
 

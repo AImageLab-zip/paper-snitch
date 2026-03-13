@@ -99,7 +99,7 @@ class PaperProcessingWorkflow(BaseWorkflowGraph):
     """
 
     WORKFLOW_NAME = "paper_processing_with_reproducibility"
-    WORKFLOW_VERSION = "8"
+    WORKFLOW_VERSION = "9"
     NODE_ORDER = [
         "paper_type_classification",
         "section_embeddings",
