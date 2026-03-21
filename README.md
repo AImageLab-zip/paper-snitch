@@ -22,9 +22,8 @@
 - [Installation & Setup](#-installation--setup)
 - [Running the System](#-running-the-system)
 - [How It Works](#-how-it-works)
-- [Configuration](#-configuration)
-- [Development Workflow](#-development-workflow)
-- [Troubleshooting](#-troubleshooting)
+- [Why This Architecture](#-why-this-architecture)
+- [Current Scope & Limits](#-current-scope--limits)
 - [Additional Documentation](#-additional-documentation)
 
 ---
@@ -235,13 +234,9 @@ cd papersnitch
 
 ### Step 2: Environment Configuration
 
-Create your local environment file:
+Ensure `.env.local` exists and contains your local settings.
 
-```bash
-cp .env.example .env.local
-```
-
-Edit `.env.local` with your settings:
+Edit `.env.local` with values like:
 
 ```bash
 # Database Configuration
@@ -459,234 +454,60 @@ ORDER BY started_at;
 
 ### High-Level Overview
 
-PaperSnitch uses an **8-node DAG workflow** to comprehensively evaluate research paper reproducibility:
+PaperSnitch runs a reproducibility analysis as a workflow with deterministic steps and tracked outputs.
 
-1. **Paper Type Classification (Node A)**: Determines if paper is dataset/method/both/theoretical using LLM analysis of title and abstract
+1. **Ingestion**
+   - A paper enters the system from upload or conference scraping.
+   - Metadata, files, and links are normalized and stored in the database.
 
-2. **Section Embeddings (Node D)**: Generates semantic embeddings for all paper sections (abstract, intro, methods, results, etc.) using `text-embedding-3-small`
+2. **Text and Signal Preparation**
+   - PDF content is converted into structured text (GROBID).
+   - The paper is split into sections and embedded for semantic retrieval.
+   - Candidate code and dataset links are extracted from paper text and metadata.
 
-3. **Parallel Analysis**:
-   - **Reproducibility Checklist (Node G)**: Evaluates 20 criteria using multi-step RAG (retrieves relevant sections per criterion, then analyzes with LLM)
-   - **Dataset Documentation (Node H)**: Evaluates 10 dataset-specific criteria
-   - **Code Workflow (Nodes B→F→C)**:
-     - **Node B**: Searches for code repository URLs
-     - **Node F**: Ingests repo, LLM selects critical files, embeds all file chunks
-     - **Node C**: Analyzes repository structure, artifacts, and reproducibility
+3. **Parallel Evaluation**
+   - Reproducibility checklist criteria are evaluated with retrieval + structured LLM outputs.
+   - Dataset documentation is evaluated in parallel with dedicated criteria.
+   - If code is available, repository content is ingested and assessed for reproducibility artifacts.
 
-4. **Final Aggregation (Node I)**: Combines all scores with adaptive weighting, generates qualitative assessment
-
-### Key Technical Innovations
-
-**Multi-Step RAG for Criterion Evaluation:**
-```python
-# For each criterion:
-1. Retrieve top-3 most relevant paper sections via cosine similarity
-2. Provide sections + criterion description to LLM
-3. Get structured analysis (present/absent, confidence, evidence)
-4. Aggregate 20 criterion analyses → category scores → overall score
-```
-
-**Adaptive Code Scoring:**
-```python
-# Scoring adapts to research methodology
-if methodology == "deep_learning":
-    # Requires: training code + checkpoints + datasets
-    max_score_components = {
-        "code_completeness": 3.0,
-        "artifacts": 2.5,  # Checkpoints critical
-        "dataset_splits": 2.0
-    }
-elif methodology == "theoretical":
-    # Requires: implementation code only
-    max_score_components = {
-        "code_completeness": 2.5,
-        "artifacts": 0.5,  # Checkpoints not applicable
-        "dataset_splits": 0.5
-    }
-```
-
-**LLM-Guided Code File Selection:**
-```python
-# Instead of embedding entire repository:
-1. Extract README + file tree
-2. LLM selects reproducibility-critical files (within 100k token budget)
-3. Only embed selected files (20k char chunks)
-4. Use embeddings for evidence-based component analysis
-```
-
-For detailed technical documentation, see [TECHNICAL_DESCRIPTION_FOR_PAPER.md](TECHNICAL_DESCRIPTION_FOR_PAPER.md).
+4. **Aggregation and Reporting**
+   - All node outputs are combined into a final score and narrative summary.
+   - Evidence is stored so results can be inspected from the UI.
+   - Token usage and execution status are tracked for observability.
 
 ---
 
-## ⚙️ Configuration
+## 🧭 Why This Architecture
 
-### Environment Variables
+This architecture reflects practical decisions made during development:
 
-Key variables in `.env.local`:
-
-```bash
-# OpenAI API
-OPENAI_API_KEY=sk-proj-...
-DEFAULT_LLM_MODEL=gpt-5-2024-11-20
-EMBEDDING_MODEL=text-embedding-3-small
-
-# Database
-MYSQL_DATABASE=papersnitch
-MYSQL_USER=papersnitch
-MYSQL_PASSWORD=your_password
-
-# Celery
-CELERY_BROKER_URL=redis://redis:6379/0
-CELERY_CONCURRENCY=8  # Tasks per worker
-CELERY_MAX_TASKS_PER_CHILD=1  # Restart after 1 task
-
-# Security
-DJANGO_SECRET_KEY=...
-DJANGO_DEBUG=True
-DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1
-```
-
-### Workflow Customization
-
-Modify criteria or scoring weights in Django admin or via shell:
-
-```python
-from webApp.models import ReproducibilityChecklistCriterion
-
-criterion = ReproducibilityChecklistCriterion.objects.get(
-    criterion_id="mathematical_description"
-)
-criterion.description = "Updated description..."
-criterion.save()
-
-# Regenerate embedding after modification
-from openai import OpenAI
-client = OpenAI()
-response = client.embeddings.create(
-    model="text-embedding-3-small",
-    input=f"{criterion.criterion_name}\n{criterion.description}"
-)
-criterion.embedding = response.data[0].embedding
-criterion.save()
-```
+- **Scraping over conference APIs**: conference APIs were not consistently available, so scraping became the reliable source of paper metadata.
+- **Crawl4AI over simpler HTML-to-Markdown tools**: early approaches missed important fields (e.g., meta-reviews), while Crawl4AI offered the flexibility needed.
+- **GROBID-based extraction**: direct “PDF-to-LLM” behavior was hard to validate; explicit text extraction provides inspectable inputs.
+- **Structured outputs with schemas**: adopting schema-based responses reduced ambiguity and improved downstream parsing.
+- **Database-backed workflow state**: moving from in-memory task tracking to persisted workflow/task models improved reliability and restart safety.
+- **Celery + Redis orchestration**: asynchronous processing was needed to handle batch workloads and long-running analysis tasks.
+- **Single integrated scoring pipeline**: splitting extraction and scoring into separate passes increased latency significantly, so the pipeline evolved toward more integrated execution.
 
 ---
 
-## 👨‍💻 Development Workflow
+## ⚠️ Current Scope & Limits
 
-### Running Multiple Stacks
-
-Support for parallel development environments:
-
-```bash
-# Main dev stack on port 8000
-./create-dev-stack.sh up 8000 dev
-
-# Feature branch on port 8001
-./create-dev-stack.sh up 8001 feature-x
-
-# Personal stack on port 8002
-./create-dev-stack.sh up 8002 my-name
-
-# Each stack has isolated database, media files, and Redis
-```
-
-### Hot Reload
-
-Django auto-reloads on code changes via Docker Compose watch mode.
-
-### Database Migrations
-
-```bash
-# Create migration
-docker exec django-web-dev python manage.py makemigrations
-
-# Apply migrations
-docker exec django-web-dev python manage.py migrate
-
-# Rollback
-docker exec django-web-dev python manage.py migrate workflow_engine 0001
-```
-
-### Running Tests
-
-```bash
-# All tests
-docker exec django-web-dev python manage.py test
-
-# Specific app
-docker exec django-web-dev python manage.py test webApp.tests
-
-# With coverage
-docker exec django-web-dev coverage run manage.py test
-docker exec django-web-dev coverage html
-```
-
----
-
-## 🐛 Troubleshooting
-
-### Common Issues
-
-**Port Already in Use:**
-```bash
-# Use different port
-./create-dev-stack.sh up 8001 dev
-```
-
-**MySQL Connection Refused:**
-```bash
-# Check MySQL health
-docker exec mysql-dev mariadb -u papersnitch -ppapersnitch -e "SELECT 1"
-
-# Restart MySQL
-docker restart mysql-dev
-```
-
-**Celery Workers Not Processing:**
-```bash
-# Check worker status
-docker exec django-web-dev celery -A web inspect active
-
-# Restart workers
-docker restart celery-worker-dev
-```
-
-**OpenAI Rate Limits:**
-```bash
-# Reduce concurrency in compose.dev.yml:
-command: celery -A web worker --concurrency=2
-```
-
-**Out of Memory:**
-```bash
-# Increase Docker memory limit (Docker Desktop → Settings → Resources)
-# Or reduce Celery concurrency
-command: celery -A web worker --concurrency=2 --max-tasks-per-child=1
-```
-
-### Debug Scripts
-
-```bash
-# Check retrieval for specific paper
-python debug_aspect_retrieval.py --paper-id 123 --aspect methodology
-
-# List papers with embeddings
-python debug_aspect_retrieval.py --list-papers
-
-# Verify workflow installation
-python verify_workflow_installation.py
-```
+- PaperSnitch is designed for **reproducibility support**, not for replacing peer review.
+- Evidence quality depends on extraction quality (PDF structure, formatting artifacts, and repository quality).
+- Presence of a code or dataset link does not automatically imply reproducibility; repository and documentation quality still matter.
+- Some criteria are still under active refinement (especially evidence localization and code-depth evaluation).
 
 ---
 
 ## 📚 Additional Documentation
 
-- **[TECHNICAL_DESCRIPTION_FOR_PAPER.md](TECHNICAL_DESCRIPTION_FOR_PAPER.md)**: Complete technical specification for academic paper
-- **[WORKFLOW_ENGINE_DELIVERY.md](WORKFLOW_ENGINE_DELIVERY.md)**: Workflow engine implementation details
-- **[CODE_REPRODUCIBILITY_ANALYSIS.md](app/webApp/services/CODE_REPRODUCIBILITY_ANALYSIS.md)**: Code analysis node documentation
-- **[DEPLOYMENT_CHECKLIST.md](DEPLOYMENT_CHECKLIST.md)**: Production deployment guide
-- **[DOMAIN_SETUP_GUIDE.md](DOMAIN_SETUP_GUIDE.md)**: SSL and domain configuration
+- **[Utilities Commands](UTILITIES_COMMANDS.md)**: Debug/test/ops commands (root scripts + Django commands)
+- **[Workflow Engine README](app/workflow_engine/README.md)**: Data models and orchestration internals
+- **[Workflow Engine QUICKSTART](app/workflow_engine/QUICKSTART.md)**: Faster operational walkthrough
+- **[Workflow Engine SETUP](app/workflow_engine/SETUP.md)**: Setup details for the workflow subsystem
+- **[Conference Scraping](app/CONFERENCE_SCRAPING.md)**: Scraping pipeline, commands, and operational notes
+- **[Code Reproducibility Analysis](app/webApp/services/CODE_REPRODUCIBILITY_ANALYSIS.md)**: Code analysis node details
 
 ---
 
