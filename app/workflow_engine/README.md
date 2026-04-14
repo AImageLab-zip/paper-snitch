@@ -94,6 +94,7 @@ python3 manage.py create_workflow
 ```
 
 This creates the default PDF analysis pipeline with:
+
 - PDF ingestion
 - Text extraction
 - Evidence and link extraction
@@ -195,7 +196,7 @@ Create handler functions in `workflow_engine/handlers.py`:
 def my_custom_handler(context: Dict[str, Any]) -> Dict[str, Any]:
     """
     Custom node handler.
-    
+
     Args:
         context: Contains:
             - node: WorkflowNode instance
@@ -203,16 +204,16 @@ def my_custom_handler(context: Dict[str, Any]) -> Dict[str, Any]:
             - node_input: Node-specific input data
             - upstream_outputs: Outputs from dependency nodes
             - workflow_input: Workflow-level input data
-    
+
     Returns:
         Output data dict
     """
     paper = context['paper']
     upstream = context['upstream_outputs']
-    
+
     # Your logic here
     result = process_data(paper)
-    
+
     # Create artifacts if needed
     from workflow_engine.models import NodeArtifact
     NodeArtifact.objects.create(
@@ -221,7 +222,7 @@ def my_custom_handler(context: Dict[str, Any]) -> Dict[str, Any]:
         name='my_output',
         inline_data=result
     )
-    
+
     return result
 ```
 
@@ -273,14 +274,14 @@ from workflow_engine.services.langgraph_integration import LangGraphNodeHandler
 class MyAIHandler(LangGraphNodeHandler):
     def build_graph(self):
         from langgraph.graph import StateGraph
-        
+
         # Define your LangGraph
         workflow = StateGraph(MyState)
         workflow.add_node("analyze", analyze_node)
         workflow.add_edge("analyze", END)
-        
+
         return workflow.compile()
-    
+
     def prepare_input(self):
         return {
             'text': self.paper.text,
@@ -366,11 +367,13 @@ CREATE INDEX idx_run_status ON workflow_engine_workflowrun(paper_id, status);
 ### Tasks Not Starting
 
 1. Check Celery workers are running:
+
    ```bash
    celery -A web worker -l info
    ```
 
 2. Check Celery beat is running:
+
    ```bash
    celery -A web beat -l info
    ```
@@ -403,6 +406,7 @@ print(f"Attempts: {node.attempt_count}/{node.max_retries}")
 ## API Reference
 
 See inline documentation in:
+
 - `workflow_engine/models.py` - Data models
 - `workflow_engine/services/orchestrator.py` - Orchestration logic
 - `workflow_engine/tasks.py` - Celery tasks
@@ -426,7 +430,3 @@ When adding new features:
 3. Create artifacts for important outputs
 4. Log significant events using `NodeLog`
 5. Test with multiple concurrent workers
-
-## License
-
-Internal use - Paper Snitch project
