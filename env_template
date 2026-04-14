@@ -1,0 +1,47 @@
+DEBUG = True
+DJANGO_SETTINGS_MODULE=web.settings.development
+DJANGO_SECRET_KEY = ''
+
+DJANGO_ALLOWED_HOSTS = *
+DJANGO_CSRF_TRUSTED_ORIGINS = http://localhost:8000
+
+# Database settings
+DATABASE_HOST=mysql
+DATABASE_NAME=papersnitch
+DATABASE_USERNAME=papersnitch
+DATABASE_PASSWORD=#TODO insert password
+DATABASE_ENGINE=mysql
+DATABASE_PORT=3306
+
+# MariaDB container settings (for the mysql service itself)
+MYSQL_HOST=mysql
+MYSQL_ROOT_PASSWORD=#TODO insert password
+MYSQL_DATABASE=papersnitch
+MYSQL_USER=papersnitch
+MYSQL_PASSWORD=#TODO insert password
+# MariaDB-specific env vars (same values, just different prefix for MariaDB image)
+MARIADB_ROOT_PASSWORD=#TODO insert password
+MARIADB_DATABASE=papersnitch
+MARIADB_USER=papersnitch
+MARIADB_PASSWORD=#TODO insert password
+DB_HOST=mysql
+DB_PORT=3306
+DB_NAME=papersnitch
+DB_USER=papersnitch
+DB_PASSWORD=#TODO insert password
+MARIADB_AUTO_UPGRADE=1
+
+MAX_CONCURRENT_CRAWLS = 5
+# Update procedure:
+# 1. Modify this env file.
+# 2. Run `docker compose up -d --force-recreate <service>` to reload vars without rebuilding.
+# 3. Verify with `docker compose exec <service> printenv VAR_NAME`.
+
+GEMINI_API_KEY=#TODO insert API key
+BYTEPLUS_API_KEY=#TODO insert API key
+OPENAI_API_KEY=#TODO insert API key
+MOONSHOT_API_KEY=#TODO insert API key
+
+# Celery Configuration
+CELERY_BROKER_URL=redis://redis:6379/0
+CELERY_RESULT_BACKEND=redis://redis:6379/0
