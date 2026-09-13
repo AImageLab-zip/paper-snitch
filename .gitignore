@@ -58,3 +58,14 @@ desktop.ini
 .vscode/
 *.swp
 *.swo
+
+# --- Local analysis artifacts ---
+analyses/
+*_human_output.json
+*_ps_output.json
+miccai_code_availability.*
+paper_type_distribution.png
+workflow_token_data.json
+
+# Scratch
+tmp/
