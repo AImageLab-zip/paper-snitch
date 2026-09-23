@@ -1,0 +1,87 @@
+{% extends "demo/base.html" %}
+{% load static %}
+{% block title %} · Report · {{ paper.title|truncatechars:60 }}{% endblock %}
+{% block body_class %}fixed-height{% endblock %}
+
+{% block bar_center %}
+    <div class="demo-bar-title">{{ paper.title }}</div>
+    <div class="demo-bar-sub">{{ paper.authors|truncatechars:140 }}{% if paper.conference %} &middot; {{ paper.conference }}{% endif %}</div>
+{% endblock %}
+
+{% block bar_right %}
+    <a class="btn btn-ghost btn-sm" href="{% url 'paper_detail' paper.id %}" title="Open in PaperSnitch"><i class="fas fa-up-right-from-square"></i></a>
+    <button type="button" class="btn btn-ghost btn-sm" onclick="window.print()" title="Print or save as PDF"><i class="fas fa-print"></i></button>
+    <a class="btn btn-brand btn-sm" href="{% url 'demo:landing' %}"><i class="fas fa-upload mr-1"></i> Try another paper</a>
+{% endblock %}
+
+{% block content %}
+<div class="report">
+    <div class="panel pdf-panel">
+        <div class="panel-head">
+            <i class="fas fa-highlighter text-muted"></i> Paper with highlighted evidence
+            <span class="spacer"></span>
+            <div class="legend">
+                <span><span class="sw" style="background: var(--hl-checklist)"></span>Reproducibility checklist</span>
+                <span id="legend-dataset" style="display: none;"><span class="sw" style="background: var(--hl-dataset)"></span>Dataset documentation</span>
+                <span><span class="sw" style="background: var(--hl-type)"></span>Paper type</span>
+            </div>
+        </div>
+        {% if has_pdf_html %}
+        <iframe class="pdf-frame" id="pdf-frame" src="{% url 'demo:paper_html' paper.id %}" title="Paper"></iframe>
+        {% else %}
+        <div class="panel-body text-muted">
+            No HTML rendering of this paper yet. Run <code>python manage.py prepare_demo --paper-id {{ paper.id }}</code>.
+            {% if paper.file %}<a href="{{ paper.file.url }}" target="_blank">Open the PDF</a>.{% endif %}
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="panel report-side">
+        <ul class="nav nav-tabs" role="tablist">
+            <li class="nav-item"><a class="nav-link active" data-toggle="tab" href="#tab-overview" role="tab">Overview</a></li>
+            <li class="nav-item"><a class="nav-link" data-toggle="tab" href="#tab-checklist" role="tab">Checklist <span class="badge badge-light" id="count-checklist"></span></a></li>
+            <li class="nav-item" id="nav-dataset"><a class="nav-link" data-toggle="tab" href="#tab-dataset" role="tab">Dataset</a></li>
+            <li class="nav-item"><a class="nav-link" data-toggle="tab" href="#tab-code" role="tab">Code</a></li>
+            <li class="nav-item"><a class="nav-link" data-toggle="tab" href="#tab-pipeline" role="tab">Pipeline</a></li>
+        </ul>
+        <div class="tab-content">
+            <div class="tab-pane fade show active" id="tab-overview" role="tabpanel">
+                <div class="score-hero mb-3">
+                    <svg class="gauge" id="report-gauge" viewBox="0 0 200 200"></svg>
+                    <div id="report-components"></div>
+                </div>
+                <div class="small text-muted mb-3" id="located-summary"></div>
+                <div id="overview-body"></div>
+            </div>
+            <div class="tab-pane fade" id="tab-checklist" role="tabpanel"></div>
+            <div class="tab-pane fade" id="tab-dataset" role="tabpanel"></div>
+            <div class="tab-pane fade" id="tab-code" role="tabpanel"></div>
+            <div class="tab-pane fade" id="tab-pipeline" role="tabpanel"></div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="nodeModal" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="nodeModalTitle"></h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+            </div>
+            <div class="modal-body" id="nodeModalBody"></div>
+        </div>
+    </div>
+</div>
+
+<div class="kiosk-banner" id="kiosk-banner" style="display: none;"></div>
+{{ data|json_script:"report-data" }}
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'js/evidence_highlighter.js' %}"></script>
+<script src="{% static 'js/demo_scores.js' %}"></script>
+<script src="{% static 'js/demo_report.js' %}"></script>
+<script>
+DemoReport.start(JSON.parse(document.getElementById('report-data').textContent));
+</script>
+{% endblock %}

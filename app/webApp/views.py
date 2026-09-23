@@ -1320,6 +1320,64 @@ class LatestWorkflowStatusView(View):
             )
 
 
+def node_detail_payload(node):
+    """Serialize a WorkflowNode with its logs and artifacts (used by the node modal and the demo)."""
+    logs_data = [
+        {
+            "level": log.level,
+            "message": log.message,
+            "context": log.context,
+            "timestamp": log.timestamp.isoformat(),
+        }
+        for log in node.logs.all().order_by("timestamp")
+    ]
+
+    artifacts_data = {}
+    for artifact in node.artifacts.all():
+        if artifact.artifact_type == "inline":
+            inline_data = artifact.inline_data
+            # Embeddings live in the DB; drop them from the payload to keep it small
+            if (
+                node.node_id == "code_embedding"
+                and artifact.name == "result"
+                and inline_data
+                and "embedded_files" in inline_data
+            ):
+                inline_data = {**inline_data, "embedded_files": []}
+            artifacts_data[artifact.name] = inline_data
+        else:
+            artifacts_data[artifact.name] = {
+                "type": artifact.artifact_type,
+                "file_path": artifact.file_path,
+                "url": artifact.url,
+                "mime_type": artifact.mime_type,
+                "size_bytes": artifact.size_bytes,
+                "metadata": artifact.metadata,
+            }
+
+    return {
+        "id": str(node.id),
+        "node_id": node.node_id,
+        "node_type": node.node_type,
+        "handler": node.handler,
+        "status": node.status,
+        "attempt_count": node.attempt_count,
+        "max_retries": node.max_retries,
+        "input_data": node.input_data,
+        "output_data": node.output_data,
+        "artifacts": artifacts_data,
+        "error_message": node.error_message,
+        "error_traceback": node.error_traceback,
+        "celery_task_id": node.celery_task_id,
+        "started_at": node.started_at.isoformat() if node.started_at else None,
+        "completed_at": (
+            node.completed_at.isoformat() if node.completed_at else None
+        ),
+        "duration": node.duration,
+        "logs": logs_data,
+    }
+
+
 class WorkflowNodeDetailView(View):
     """API view for getting workflow node details (public, no auth required)."""
 
@@ -1333,70 +1391,7 @@ class WorkflowNodeDetailView(View):
             return JsonResponse({"error": f"Server error: {str(e)}"}, status=500)
 
         try:
-            # Get node logs
-            logs = node.logs.all().order_by("timestamp")
-            logs_data = [
-                {
-                    "level": log.level,
-                    "message": log.message,
-                    "context": log.context,
-                    "timestamp": log.timestamp.isoformat(),
-                }
-                for log in logs
-            ]
-
-            # Get node artifacts
-            artifacts = node.artifacts.all()
-            artifacts_data = {}
-            for artifact in artifacts:
-                if artifact.artifact_type == "inline":
-                    inline_data = artifact.inline_data
-
-                    # For code_embedding node's result artifact, exclude embedded_files to reduce size
-                    # (embeddings are stored in DB, not needed for display)
-                    if (
-                        node.node_id == "code_embedding"
-                        and artifact.name == "result"
-                        and inline_data
-                    ):
-                        inline_data = inline_data.copy()
-                        if "embedded_files" in inline_data:
-                            inline_data["embedded_files"] = []
-
-                    artifacts_data[artifact.name] = inline_data
-                else:
-                    artifacts_data[artifact.name] = {
-                        "type": artifact.artifact_type,
-                        "file_path": artifact.file_path,
-                        "url": artifact.url,
-                        "mime_type": artifact.mime_type,
-                        "size_bytes": artifact.size_bytes,
-                        "metadata": artifact.metadata,
-                    }
-
-            data = {
-                "id": str(node.id),
-                "node_id": node.node_id,
-                "node_type": node.node_type,
-                "handler": node.handler,
-                "status": node.status,
-                "attempt_count": node.attempt_count,
-                "max_retries": node.max_retries,
-                "input_data": node.input_data,
-                "output_data": node.output_data,
-                "artifacts": artifacts_data,
-                "error_message": node.error_message,
-                "error_traceback": node.error_traceback,
-                "celery_task_id": node.celery_task_id,
-                "started_at": node.started_at.isoformat() if node.started_at else None,
-                "completed_at": (
-                    node.completed_at.isoformat() if node.completed_at else None
-                ),
-                "duration": node.duration,
-                "logs": logs_data,
-            }
-
-            return JsonResponse(data)
+            return JsonResponse(node_detail_payload(node))
         except Exception as e:
             return JsonResponse(
                 {"error": f"Error serializing data: {str(e)}"}, status=500

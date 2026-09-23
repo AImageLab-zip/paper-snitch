@@ -23,6 +23,7 @@ INSTALLED_APPS = [
     "webApp.apps.WebappConfig",
     "annotator.apps.AnnotatorConfig",
     "workflow_engine.apps.WorkflowEngineConfig",
+    "demo.apps.DemoConfig",
 ]
 
 MIDDLEWARE = [

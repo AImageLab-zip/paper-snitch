@@ -1,0 +1,30 @@
+{% load static %}<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>PaperSnitch Demo{% block title %}{% endblock %}</title>
+    <link rel="icon" type="image/png" href="{% static 'img/favicon.png' %}">
+    {# All assets are local so the demo works without internet access. #}
+    <link rel="stylesheet" href="{% static 'vendor/bootstrap/bootstrap.min.css' %}">
+    <link rel="stylesheet" href="{% static 'vendor/fontawesome/css/all.min.css' %}">
+    <link rel="stylesheet" href="{% static 'css/demo.css' %}">
+    {% block head %}{% endblock %}
+</head>
+<body class="demo {% block body_class %}{% endblock %}">
+<header class="demo-bar">
+    <a class="demo-brand" href="{% url 'demo:landing' %}{% if kiosk %}?kiosk=1{% endif %}">
+        <i class="fas fa-search" style="transform: rotate(90deg)"></i>aper<i class="fas fa-dollar-sign"></i>nitch
+    </a>
+    <div class="demo-bar-center">{% block bar_center %}{% endblock %}</div>
+    <div class="demo-bar-right">{% block bar_right %}{% endblock %}</div>
+</header>
+<main class="demo-main">
+    {% block content %}{% endblock %}
+</main>
+<script src="{% static 'vendor/jquery/jquery.min.js' %}"></script>
+<script src="{% static 'vendor/bootstrap/bootstrap.bundle.min.js' %}"></script>
+<script src="{% static 'js/node_renderers.js' %}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

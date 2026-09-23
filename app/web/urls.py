@@ -27,6 +27,7 @@ urlpatterns = [
     path("accounts/", include("django.contrib.auth.urls")),  # Login, logout, password management
     path("", include("webApp.urls")),
     path("annotator/", include("annotator.urls")),
+    path("demo/", include("demo.urls")),
     # path("login/", login, name="login"),
 ]
 

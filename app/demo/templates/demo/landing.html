@@ -1,0 +1,133 @@
+{% extends "demo/base.html" %}
+{% block title %} · Upload{% endblock %}
+
+{% block bar_center %}
+    <div class="demo-bar-title">Automated reproducibility assessment of scientific papers</div>
+{% endblock %}
+
+{% block content %}
+<div class="landing">
+    <h1>Drop a paper, get a reproducibility report.</h1>
+    <p class="lead mb-4">
+        PaperSnitch parses the PDF, classifies the paper, checks it against the MICCAI reproducibility
+        checklist, analyses its dataset documentation and code repository, and returns a 0&ndash;100 score
+        with the evidence highlighted in the paper.
+    </p>
+
+    <label class="dropzone d-block" id="dropzone" for="pdf-input">
+        <i class="fas fa-file-pdf"></i>
+        <h3>Drop a PDF here</h3>
+        <div class="text-muted">or click to choose a file</div>
+        <input type="file" id="pdf-input" accept="application/pdf,.pdf" hidden>
+    </label>
+
+    <div class="upload-card" id="upload-card">
+        <div class="d-flex align-items-center mb-2">
+            <i class="fas fa-file-pdf text-danger mr-2" style="font-size: 1.6rem;"></i>
+            <div class="flex-grow-1" style="min-width: 0;">
+                <div class="font-weight-bold text-truncate" id="upload-name"></div>
+                <div class="small text-muted" id="upload-status">Uploading&hellip;</div>
+            </div>
+        </div>
+        <div class="progress"><div class="progress-bar" id="upload-progress" style="width: 0%"></div></div>
+    </div>
+
+    <div class="alert alert-light border mt-3" id="no-match" style="display: none;">
+        <i class="fas fa-info-circle text-info mr-1"></i>
+        This poster demo replays papers that were analysed beforehand, so it works offline and without API costs.
+        That PDF is not one of them. Try one of the sample papers below.
+    </div>
+
+    <h5 class="mt-5 mb-3 font-weight-bold">Sample papers</h5>
+    {% if scenarios %}
+    <div class="sample-grid">
+        {% for s in scenarios %}
+        <div class="sample-card">
+            <div class="tag">{{ s.label|default:s.paper.conference }}</div>
+            <h5>{{ s.paper.title }}</h5>
+            <div class="authors">{{ s.paper.authors|truncatechars:110 }}{% if s.paper.conference %} &middot; {{ s.paper.conference }}{% endif %}</div>
+            <div class="actions">
+                <a class="btn btn-brand btn-sm" href="{% url 'demo:replay' s.id %}"><i class="fas fa-play mr-1"></i> Replay analysis</a>
+                {% if s.paper.file %}
+                <a class="btn btn-outline-secondary btn-sm" href="{{ s.paper.file.url }}" download title="Download the PDF, then drop it above"><i class="fas fa-download"></i> PDF</a>
+                {% endif %}
+                <a class="btn btn-outline-secondary btn-sm" href="{% url 'demo:report' s.workflow_run_id %}" title="Skip straight to the report"><i class="fas fa-file-alt"></i> Report</a>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-muted">No demo scenarios yet. Run <code>python manage.py prepare_demo --list</code> to pick some.</p>
+    {% endif %}
+</div>
+{% csrf_token %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    const uploadUrl = "{% url 'demo:upload' %}";
+    const csrf = document.querySelector('[name=csrfmiddlewaretoken]').value;
+    const kiosk = {{ kiosk|yesno:"true,false" }};
+    const firstReplay = {% if scenarios %}"{% url 'demo:replay' scenarios.0.id %}"{% else %}null{% endif %};
+    const dz = document.getElementById('dropzone');
+    const input = document.getElementById('pdf-input');
+
+    if (kiosk && firstReplay) {
+        window.location = firstReplay + '?kiosk=1';
+        return;
+    }
+
+    ['dragenter', 'dragover'].forEach(function (ev) {
+        dz.addEventListener(ev, function (e) { e.preventDefault(); dz.classList.add('drag'); });
+    });
+    ['dragleave', 'drop'].forEach(function (ev) {
+        dz.addEventListener(ev, function (e) { e.preventDefault(); dz.classList.remove('drag'); });
+    });
+    dz.addEventListener('drop', function (e) {
+        if (e.dataTransfer.files.length) upload(e.dataTransfer.files[0]);
+    });
+    input.addEventListener('change', function () {
+        if (input.files.length) upload(input.files[0]);
+    });
+
+    function setStatus(text, pct) {
+        document.getElementById('upload-status').textContent = text;
+        if (pct !== undefined) document.getElementById('upload-progress').style.width = pct + '%';
+    }
+
+    function upload(file) {
+        document.getElementById('no-match').style.display = 'none';
+        document.getElementById('upload-card').style.display = 'block';
+        document.getElementById('upload-name').textContent = file.name + ' (' + (file.size / 1048576).toFixed(1) + ' MB)';
+        setStatus('Uploading…', 0);
+
+        const form = new FormData();
+        form.append('pdf_file', file);
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', uploadUrl);
+        xhr.setRequestHeader('X-CSRFToken', csrf);
+        xhr.upload.onprogress = function (e) {
+            if (e.lengthComputable) setStatus('Uploading…', Math.round(80 * e.loaded / e.total));
+        };
+        xhr.onload = function () {
+            let data = {};
+            try { data = JSON.parse(xhr.responseText); } catch (e) { /* handled below */ }
+            if (xhr.status !== 200) {
+                setStatus(data.error || 'Upload failed.', 100);
+                return;
+            }
+            if (!data.matched) {
+                setStatus('Upload complete.', 100);
+                document.getElementById('no-match').style.display = 'block';
+                return;
+            }
+            setStatus('Received: ' + data.title, 100);
+            setTimeout(function () { window.location = data.replay_url + '?uploaded=1'; }, 700);
+        };
+        xhr.onerror = function () { setStatus('Upload failed: server unreachable.', 100); };
+        xhr.send(form);
+    }
+})();
+</script>
+{% endblock %}

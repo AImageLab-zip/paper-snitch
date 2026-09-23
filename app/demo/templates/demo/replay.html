@@ -1,0 +1,109 @@
+{% extends "demo/base.html" %}
+{% load static %}
+{% block title %} · {{ scenario.paper.title|truncatechars:60 }}{% endblock %}
+{% block body_class %}fixed-height{% endblock %}
+
+{% block bar_center %}
+    <div class="demo-bar-title">{{ scenario.paper.title }}</div>
+    <div class="demo-bar-sub">{{ scenario.paper.authors|truncatechars:140 }}{% if scenario.paper.conference %} &middot; {{ scenario.paper.conference }}{% endif %}</div>
+{% endblock %}
+
+{% block bar_right %}
+    <div class="btn-group btn-group-sm" role="group" aria-label="Replay speed">
+        <button type="button" class="btn btn-ghost active" data-speed="1">1&times;</button>
+        <button type="button" class="btn btn-ghost" data-speed="2">2&times;</button>
+        <button type="button" class="btn btn-ghost" data-speed="4">4&times;</button>
+    </div>
+    <button type="button" class="btn btn-ghost btn-sm" id="btn-skip" title="Skip to the result"><i class="fas fa-forward-fast"></i></button>
+    <button type="button" class="btn btn-ghost btn-sm" id="btn-restart" title="Restart"><i class="fas fa-rotate-left"></i></button>
+    <a class="btn btn-brand btn-sm" id="btn-report" href="{{ report_url }}" style="display: none;"><i class="fas fa-file-alt mr-1"></i> Report</a>
+{% endblock %}
+
+{% block content %}
+<div class="replay">
+    <div class="stats r-full">
+        <div class="stat"><div class="v" id="stat-time">0:00</div><div class="k">Elapsed (replay)</div></div>
+        <div class="stat"><div class="v" id="stat-nodes">0 / 0</div><div class="k">Nodes done</div></div>
+        <div class="stat"><div class="v" id="stat-tokens">0</div><div class="k">LLM tokens</div></div>
+        <div class="stat"><div class="v" id="stat-real">&ndash;</div><div class="k">Processing time</div></div>
+    </div>
+    <div class="panel r-full">
+        <div class="panel-head">
+            <i class="fas fa-diagram-project text-muted"></i> Analysis workflow
+            <span class="spacer"></span>
+            <span class="small text-muted font-weight-normal" id="wf-name"></span>
+        </div>
+        <div class="dag-wrap"><svg class="dag" id="dag"></svg></div>
+    </div>
+    <div class="panel">
+        <div class="panel-head"><i class="fas fa-terminal text-muted"></i> Execution log</div>
+        <div class="console" id="console"></div>
+    </div>
+    <div class="panel">
+        <div class="panel-head">
+            <i class="fas fa-list-check text-muted"></i> Results as they arrive
+            <span class="spacer"></span>
+            <span class="small text-muted font-weight-normal">click a card or a node for details</span>
+        </div>
+        <div class="feed" id="feed">
+            <div class="feed-empty" id="feed-empty"><i class="fas fa-hourglass-half mr-1"></i> Waiting for the first node to finish&hellip;</div>
+        </div>
+    </div>
+</div>
+
+{# Intake: upload + GROBID parsing, shown before the workflow starts #}
+<div class="overlay" id="intake">
+    <div class="overlay-card">
+        <h4 class="font-weight-bold mb-1"><i class="fas fa-file-pdf text-danger mr-2"></i><span id="intake-file"></span></h4>
+        <div class="text-muted small" id="intake-title"></div>
+        <ul class="steps">
+            <li id="step-upload"><span class="ic"><i class="fas fa-circle-notch fa-spin"></i></span><div>PDF received</div></li>
+            <li id="step-grobid"><span class="ic"><i class="far fa-circle"></i></span>
+                <div>Parsing structure with GROBID <span class="text-muted small" id="grobid-count"></span>
+                    <div class="chips" id="grobid-chips"></div></div></li>
+            <li id="step-launch"><span class="ic"><i class="far fa-circle"></i></span><div id="launch-text">Launching workflow</div></li>
+        </ul>
+    </div>
+</div>
+
+{# Outcome #}
+<div class="overlay" id="outcome" style="display: none;">
+    <div class="overlay-card outcome-card">
+        <div class="text-muted text-uppercase small font-weight-bold" style="letter-spacing: .08em;">Reproducibility score</div>
+        <svg class="gauge" id="outcome-gauge" viewBox="0 0 200 200"></svg>
+        <div class="subscores" id="outcome-subscores"></div>
+        <p class="text-muted small mb-3" id="outcome-summary"></p>
+        <a class="btn btn-brand btn-lg" id="outcome-report" href="{{ report_url }}"><i class="fas fa-highlighter mr-2"></i>Open report with highlighted evidence</a>
+        <div class="mt-2"><button type="button" class="btn btn-link btn-sm text-muted" id="outcome-close">back to the workflow</button></div>
+        <div class="small text-muted mt-1" id="outcome-countdown"></div>
+    </div>
+</div>
+
+<div class="modal fade" id="nodeModal" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="nodeModalTitle"></h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+            </div>
+            <div class="modal-body" id="nodeModalBody"></div>
+        </div>
+    </div>
+</div>
+
+{% if kiosk %}<div class="kiosk-banner"><i class="fas fa-circle-play mr-1"></i> Kiosk mode: cycling through sample papers</div>{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'js/demo_scores.js' %}"></script>
+<script src="{% static 'js/demo_replay.js' %}"></script>
+<script>
+DemoReplay.start({
+    timelineUrl: "{% url 'demo:timeline' scenario.id %}",
+    reportUrl: "{{ report_url }}",
+    uploaded: new URLSearchParams(location.search).get('uploaded') === '1',
+    kiosk: {{ kiosk|yesno:"true,false" }},
+    nextUrl: {% if next_scenario %}"{% url 'demo:replay' next_scenario %}?kiosk=1"{% else %}null{% endif %}
+});
+</script>
+{% endblock %}

@@ -1,4 +1,5 @@
 {% extends "annotator/base.html" %}
+{% load static %}
 
 {% block extra_css %}
 
@@ -234,6 +235,7 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="{% static 'js/evidence_highlighter.js' %}"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     // Initialize tooltips for category descriptions
@@ -1244,12 +1246,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     // Helper function to convert hex to RGBA
-    function hexToRGBA(hex, alpha) {
-        const r = parseInt(hex.slice(1, 3), 16);
-        const g = parseInt(hex.slice(3, 5), 16);
-        const b = parseInt(hex.slice(5, 7), 16);
-        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-    }
+    const hexToRGBA = EvidenceHighlighter.hexToRGBA;
     
     // Load and highlight existing annotations
     function loadExistingAnnotations() {
@@ -1309,380 +1306,29 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
+    // Highlighting core lives in static/js/evidence_highlighter.js (shared with the demo report)
+    const highlightOptions = {
+        onClick: function(annotationId) { openActionChoiceModal(annotationId); }
+    };
+
     // Apply highlight to a range, handling complex cases with images and multiple elements
     function applyHighlightToRange(range, annotation) {
         try {
-            // Clone the range to avoid modifying the original
-            const workingRange = range.cloneRange();
-            
-            // Get all nodes in the range
-            const contents = workingRange.cloneContents();
-            
-            // Find all text nodes AND existing highlight spans we need to highlight
-            const walker = document.createTreeWalker(
-                documentViewer,
-                NodeFilter.SHOW_ALL,
-                {
-                    acceptNode: function(node) {
-                        // Accept text nodes
-                        if (node.nodeType === Node.TEXT_NODE) {
-                            return NodeFilter.FILTER_ACCEPT;
-                        }
-                        // Accept existing highlight spans (for overlap handling)
-                        if (node.nodeType === Node.ELEMENT_NODE && 
-                            node.classList && node.classList.contains('highlight')) {
-                            return NodeFilter.FILTER_ACCEPT;
-                        }
-                        return NodeFilter.FILTER_SKIP;
-                    }
-                },
-                false
-            );
-            
-            const nodesToHighlight = [];
-            let node;
-            
-            // Collect all text nodes and highlight spans that are between start and end
-            while (node = walker.nextNode()) {
-                try {
-                    const compareStart = range.comparePoint(node, 0);
-                    const compareEnd = range.comparePoint(node, node.nodeType === Node.TEXT_NODE ? node.length : node.childNodes.length);
-                
-                    // If the node is within or overlaps the range
-                    if ((compareStart >= 0 && compareStart <= 0) || 
-                        (compareEnd >= 0 && compareEnd <= 0) ||
-                        (compareStart < 0 && compareEnd > 0)) {
-                        
-                        let startOffset = 0;
-                        let endOffset = node.nodeType === Node.TEXT_NODE ? node.length : node.childNodes.length;
-                        
-                        // Adjust offsets if this is a boundary node
-                        if (node === range.startContainer) {
-                            startOffset = range.startOffset;
-                        }
-                        if (node === range.endContainer) {
-                            endOffset = range.endOffset;
-                        }
-                        
-                        if (startOffset < endOffset || node.nodeType === Node.ELEMENT_NODE) {
-                            nodesToHighlight.push({ node, startOffset, endOffset });
-                        }
-                    }
-                } catch (e) {
-                    // Skip nodes that can't be compared
-                    console.warn('Could not compare node:', e);
-                }
-            }
-            
-            console.log(`Found ${nodesToHighlight.length} nodes to highlight`);
-            
-            // Highlight each node
-            nodesToHighlight.forEach(({ node: targetNode, startOffset, endOffset }) => {
-                // Handle existing highlight spans (overlapping annotations)
-                if (targetNode.nodeType === Node.ELEMENT_NODE && targetNode.classList.contains('highlight')) {
-                    // This is already a highlighted span - add overlapping annotation styling
-                    const existingIds = targetNode.getAttribute('data-annotation-id') || '';
-                    const existingCategories = targetNode.getAttribute('data-category') || '';
-                    
-                    // Check if this annotation is already applied
-                    if (existingIds.split(',').includes(String(annotation.id))) {
-                        console.log('Annotation already applied to this highlight, skipping');
-                        return;
-                    }
-                    
-                    // Add new annotation ID and category
-                    targetNode.setAttribute('data-annotation-id', existingIds + ',' + annotation.id);
-                    targetNode.setAttribute('data-category', existingCategories + ',' + annotation.category);
-                    
-                    // Merge colors by adding a gradient or mixing
-                    const existingBg = targetNode.style.backgroundColor;
-                    const newBg = hexToRGBA(annotation.color, 0.3);
-                    
-                    // Create a linear gradient to show both colors
-                    targetNode.style.background = `linear-gradient(to bottom, ${existingBg} 50%, ${newBg} 50%)`;
-                    
-                    // Add a compound border (use box-shadow for additional border)
-                    const existingBorder = targetNode.style.borderBottom;
-                    targetNode.style.boxShadow = `inset 0 -4px 0 -2px ${annotation.color}`;
-                    
-                    // Update title to show multiple categories
-                    const categories = targetNode.getAttribute('data-category').split(',');
-                    targetNode.title = categories.join(', ') + ' - Click to manage';
-                    
-                    return;
-                }
-                
-                // Check if text node is inside a highlight span
-                if (targetNode.nodeType === Node.TEXT_NODE && 
-                    targetNode.parentNode && 
-                    targetNode.parentNode.classList && 
-                    targetNode.parentNode.classList.contains('highlight')) {
-                    
-                    const highlightSpan = targetNode.parentNode;
-                    const existingIds = highlightSpan.getAttribute('data-annotation-id') || '';
-                    const existingCategories = highlightSpan.getAttribute('data-category') || '';
-                    
-                    // Check if this annotation is already applied
-                    if (existingIds.split(',').includes(String(annotation.id))) {
-                        console.log('Annotation already applied to this highlight, skipping');
-                        return;
-                    }
-                    
-                    // Add new annotation ID and category
-                    highlightSpan.setAttribute('data-annotation-id', existingIds + ',' + annotation.id);
-                    highlightSpan.setAttribute('data-category', existingCategories + ',' + annotation.category);
-                    
-                    // Merge colors
-                    const existingBg = highlightSpan.style.backgroundColor;
-                    const newBg = hexToRGBA(annotation.color, 0.3);
-                    
-                    // Create a linear gradient to show both colors
-                    highlightSpan.style.background = `linear-gradient(to bottom, ${existingBg} 50%, ${newBg} 50%)`;
-                    
-                    // Add a compound border
-                    highlightSpan.style.boxShadow = `inset 0 -4px 0 -2px ${annotation.color}`;
-                    
-                    // Update title
-                    const categories = highlightSpan.getAttribute('data-category').split(',');
-                    highlightSpan.title = categories.join(', ') + ' - Click to manage';
-                    
-                    console.log('✓ Added overlapping annotation to existing highlight');
-                    return;
-                }
-                
-                // Handle text nodes (normal highlighting)
-                const text = targetNode.textContent;
-                const beforeText = text.substring(0, startOffset);
-                const highlightText = text.substring(startOffset, endOffset);
-                const afterText = text.substring(endOffset);
-                
-                const parent = targetNode.parentNode;
-                
-                // Create the highlight span
-                const span = document.createElement('span');
-                span.className = 'highlight';
-                span.setAttribute('data-category', annotation.category);
-                span.setAttribute('data-annotation-id', annotation.id);
-                span.style.backgroundColor = hexToRGBA(annotation.color, 0.3);
-                span.style.borderBottom = `2px solid ${annotation.color}`;
-                span.textContent = highlightText;
-                span.title = `${annotation.category} - Click to manage`;
-                
-                // Add click handler for deletion
-                span.addEventListener('click', function(e) {
-                    e.stopPropagation();
-                    const annotationId = this.getAttribute('data-annotation-id');
-                    openActionChoiceModal(annotationId);
-                });
-                
-                // Replace the text node with the parts
-                if (beforeText) {
-                    parent.insertBefore(document.createTextNode(beforeText), targetNode);
-                }
-                parent.insertBefore(span, targetNode);
-                if (afterText) {
-                    parent.insertBefore(document.createTextNode(afterText), targetNode);
-                }
-                parent.removeChild(targetNode);
-            });
+            const segments = EvidenceHighlighter.segmentsForRange(documentViewer, range);
+            EvidenceHighlighter.applySegments(segments, annotation, highlightOptions);
         } catch (e) {
             console.error('Error applying highlight to range:', e);
         }
     }
-    
+
     // Fallback: highlight using text search
     function highlightUsingTextSearch(annotation) {
-        console.log('Using text search for:', annotation.category);
-        const text = annotation.text;
-        
-        if (!text || text.length === 0) return;
-        
-        // Collect all text nodes AND highlight spans to handle overlaps
-        const walker = document.createTreeWalker(
-            documentViewer,
-            NodeFilter.SHOW_ALL,
-            {
-                acceptNode: function(node) {
-                    // Accept text nodes
-                    if (node.nodeType === Node.TEXT_NODE) {
-                        return NodeFilter.FILTER_ACCEPT;
-                    }
-                    // Accept existing highlight spans (for overlap handling)
-                    if (node.nodeType === Node.ELEMENT_NODE && 
-                        node.classList && node.classList.contains('highlight')) {
-                        return NodeFilter.FILTER_ACCEPT;
-                    }
-                    return NodeFilter.FILTER_SKIP;
-                }
-            },
-            false
-        );
-        
-        let node;
-        let fullText = '';
-        const nodes = [];
-        const processedHighlights = new Set(); // Track highlight spans we've already added
-        
-        while (node = walker.nextNode()) {
-            // If this is a text node inside a highlight span, skip it if we've already added the parent
-            if (node.nodeType === Node.TEXT_NODE && 
-                node.parentNode && 
-                node.parentNode.classList && 
-                node.parentNode.classList.contains('highlight')) {
-                
-                // Skip text nodes inside highlights - we'll handle the highlight span itself
-                if (processedHighlights.has(node.parentNode)) {
-                    continue;
-                }
-            }
-            
-            const nodeText = node.textContent;
-            const isHighlight = node.nodeType === Node.ELEMENT_NODE && node.classList.contains('highlight');
-            
-            // If this is a highlight span, mark it as processed
-            if (isHighlight) {
-                processedHighlights.add(node);
-            }
-            
-            nodes.push({
-                node: node,
-                start: fullText.length,
-                text: nodeText,
-                isHighlight: isHighlight
-            });
-            fullText += nodeText;
-        }
-        
-        // Find the text in the full text
-        const index = fullText.indexOf(text);
-        if (index === -1) {
-            console.warn('Text not found in document:', text.substring(0, 50));
+        const segments = EvidenceHighlighter.segmentsForExactText(documentViewer, annotation.text);
+        if (!segments) {
+            console.warn('Text not found in document:', (annotation.text || '').substring(0, 50));
             return;
         }
-        
-        const endIndex = index + text.length;
-        
-        // Find which nodes contain this range
-        for (let i = 0; i < nodes.length; i++) {
-            const nodeInfo = nodes[i];
-            const nodeEnd = nodeInfo.start + nodeInfo.text.length;
-            
-            // Check if this node overlaps with our target range
-            if (nodeEnd > index && nodeInfo.start < endIndex) {
-                const localStart = Math.max(0, index - nodeInfo.start);
-                const localEnd = Math.min(nodeInfo.text.length, endIndex - nodeInfo.start);
-                
-                try {
-                    const targetNode = nodeInfo.node;
-                    
-                    // Handle existing highlight spans (overlapping annotations)
-                    if (nodeInfo.isHighlight) {
-                        const existingIds = targetNode.getAttribute('data-annotation-id') || '';
-                        const existingCategories = targetNode.getAttribute('data-category') || '';
-                        
-                        // Check if this annotation is already applied
-                        if (existingIds.split(',').includes(String(annotation.id))) {
-                            console.log('Annotation already applied to this highlight, skipping');
-                            continue;
-                        }
-                        
-                        // Add new annotation ID and category
-                        targetNode.setAttribute('data-annotation-id', existingIds + ',' + annotation.id);
-                        targetNode.setAttribute('data-category', existingCategories + ',' + annotation.category);
-                        
-                        // Merge colors
-                        const existingBg = targetNode.style.backgroundColor;
-                        const newBg = hexToRGBA(annotation.color, 0.3);
-                        
-                        // Create a linear gradient to show both colors
-                        targetNode.style.background = `linear-gradient(to bottom, ${existingBg} 50%, ${newBg} 50%)`;
-                        
-                        // Add a compound border
-                        targetNode.style.boxShadow = `inset 0 -4px 0 -2px ${annotation.color}`;
-                        
-                        // Update title
-                        const categories = targetNode.getAttribute('data-category').split(',');
-                        targetNode.title = categories.join(', ') + ' - Click to manage';
-                        
-                        console.log('✓ Added overlapping annotation to existing highlight');
-                        continue;
-                    }
-                    
-                    // Handle text nodes that might be inside highlights (shouldn't happen with new logic, but keep as safeguard)
-                    if (targetNode.nodeType === Node.TEXT_NODE &&
-                        targetNode.parentNode &&
-                        targetNode.parentNode.classList &&
-                        targetNode.parentNode.classList.contains('highlight')) {
-                        console.log('Text node inside highlight detected, applying to parent');
-                        const highlightSpan = targetNode.parentNode;
-                        const existingIds = highlightSpan.getAttribute('data-annotation-id') || '';
-                        const existingCategories = highlightSpan.getAttribute('data-category') || '';
-                        
-                        // Check if this annotation is already applied
-                        if (existingIds.split(',').includes(String(annotation.id))) {
-                            console.log('Annotation already applied to parent highlight, skipping');
-                            continue;
-                        }
-                        
-                        // Add new annotation ID and category to parent
-                        highlightSpan.setAttribute('data-annotation-id', existingIds + ',' + annotation.id);
-                        highlightSpan.setAttribute('data-category', existingCategories + ',' + annotation.category);
-                        
-                        // Merge colors
-                        const existingBg = highlightSpan.style.backgroundColor;
-                        const newBg = hexToRGBA(annotation.color, 0.3);
-                        
-                        highlightSpan.style.background = `linear-gradient(to bottom, ${existingBg} 50%, ${newBg} 50%)`;
-                        highlightSpan.style.boxShadow = `inset 0 -4px 0 -2px ${annotation.color}`;
-                        
-                        const categories = highlightSpan.getAttribute('data-category').split(',');
-                        highlightSpan.title = categories.join(', ') + ' - Click to manage';
-                        
-                        console.log('✓ Added overlapping annotation to parent highlight');
-                        continue;
-                    }
-                    
-                    // Handle normal text nodes (normal highlighting)
-                    const nodeText = targetNode.textContent;
-                    const beforeText = nodeText.substring(0, localStart);
-                    const highlightText = nodeText.substring(localStart, localEnd);
-                    const afterText = nodeText.substring(localEnd);
-                    
-                    const parent = targetNode.parentNode;
-                    
-                    // Create the highlight span
-                    const span = document.createElement('span');
-                    span.className = 'highlight';
-                    span.setAttribute('data-category', annotation.category);
-                    span.setAttribute('data-annotation-id', annotation.id);
-                    span.style.backgroundColor = hexToRGBA(annotation.color, 0.3);
-                    span.style.borderBottom = `2px solid ${annotation.color}`;
-                    span.textContent = highlightText;
-                    span.title = `${annotation.category} - Click to manage`;
-                    
-                    // Add click handler for deletion
-                    span.addEventListener('click', function(e) {
-                        e.stopPropagation();
-                        const annotationId = this.getAttribute('data-annotation-id');
-                        openActionChoiceModal(annotationId);
-                    });
-                    
-                    // Replace the text node with the parts
-                    if (beforeText) {
-                        parent.insertBefore(document.createTextNode(beforeText), targetNode);
-                    }
-                    parent.insertBefore(span, targetNode);
-                    if (afterText) {
-                        parent.insertBefore(document.createTextNode(afterText), targetNode);
-                    }
-                    parent.removeChild(targetNode);
-                } catch (e) {
-                    console.error('Failed to highlight node:', e);
-                }
-            }
-        }
-        
-        console.log('✓ Highlighted using text search:', annotation.category);
+        EvidenceHighlighter.applySegments(segments, annotation, highlightOptions);
     }
     
     // Fetch suggested categories
