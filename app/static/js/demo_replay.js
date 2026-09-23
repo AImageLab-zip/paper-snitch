@@ -19,6 +19,11 @@
         final_aggregation: ''            // trophy
     };
 
+    // Vertical order of the parallel branches: paper analysis on top, code in
+    // the middle, dataset at the bottom. Other nodes keep their DAG order.
+    const BRANCH_ORDER = ['reproducibility_checklist', 'code_availability_check', 'dataset_documentation_check'];
+    const LABEL_X = 36, LABEL_PAD = 10, LABEL_MIN_FONT = 10;
+
     let T = null;          // timeline payload
     let opts = null;
     let speed = 1;
@@ -70,7 +75,9 @@
         const width = byLayer[widest].length;
 
         const row = {};
-        byLayer[widest].forEach(function (id, i) { row[id] = i; });
+        const rank = function (id) { const i = BRANCH_ORDER.indexOf(id); return i === -1 ? BRANCH_ORDER.length : i; };
+        byLayer[widest].slice().sort(function (a, b) { return rank(a) - rank(b); })
+            .forEach(function (id, i) { row[id] = i; });
         const mean = function (a) { return a.reduce(function (s, x) { return s + x; }, 0) / a.length; };
         for (let i = widest + 1; i < nLayers; i++) {
             byLayer[i].forEach(function (id) {
@@ -85,13 +92,13 @@
             });
         }
 
-        const W = 156, H = 58, GX = 34, GY = 22, PAD = 8;
+        const W = 172, H = 58, GX = 44, GY = 22, PAD = 8;
         const pos = {};
         ids.forEach(function (id) {
             pos[id] = { x: PAD + layer[id] * (W + GX), y: PAD + row[id] * (H + GY), w: W, h: H };
         });
         return {
-            ids: ids, pos: pos, parents: parents,
+            ids: ids, pos: pos, parents: parents, layer: layer, gapX: GX,
             width: PAD * 2 + nLayers * W + (nLayers - 1) * GX,
             height: PAD * 2 + width * H + (width - 1) * GY
         };
@@ -105,9 +112,14 @@
         T.dag.edges.forEach(function (e) {
             const a = layout.pos[e.from], b = layout.pos[e.to];
             if (!a || !b) return;
-            const x1 = a.x + a.w, y1 = a.y + a.h / 2, x2 = b.x, y2 = b.y + b.h / 2;
-            const mx = (x1 + x2) / 2;
-            html += `<path class="edge" data-from="${e.from}" data-to="${e.to}" d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}"></path>`;
+            const x1 = a.x + a.w, y1 = a.y + a.h / 2, x2 = b.x;
+            // Fan incoming edges out along the target's left side.
+            const y2 = b.y + b.h / 2 + Math.max(-b.h / 3, Math.min(b.h / 3, (y1 - (b.y + b.h / 2)) / 4));
+            // Edges that skip layers run along their own row and only bend in
+            // the last gap, so they never pass behind intermediate nodes.
+            const bendX = layout.layer[e.to] - layout.layer[e.from] > 1 ? x2 - layout.gapX : x1;
+            const mx = (bendX + x2) / 2;
+            html += `<path class="edge" data-from="${e.from}" data-to="${e.to}" d="M${x1},${y1} H${bendX} C${mx},${y1} ${mx},${y2} ${x2},${y2}"></path>`;
         });
         layout.ids.forEach(function (id) {
             const p = layout.pos[id];
@@ -115,15 +127,33 @@
                 <g class="node pending" data-id="${id}" transform="translate(${p.x},${p.y})">
                     <rect width="${p.w}" height="${p.h}" rx="12"></rect>
                     <text class="icon" x="14" y="25">${NODE_ICONS[id] || ''}</text>
-                    <text x="36" y="25">${esc(nodeName(id))}</text>
+                    <text class="label" x="${LABEL_X}" y="25">${esc(nodeName(id))}</text>
                     <text class="sub" x="14" y="44">waiting</text>
                     <rect class="bar-bg" x="10" y="${p.h - 8}" width="${p.w - 20}" height="3" rx="1.5"></rect>
                     <rect class="bar" x="10" y="${p.h - 8}" width="0" height="3" rx="1.5"></rect>
                 </g>`;
         });
         svg.innerHTML = html;
+        fitLabels(svg);
         svg.querySelectorAll('.node').forEach(function (g) {
             g.addEventListener('click', function () { openNode(g.getAttribute('data-id')); });
+        });
+    }
+
+    // Shrink node labels that would overflow their box.
+    function fitLabels(svg) {
+        svg.querySelectorAll('.node').forEach(function (g) {
+            const label = g.querySelector('.label');
+            const avail = layout.pos[g.getAttribute('data-id')].w - LABEL_X - LABEL_PAD;
+            const width = label.getComputedTextLength();
+            if (width <= avail) return;
+            const size = parseFloat(getComputedStyle(label).fontSize);
+            const fitted = Math.floor(size * avail / width * 10) / 10;
+            label.style.fontSize = Math.max(fitted, LABEL_MIN_FONT) + 'px';
+            if (fitted < LABEL_MIN_FONT) {
+                label.setAttribute('textLength', avail);
+                label.setAttribute('lengthAdjust', 'spacingAndGlyphs');
+            }
         });
     }
 

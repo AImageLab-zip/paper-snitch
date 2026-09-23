@@ -11,4 +11,5 @@ urlpatterns = [
     path("api/timeline/<int:scenario_id>/", views.DemoTimelineView.as_view(), name="timeline"),
     path("report/<uuid:run_id>/", views.DemoReportView.as_view(), name="report"),
     path("paper/<int:paper_id>/html/", views.DemoPaperHtmlView.as_view(), name="paper_html"),
+    path("paper/<int:paper_id>/pdf/", views.DemoPaperPdfView.as_view(), name="paper_pdf"),
 ]

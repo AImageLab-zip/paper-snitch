@@ -1,7 +1,7 @@
 import hashlib
 import re
 
-from django.http import Http404, HttpResponse, JsonResponse
+from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
 from django.views import View
@@ -133,6 +133,25 @@ class DemoReportView(View):
                 "has_pdf_html": has_pdf_html,
             },
         )
+
+
+class DemoPaperPdfView(View):
+    """
+    Download a sample paper's PDF (only papers of active scenarios), so the
+    presenter can drag it back onto the upload page. Served by Django so it
+    does not depend on how the web server exposes /media/.
+    """
+
+    def get(self, request, paper_id):
+        scenario = _active_scenarios().filter(paper_id=paper_id).first()
+        if scenario is None or not scenario.paper.file:
+            raise Http404("Not a demo paper.")
+        paper_file = scenario.paper.file
+        try:
+            handle = paper_file.open("rb")
+        except OSError:
+            raise Http404("PDF missing on disk.")
+        return FileResponse(handle, as_attachment=True, filename=paper_file.name.rsplit("/", 1)[-1])
 
 
 @method_decorator(xframe_options_sameorigin, name="dispatch")

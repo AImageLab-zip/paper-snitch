@@ -56,6 +56,48 @@ def upload_document(request):
     return render(request, "annotator/upload.html", {"form": form})
 
 
+def _container_mounts():
+    """Bind mounts of the container we run in, as [(destination, source)], longest first."""
+    import socket
+
+    result = subprocess.run(
+        ["docker", "inspect", socket.gethostname(), "--format", "{{json .Mounts}}"],
+        capture_output=True, text=True, check=True, timeout=15,
+    )
+    mounts = json.loads(result.stdout or "[]")
+    pairs = [(m["Destination"].rstrip("/"), m["Source"]) for m in mounts if m.get("Source")]
+    return sorted(pairs, key=lambda p: len(p[0]), reverse=True)
+
+
+def _host_path(container_path):
+    """
+    Translate a path inside this container to the corresponding host path, so
+    sibling containers started through the docker socket can mount it.
+
+    Uses the container's real mounts (independent of the directory compose was
+    started from); falls back to HOST_PROJECT_PATH + STACK_SUFFIX.
+    """
+    from django.conf import settings
+
+    try:
+        for dest, source in _container_mounts():
+            if container_path == dest or container_path.startswith(dest + "/"):
+                return source + container_path[len(dest):]
+    except Exception as e:
+        logger.warning(f"Could not inspect container mounts, using HOST_PROJECT_PATH: {e}")
+
+    host_project_path = os.environ.get("HOST_PROJECT_PATH")
+    if not host_project_path:
+        return None
+    # Inside the container media lives at /app/media; on the host it is
+    # media_${STACK_SUFFIX} in dev and media in prod.
+    stack_suffix = os.environ.get("STACK_SUFFIX", "")
+    rel_path = os.path.relpath(container_path, settings.BASE_DIR)
+    if stack_suffix and rel_path.startswith("media/"):
+        rel_path = rel_path.replace("media/", f"media_{stack_suffix}/", 1)
+    return os.path.join(host_project_path, rel_path)
+
+
 def convert_pdf_to_html(document):
     """Convert PDF to HTML using pdf2htmlEX via Docker (with fallback to pypdf)"""
     from django.conf import settings
@@ -65,8 +107,6 @@ def convert_pdf_to_html(document):
     output_dir = os.path.join(settings.MEDIA_ROOT, "htmls")
     os.makedirs(output_dir, exist_ok=True)
 
-    host_project_path = os.environ.get("HOST_PROJECT_PATH")
-
     # Generate output filename
     base_name = Path(pdf_path).stem.replace(" ", "_")
     output_filename = f"{base_name}_{document.pk}.html"
@@ -74,37 +114,11 @@ def convert_pdf_to_html(document):
 
     # Try pdf2htmlEX via Docker first (preserves style)
     docker_available = shutil.which("docker") is not None
-    if docker_available and host_project_path:
+    host_pdf_dir = _host_path(os.path.dirname(pdf_path)) if docker_available else None
+    host_output_dir = _host_path(output_dir) if docker_available else None
+    if host_pdf_dir and host_output_dir:
         try:
-            # Validate HOST_PROJECT_PATH is set
-            if not host_project_path:
-                raise ValueError("HOST_PROJECT_PATH environment variable is not set")
-
-            # Get STACK_SUFFIX for media directory mapping
-            # In dev: media_dev, etc.
-            # In prod: just media (no suffix)
-            stack_suffix = os.environ.get("STACK_SUFFIX", "")
-
-            rel_pdf_path = os.path.relpath(pdf_path, settings.BASE_DIR)
-            rel_output_dir = os.path.relpath(output_dir, settings.BASE_DIR)
-
-            # Adjust paths to account for media_${STACK_SUFFIX} on host vs /app/media in container
-            # Inside container: /app/media/pdfs/file.pdf
-            # On host (dev): /path/to/project/media_dev/pdfs/file.pdf
-            # On host (prod): /path/to/project/media/pdfs/file.pdf
-            if stack_suffix and rel_pdf_path.startswith("media/"):
-                rel_pdf_path = rel_pdf_path.replace(
-                    "media/", f"media_{stack_suffix}/", 1
-                )
-            if stack_suffix and rel_output_dir.startswith("media/"):
-                rel_output_dir = rel_output_dir.replace(
-                    "media/", f"media_{stack_suffix}/", 1
-                )
-
-            # Get absolute paths on host
-            host_pdf_path = os.path.join(host_project_path, rel_pdf_path)
-            host_output_dir = os.path.join(host_project_path, rel_output_dir)
-            host_pdf_dir = os.path.dirname(host_pdf_path)
+            host_pdf_path = os.path.join(host_pdf_dir, os.path.basename(pdf_path))
             pdf_filename = os.path.basename(pdf_path)
 
             # Log paths for debugging

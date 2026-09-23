@@ -49,7 +49,7 @@
             <div class="actions">
                 <a class="btn btn-brand btn-sm" href="{% url 'demo:replay' s.id %}"><i class="fas fa-play mr-1"></i> Replay analysis</a>
                 {% if s.paper.file %}
-                <a class="btn btn-outline-secondary btn-sm" href="{{ s.paper.file.url }}" download title="Download the PDF, then drop it above"><i class="fas fa-download"></i> PDF</a>
+                <a class="btn btn-outline-secondary btn-sm" href="{% url 'demo:paper_pdf' s.paper_id %}" title="Download the PDF, then drop it above"><i class="fas fa-download"></i> PDF</a>
                 {% endif %}
                 <a class="btn btn-outline-secondary btn-sm" href="{% url 'demo:report' s.workflow_run_id %}" title="Skip straight to the report"><i class="fas fa-file-alt"></i> Report</a>
             </div>
