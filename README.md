@@ -3,6 +3,7 @@
 <div align="center">
 PAPER-SNITCH is a reviewer-facing decision-support tool that automatically screens MICCAI submissions for reproducibility signals. It parses the paper, checks whether the linked code repository exists and contains real code, and evaluates both against policy-aware checklists. 
 The result is an interpretable verifiability score backed by evidence that reviewers can inspect directly. It never executes untrusted code, and the final decision always stays with the human reviewer.
+  
 <img width="10466" height="3290" alt="image" src="flow_complete.svg" />
 
 
