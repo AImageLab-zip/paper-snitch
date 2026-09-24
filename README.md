@@ -12,7 +12,7 @@
 PaperSnitch screens papers for reproducibility at review time. It reads the PDF, checks that the linked repository exists and actually contains code, and returns a 0–100 verifiability score where every verdict points to evidence in the paper. It never runs untrusted code: the reviewer decides.
 
 <p align="center">
-  <img src="flow.svg" width="100%" alt="PaperSnitch pipeline: the PDF is parsed and classified, sections are embedded, then paper, code and dataset analyses run in parallel and are aggregated into an evidence-linked reviewer report">
+  <img src="flows.svg" width="100%" alt="PaperSnitch pipeline: the PDF is parsed and classified, sections are embedded, then paper, code and dataset analyses run in parallel and are aggregated into an evidence-linked reviewer report">
 </p>
 
 <p align="center">
