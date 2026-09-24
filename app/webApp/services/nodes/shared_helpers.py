@@ -1,3 +1,4 @@
+import asyncio
 """
 Helper functions for enhanced paper code repository processing and analysis workflow nodes in paper_processing_workflow.py
 """
@@ -488,6 +489,16 @@ def compute_reproducibility_score(
     return total_score, breakdown_normalized, recommendations
 
 
+def _run_isolated(coro):
+    """Run a coroutine on its own event loop in a worker thread.
+
+    Parallel workflow nodes make blocking LLM calls on the shared loop; with slow
+    models those stalls make gitingest's HTTP pre-check time out, which it reports
+    as "Repository not found".
+    """
+    return asyncio.to_thread(asyncio.run, coro)
+
+
 async def ingest_with_steroids(
     source: str,
     *,
@@ -549,7 +560,7 @@ async def ingest_with_steroids(
             # We either have a full URL or a domain-less slug
             logger.info("Parsing remote repository", extra={"source": source})
             # Parse the repository URL
-            query = await parse_remote_repo(source, token=token)
+            query = await _run_isolated(parse_remote_repo(source, token=token))
 
             # Restore original URL case: gitingest's _get_user_and_repo_from_path
             # lowercases the entire path (owner/repo), but the GitHub REST API
@@ -575,7 +586,7 @@ async def ingest_with_steroids(
             # Clone the full repository (not sparse)
             clone_config = query.extract_clone_config()
             logger.info(f"Cloning repository to: {clone_path}")
-            await clone_repo(clone_config, token=token)
+            await _run_isolated(clone_repo(clone_config, token=token))
         else:
             # Local path scenario
             logger.info("Processing local directory", extra={"source": source})
