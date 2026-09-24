@@ -4,60 +4,19 @@
 
 ### *The paper has a GitHub. The GitHub has a README. The README has nothing.*
 
-**Review-time reproducibility screening for MICCAI papers: evidence first, the reviewer decides.**
-
 [![Try it live](https://img.shields.io/badge/try%20it%20live-paper--snitch.online-1abc9c?style=for-the-badge)](https://paper-snitch.online) [![MICCAI 2026 paper](https://img.shields.io/badge/MICCAI%202026-paper-2e2e2e?style=for-the-badge)](https://papers.miccai.org/miccai-2026/1055-Paper0729.html)
 
 </div>
 
----
-
-## What is PaperSnitch?
-
-Reproducibility checklists promise *checkable* science, but at review time almost nobody checks. A link is not code: it can be a 404, a private repository, or a README promising a release "after acceptance" that never comes.
-
-**PaperSnitch** is a decision-support tool for reviewers. Give it a submission PDF and it:
-
-- 📄 **reads the paper**: parses it with GROBID and checks it against reproducibility criteria aligned with MICCAI guidelines;
-- 🔗 **follows the link**: finds the repository, verifies that it is reachable and actually contains code, then inspects it for training and evaluation code, dependencies, weights and documentation;
-- 🗂️ **checks new datasets**, only when the paper proposes one;
-- 🧾 **writes an evidence-linked report**: a 0–100 verifiability score split into interpretable sub-scores, with every verdict tied to a highlighted passage of the paper.
-
-It never executes untrusted code or attempts GPU-heavy reproduction, and the final decision always stays with the reviewer.
+PaperSnitch screens papers for reproducibility at review time. It reads the PDF, checks that the linked repository exists and actually contains code, and returns a 0–100 verifiability score where every verdict points to evidence in the paper. It never runs untrusted code: the reviewer decides.
 
 <p align="center">
   <img src="flow_complete.svg" width="100%" alt="PaperSnitch pipeline: the PDF is parsed and classified, sections are embedded, then paper, code and dataset analyses run in parallel and are aggregated into an evidence-linked reviewer report">
 </p>
 
-## The numbers
-
-### 🚩 In MICCAI 2026, more than 1 in 5 code links did not lead to verifiable code.
-
-**4,887 MICCAI papers, 2021–2026.** Linking code has become the norm. Linking code that actually works has not.
-
-| MICCAI | Papers | Link to code | Verified code¹ | Links without verified code |
-|:---:|---:|---:|---:|---:|
-| 2021 | 531 | 51.8% | 43.9% | 15.3% |
-| 2022 | 575 | 59.5% | 50.3% | 15.5% |
-| 2023 | 733 | 64.7% | 55.7% | 13.9% |
-| 2024 | 856 | 70.2% | 57.9% | 17.5% |
-| 2025 | 1,027 | 72.5% | 57.2% | 21.2% |
-| **2026** | **1,165** | **75.5%** | **58.7%** | **22.3%** |
-
-<sub>¹ The repository is reachable and contains source code, as checked by PaperSnitch's code-availability step. The last column is relative to papers that link code.</sub>
-
-How close is PaperSnitch to a human reviewer? On 100 randomly sampled MICCAI 2025 papers, annotated by humans with the same criteria:
-
-| GPT-4o | Code | Paper | Dataset | Overall |
-|:---|---:|---:|---:|---:|
-| Agreement | 90.7% | 77.5% | 72.2% | **80.4%** |
-| MCC | 0.81 | 0.57 | 0.29 | **0.60** |
-
-<div align="center">
-
-[![Python](https://img.shields.io/badge/Python-3.12-blue.svg)](https://www.python.org/) [![Django](https://img.shields.io/badge/Django-5.2.7-green.svg)](https://www.djangoproject.com/) [![LangGraph](https://img.shields.io/badge/LangGraph-1.0.6-orange.svg)](https://langchain-ai.github.io/langgraph/) [![Docker](https://img.shields.io/badge/Docker-Compose-blue.svg)](https://www.docker.com/)
-
-</div>
+<!-- Horizontal figure: upload the image next to this README, then uncomment the next line (and set the file name)
+<p align="center"><img src="figure.png" width="100%" alt="PaperSnitch figure"></p>
+-->
 
 ---
 
