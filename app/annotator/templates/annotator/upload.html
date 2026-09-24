@@ -13,11 +13,11 @@
     .page-header {
         margin-bottom: 24px;
         padding-bottom: 16px;
-        border-bottom: 2px solid rgba(10, 61, 98, 0.1);
+        border-bottom: 2px solid rgba(34, 49, 58, 0.1);
     }
     
     .page-header h1 {
-        color: var(--primary, #0a3d62);
+        color: var(--ink);
         margin-bottom: 8px;
         font-weight: 600;
         display: flex;
@@ -34,13 +34,13 @@
         background: var(--bg-white, #fff);
         border-radius: 12px;
         box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-        border: 1px solid rgba(10, 61, 98, 0.1);
+        border: 1px solid rgba(34, 49, 58, 0.1);
         overflow: hidden;
         margin-bottom: 24px;
     }
     
     .panel-card-header {
-        background: linear-gradient(135deg, var(--primary, #0a3d62) 0%, var(--primary-dark, #062840) 100%);
+        background: var(--bar);
         color: white;
         padding: 16px 20px;
         font-weight: 600;
@@ -61,7 +61,7 @@
     .form-label {
         display: block;
         font-weight: 600;
-        color: var(--primary, #0a3d62);
+        color: var(--ink);
         margin-bottom: 8px;
         font-size: 0.95rem;
     }
@@ -69,7 +69,7 @@
     .form-control {
         width: 100%;
         padding: 12px 16px;
-        border: 2px solid rgba(10, 61, 98, 0.15);
+        border: 2px solid rgba(34, 49, 58, 0.15);
         border-radius: 8px;
         font-size: 1rem;
         transition: all 0.2s;
@@ -91,7 +91,7 @@
         padding: 8px 16px;
         border-radius: 6px;
         border: none;
-        background: var(--primary, #0a3d62);
+        background: var(--primary);
         color: white;
         font-weight: 500;
         cursor: pointer;
@@ -100,7 +100,7 @@
     }
     
     .form-control[type="file"]::file-selector-button:hover {
-        background: var(--primary-dark, #062840);
+        background: var(--teal-dark);
     }
     
     .form-help {
@@ -123,7 +123,7 @@
         gap: 12px;
         margin-top: 32px;
         padding-top: 24px;
-        border-top: 1px solid rgba(10, 61, 98, 0.1);
+        border-top: 1px solid rgba(34, 49, 58, 0.1);
     }
     
     .btn-submit {
@@ -154,7 +154,7 @@
         padding: 14px 28px;
         background: var(--bg-light, #f8f9fa);
         color: var(--gray-dark, #333);
-        border: 2px solid rgba(10, 61, 98, 0.15);
+        border: 2px solid rgba(34, 49, 58, 0.15);
         border-radius: 8px;
         font-weight: 600;
         font-size: 1rem;
@@ -164,7 +164,7 @@
     }
     
     .btn-cancel:hover {
-        background: rgba(10, 61, 98, 0.05);
+        background: rgba(34, 49, 58, 0.05);
         color: var(--gray-dark, #333);
     }
     
@@ -181,7 +181,7 @@
         background: rgba(26, 188, 156, 0.1);
         padding: 14px 20px;
         font-weight: 600;
-        color: var(--primary, #0a3d62);
+        color: var(--ink);
         display: flex;
         align-items: center;
         gap: 10px;

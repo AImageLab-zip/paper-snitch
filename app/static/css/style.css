@@ -1,16 +1,24 @@
-/* PaperSnitch Custom Color Palette
+/* PaperSnitch palette
    ----------------------------------
-   Blu profondo: #0A3D62 – #1B4F72
-   Grigio neutro/grafite: #5A5A5A – #2E2E2E
-   Ciano/Teal tecnologico: #1ABC9C – #0E8C82
-   Ambra/Giallo (alert): #F1C40F – #E2B90A
-   Bianco sporco (sfondo): #F7F7F7
+   Graphite (bars, page headers): #2E2E2E
+   Ink / muted text:              #22313A / #6B7A85
+   Teal (primary, accents):       #1ABC9C – #0E8C82
+   Amber (alerts):                #F1C40F – #E2B90A
+   Background / borders:          #F4F7F9 / #DFE5EA
 */
 :root {
-  /* Primary Blues */
-  --primary-dark: #0a3d62;
-  --primary: #1b4f72;
-  --primary-light: #2471a3;
+  /* Theme aligned with the demo (static/css/demo.css):
+     graphite surfaces, teal as the primary/accent colour. */
+  --bar: #2e2e2e;
+  --ink: #22313a;
+  --muted: #6b7a85;
+  --line: #dfe5ea;
+  --panel: #ffffff;
+
+  /* "Primary" = graphite for header surfaces, teal for interactive elements */
+  --primary-dark: #2e2e2e;
+  --primary: #0e8c82;
+  --primary-light: #1abc9c;
 
   /* Grays */
   --gray-dark: #2e2e2e;
@@ -29,7 +37,7 @@
   --amber-light: #f4d03f;
 
   /* Background */
-  --bg-light: #f7f7f7;
+  --bg-light: #f4f7f9;
   --bg-white: #ffffff;
 
   /* Status colors */
@@ -49,7 +57,7 @@ body {
 
 body {
   background-color: var(--bg-light) !important;
-  color: var(--gray-dark);
+  color: var(--ink);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   display: flex;
   flex-direction: column;
@@ -83,33 +91,38 @@ footer {
 
 /* Stili Navbar (pulizia) */
 .navbar {
-  background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 100%) !important;
-  box-shadow: 0 2px 10px rgba(10, 61, 98, 0.3);
-  padding: 0.75rem 1rem;
+  background: var(--bar) !important;
+  box-shadow: none;
+  padding: 10px 20px;
 }
 
 .navbar-brand {
-  font-size: 1.5rem;
-  font-weight: 600;
-  padding: 0.5rem 1rem;
+  color: #fff !important;
+  font-size: 1.35rem;
+  font-weight: 700;
+  padding: 0;
+}
+
+.navbar-brand:hover {
+  color: var(--teal) !important;
 }
 
 .navbar-brand i {
-  color: var(--amber-light) !important;
+  color: var(--teal) !important;
 }
 
 .navbar-nav .nav-link {
-  color: rgba(255, 255, 255, 0.9) !important;
-  padding: 0.5rem 1rem !important;
-  transition: all 0.2s ease;
-  border-radius: 4px;
+  color: #d2dae2 !important;
+  padding: 0.4rem 0.9rem !important;
+  transition: color 0.2s ease, background-color 0.2s ease;
+  border-radius: 6px;
   font-weight: 500;
+  font-size: 0.95rem;
 }
 
 .navbar-nav .nav-link:hover {
-  color: white !important;
-  background-color: rgba(255, 255, 255, 0.1);
-  transform: translateY(-1px);
+  color: #fff !important;
+  background-color: rgba(255, 255, 255, 0.08);
 }
 
 .navbar-nav .nav-link i {
@@ -120,26 +133,14 @@ footer {
   opacity: 1;
 }
 
-/* Special styling for Annotator link */
-.nav-link-annotator {
-  background-color: rgba(192, 57, 43, 0.2);
-  border: 1px solid rgba(192, 57, 43, 0.4);
-}
-
-.nav-link-annotator:hover {
-  background-color: rgba(192, 57, 43, 0.3) !important;
-  border-color: rgba(192, 57, 43, 0.6);
-}
-
-/* Login button styling */
+/* Login: filled teal, like the demo's primary button */
 .nav-link-login {
-  background-color: rgba(26, 188, 156, 0.2);
-  border: 1px solid rgba(26, 188, 156, 0.4);
+  background-color: var(--teal);
+  color: #fff !important;
 }
 
 .nav-link-login:hover {
-  background-color: rgba(26, 188, 156, 0.3) !important;
-  border-color: rgba(26, 188, 156, 0.6);
+  background-color: var(--teal-dark) !important;
 }
 
 /* Logout button styling */
@@ -166,40 +167,38 @@ footer {
     margin: 0.25rem 0;
   }
   
-  .nav-link-annotator,
-  .nav-link-login {
-    border-radius: 4px;
-  }
 }
 
 /* Stili Footer (pulizia) */
 footer {
-  background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 100%) !important;
+  background: var(--bar) !important;
 }
 footer .text-center {
-  background-color: rgba(10, 61, 98, 0.9) !important;
+  background-color: transparent !important;
 }
 /* Buttons */
 .btn-primary {
-  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%) !important;
-  border: none !important;
-  box-shadow: 0 2px 6px rgba(10, 61, 98, 0.3);
-  transition: all 0.3s ease;
+  background: var(--teal) !important;
+  border: 1px solid var(--teal) !important;
+  color: #fff !important;
+  box-shadow: none;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
 }
 
 .badge-primary {
-  background: linear-gradient(135deg, var(--teal-dark) 0%, var(--teal) 100%) !important;
+  background: var(--teal) !important;
 }
 
 .btn-primary:hover,
 .btn-primary:focus {
-  background: linear-gradient(135deg, var(--teal-dark) 0%, var(--teal) 100%) !important;
-  box-shadow: 0 4px 12px rgba(14, 140, 130, 0.4);
-  transform: translateY(-1px);
+  background: var(--teal-dark) !important;
+  border-color: var(--teal-dark) !important;
+  box-shadow: none;
 }
 
 .btn-primary:disabled {
   background: var(--gray-light) !important;
+  border-color: var(--gray-light) !important;
   box-shadow: none;
 }
 
@@ -223,39 +222,118 @@ footer .text-center {
   color: var(--bg-white) !important;
 }
 
-/* Cards */
+/* Success uses the palette's dark teal instead of Bootstrap green */
+.btn-success {
+  background-color: var(--success);
+  border-color: var(--success);
+}
+
+.btn-success:hover,
+.btn-success:focus {
+  background-color: #0a6f67;
+  border-color: #0a6f67;
+}
+
+.badge-success,
+.bg-success {
+  background-color: var(--success) !important;
+}
+
+.btn-outline-success {
+  color: var(--success);
+  border-color: var(--success);
+}
+
+.btn-outline-success:hover {
+  background-color: var(--success);
+  border-color: var(--success);
+  color: #fff;
+}
+
+/* Cards: white panels with a thin border, like the demo's .panel */
 .card,
 .modal-content {
-  background-color: var(--bg-white);
-  border: none;
-  border-radius: 8px;
-  box-shadow: 0 2px 12px rgba(46, 46, 46, 0.1);
+  background-color: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: none;
+}
+
+.card > .card-header:first-child {
+  border-radius: 13px 13px 0 0;
+}
+
+.card > .card-footer:last-child {
+  border-radius: 0 0 13px 13px;
+}
+
+.modal-content {
+  overflow: hidden;
+}
+
+.card-header,
+.modal-header,
+.card-footer {
+  background-color: var(--panel);
+  border-color: var(--line);
 }
 
 .card-header,
 .modal-header {
-  border-bottom: 1px solid rgba(10, 61, 98, 0.1);
+  border-bottom: 1px solid var(--line);
 }
 
+/* Page headers (title bars): graphite, like the demo's top bar */
 .card-header.bg-primary,
 .modal-header.bg-primary {
-  background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 100%) !important;
+  background: var(--bar) !important;
+  border-bottom-color: var(--bar);
+}
+
+/* Section headers: plain panel header with dark text and a teal icon */
+.card-header.bg-info,
+.card-header.bg-info.text-white,
+.modal-header.bg-info,
+.modal-header.bg-info.text-white {
+  background: var(--panel) !important;
+  color: var(--ink) !important;
+}
+
+.card-header.bg-info h1, .card-header.bg-info h2, .card-header.bg-info h3,
+.card-header.bg-info h4, .card-header.bg-info h5, .card-header.bg-info h6,
+.modal-header.bg-info .modal-title {
+  color: var(--ink) !important;
+  font-weight: 700;
+}
+
+.card-header.bg-info i,
+.modal-header.bg-info i {
+  color: var(--teal-dark);
+}
+
+.card-header.bg-info .text-white-50,
+.card-header.bg-info small {
+  color: var(--muted) !important;
+}
+
+.modal-header.bg-info .close {
+  color: var(--ink);
 }
 
 .card-header.bg-light {
   background-color: var(--bg-light) !important;
-  color: var(--gray-dark);
+  color: var(--ink);
 }
 
 /* Progress Bar */
 .progress {
-  background-color: #e8e8e8;
+  background-color: #e9eef2;
   border-radius: 15px;
   overflow: hidden;
 }
 
 .progress-bar {
-  background: linear-gradient(90deg, var(--teal-dark) 0%, var(--teal) 100%) !important;
+  background: var(--teal) !important;
   transition: width 0.4s ease;
 }
 
@@ -307,7 +385,7 @@ footer .text-center {
 
 /* Nav Tabs */
 .nav-tabs {
-  border-bottom: 2px solid var(--primary);
+  border-bottom: 1px solid var(--line);
 }
 
 .nav-tabs .nav-link {
@@ -326,7 +404,7 @@ footer .text-center {
 }
 
 .nav-tabs .nav-link.active {
-  color: var(--primary-dark) !important;
+  color: var(--ink) !important;
   background-color: var(--bg-white);
   border-bottom: 3px solid var(--teal) !important;
   font-weight: 600;
@@ -343,7 +421,7 @@ footer .text-center {
 }
 
 .custom-file-label::after {
-  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+  background: var(--teal);
   color: var(--bg-white);
 }
 
@@ -403,7 +481,7 @@ body ::selection {
 }
 
 .paper-card:hover {
-  box-shadow: 0 4px 15px rgba(10, 61, 98, 0.15);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
 }
 
 /* Paper toggle icon - more specific to avoid conflict with style.css */
@@ -526,7 +604,7 @@ body ::selection {
   color: white;
 }
 .score-5 {
-  background-color: #0a3d62;
+  background-color: #0a5e57;
   color: white;
 }
 
@@ -538,7 +616,7 @@ body ::selection {
 }
 
 .criterion-card:hover {
-  box-shadow: 0 4px 15px rgba(10, 61, 98, 0.15);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
 }
 
 .extracted-text {
@@ -646,7 +724,7 @@ body ::selection {
 
 .conference-card:hover {
   transform: translateY(-5px);
-  box-shadow: 0 8px 25px rgba(10, 61, 98, 0.15) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08) !important;
   border-left-color: var(--teal);
 }
 
@@ -695,18 +773,17 @@ body ::selection {
   align-items: center;
   justify-content: center;
   border-radius: 16px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  box-shadow: 0 8px 20px rgba(102, 126, 234, 0.3);
+  background: var(--bar);
+  box-shadow: none;
   transition: all 0.3s ease;
 }
 
 .conference-card:hover .conference-logo-placeholder-large {
   transform: scale(1.05);
-  box-shadow: 0 12px 28px rgba(102, 126, 234, 0.4);
 }
 
 .conference-initials {
-  color: white;
+  color: var(--teal);
   font-size: 3rem;
   font-weight: 700;
   letter-spacing: 2px;
