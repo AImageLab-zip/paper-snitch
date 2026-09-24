@@ -1,10 +1,11 @@
 <div align="center">
 
-# PaperSnitch
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.png">
+  <img src="assets/logo-light.png" alt="PaperSnitch" width="420">
+</picture>
 
 ### *The paper has a GitHub. The GitHub has a README. The README has nothing.*
-
-[![Try it live](https://img.shields.io/badge/try%20it%20live-paper--snitch.online-1abc9c?style=for-the-badge)](https://paper-snitch.online) [![MICCAI 2026 paper](https://img.shields.io/badge/MICCAI%202026-paper-2e2e2e?style=for-the-badge)](https://papers.miccai.org/miccai-2026/1055-Paper0729.html)
 
 </div>
 
@@ -12,6 +13,10 @@ PaperSnitch screens papers for reproducibility at review time. It reads the PDF,
 
 <p align="center">
   <img src="flow.svg" width="100%" alt="PaperSnitch pipeline: the PDF is parsed and classified, sections are embedded, then paper, code and dataset analyses run in parallel and are aggregated into an evidence-linked reviewer report">
+</p>
+
+<p align="center">
+  <a href="https://paper-snitch.online"><b>Try it live</b></a> &nbsp;·&nbsp; <a href="https://papers.miccai.org/miccai-2026/1055-Paper0729.html"><b>Read the MICCAI 2026 paper</b></a>
 </p>
 
 <!-- Horizontal figure: upload the image next to this README, then uncomment the next line (and set the file name)
