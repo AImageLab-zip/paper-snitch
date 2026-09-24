@@ -221,7 +221,12 @@ Respond with your assessment."""
                                     {"role": "user", "content": verification_prompt}
                                 ],
                                 text_format=RepoVerification,
-                                reasoning={"effort": "minimal"},
+                                # Non-reasoning models (e.g. gpt-4o) reject this parameter
+                                **(
+                                    {"reasoning": {"effort": "minimal"}}
+                                    if model.startswith(("gpt-5", "o"))
+                                    else {}
+                                ),
                             )
 
                             verification = response.output_parsed
