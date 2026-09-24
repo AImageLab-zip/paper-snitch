@@ -16,6 +16,11 @@ PaperSnitch screens papers for reproducibility at review time. It reads the PDF,
 </p>
 
 <p align="center">
+  <img src="TABLE2.svg" width="100%" alt="PaperSnitch pipeline: the PDF is parsed and classified, sections are embedded, then paper, code and dataset analyses run in parallel and are aggregated into an evidence-linked reviewer report">
+</p>
+
+
+<p align="center">
   <a href="https://paper-snitch.online"><b>Try it live</b></a> &nbsp;·&nbsp; <a href="https://papers.miccai.org/miccai-2026/1055-Paper0729.html"><b>Read the MICCAI 2026 paper</b></a>
 </p>
 
