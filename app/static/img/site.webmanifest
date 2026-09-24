@@ -1,0 +1,15 @@
+{
+  "name": "PaperSnitch",
+  "short_name": "PaperSnitch",
+  "description": "Review-time reproducibility screening for research papers",
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#2e2e2e",
+  "background_color": "#ffffff",
+  "icons": [
+    { "src": "/static/img/web-app-manifest-192x192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/static/img/web-app-manifest-512x512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/static/img/web-app-manifest-192x192-maskable.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/static/img/web-app-manifest-512x512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
