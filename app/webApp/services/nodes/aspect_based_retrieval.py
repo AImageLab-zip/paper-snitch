@@ -21,6 +21,7 @@ from webApp.models import (
 )
 from .reproducibility_aspects import get_aspect, get_aspect_ids, REPRODUCIBILITY_ASPECTS
 from .shared_helpers import retrieve_sections_by_embedding
+from webApp.services.llm_params import reasoning_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -473,7 +474,7 @@ async def analyze_aspect(
             {"role": "user", "content": prompt},
         ],
         response_format={"type": "json_object"},
-        reasoning_effort="minimal",
+        **reasoning_kwargs(model),
         # temperature=0.2
         # max_tokens=1500
     )

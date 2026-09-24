@@ -20,6 +20,7 @@ from webApp.models import Paper
 
 from .aspect_based_retrieval import analyze_aspect, get_aspect_ids
 from .reproducibility_aspects import get_aspect
+from webApp.services.llm_params import reasoning_kwargs
 from .shared_helpers import (
     compute_reproducibility_score,
     ResearchMethodologyAnalysis,
@@ -207,7 +208,7 @@ Generate a JSON with:
                 {"role": "user", "content": overall_prompt},
             ],
             response_format={"type": "json_object"},
-            reasoning_effort="minimal",
+            **reasoning_kwargs(model),
             # temperature=0.2,
             # max_tokens=1000
         )

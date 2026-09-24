@@ -7,6 +7,7 @@ from workflow_engine.services.async_orchestrator import async_ops
 
 from webApp.services.pydantic_schemas import PaperTypeClassification
 from webApp.services.graphs_state import PaperProcessingState
+from webApp.services.llm_params import reasoning_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -173,7 +174,7 @@ Provide:
                     "schema": PaperTypeClassification.model_json_schema(),
                 },
             },
-            reasoning_effort="minimal",
+            **reasoning_kwargs(state["model"]),
             # temperature=0.3,
         )
 

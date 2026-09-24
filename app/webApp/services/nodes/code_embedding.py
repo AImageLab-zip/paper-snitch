@@ -31,6 +31,7 @@ from webApp.services.pydantic_schemas import (
     PatternExtraction,
 )
 from webApp.services.graphs_state import PaperProcessingState
+from webApp.services.llm_params import reasoning_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -336,7 +337,7 @@ Generate the output ready to be transformed into a Python list of strings.
                 {"role": "user", "content": code_info_prompt},
             ],
             text_format=PatternExtraction,
-            reasoning={"effort": "minimal"},
+            **reasoning_kwargs(model, api="responses"),
         )
         retrieved_patterns = response.output_parsed
         total_input_tokens += response.usage.input_tokens

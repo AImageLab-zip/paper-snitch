@@ -29,6 +29,7 @@ from webApp.services.pydantic_schemas import (
     AggregatedDatasetDocumentationAnalysis,
 )
 from webApp.services.graphs_state import PaperProcessingState
+from webApp.services.llm_params import reasoning_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -275,7 +276,7 @@ Provide your assessment with:
                         {"role": "user", "content": user_prompt},
                     ],
                     response_format=SingleDatasetCriterionAnalysis,
-                    reasoning_effort="minimal",
+                    **reasoning_kwargs(model),
                     # temperature=0.1,
                 )
 

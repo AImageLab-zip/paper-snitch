@@ -26,6 +26,7 @@ from webApp.services.pydantic_schemas import (
 )
 from webApp.services.graphs_state import PaperProcessingState
 from webApp.services.nodes.reproducibility_criteria import get_all_criteria
+from webApp.services.llm_params import reasoning_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -274,7 +275,7 @@ Provide your assessment with:
                         {"role": "user", "content": user_prompt},
                     ],
                     response_format=SingleCriterionAnalysis,
-                    reasoning_effort="minimal",
+                    **reasoning_kwargs(model),
                     # temperature=0.1,
                 )
 

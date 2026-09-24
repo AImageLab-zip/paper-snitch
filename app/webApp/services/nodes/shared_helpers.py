@@ -26,6 +26,7 @@ from workflow_engine.models import (
     WorkflowNode,
 )
 from workflow_engine.services.async_orchestrator import async_ops
+from webApp.services.llm_params import reasoning_kwargs
 from webApp.services.pydantic_schemas import (
     PatternExtraction,
     ResearchMethodologyAnalysis,
@@ -1076,7 +1077,7 @@ NOTE: Do NOT compute a numeric score - focus on extracting factual information o
                 },
                 {"role": "user", "content": analysis_prompt},
             ],
-            reasoning_effort="minimal",
+            **reasoning_kwargs(model),
             # temperature=0.2,
             # max_output_tokens=4000,
         )
@@ -1181,7 +1182,7 @@ Output the complete JSON object with ALL fields filled in based on the analysis 
                 {"role": "user", "content": structuring_prompt},
             ],
             response_format={"type": "json_object"},
-            reasoning_effort="minimal",
+            **reasoning_kwargs(model),
             # temperature=0.0,
             # max_tokens=2000,
         )

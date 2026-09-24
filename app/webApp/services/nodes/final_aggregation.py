@@ -23,6 +23,7 @@ from webApp.services.pydantic_schemas import (
     FinalQualitativeAssessment,
 )
 from webApp.services.graphs_state import PaperProcessingState
+from webApp.services.llm_params import reasoning_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -476,7 +477,7 @@ Create a unified narrative connecting findings across all evaluation dimensions.
                 {"role": "user", "content": user_prompt},
             ],
             response_format=FinalQualitativeAssessment,
-            reasoning_effort="minimal",
+            **reasoning_kwargs(model),
             # temperature=0.3,
         )
 
