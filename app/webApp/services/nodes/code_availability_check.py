@@ -9,6 +9,7 @@ from openai import OpenAI
 from pydantic import BaseModel, Field
 
 from webApp.models import Paper
+from workflow_engine.models import WorkflowNode
 from workflow_engine.services.async_orchestrator import async_ops
 from .shared_helpers import ingest_with_steroids
 
@@ -567,8 +568,12 @@ Respond with your assessment."""
         if not result.code_available:
             workflow_run_id = state.get("workflow_run_id")
             for node_id in ["code_embedding", "code_repository_analysis"]:
-                skip_node = await async_ops.get_workflow_node(workflow_run_id, node_id)
-                if skip_node and skip_node.status == "pending":
+                # Code-only workflows don't have these nodes
+                try:
+                    skip_node = await async_ops.get_workflow_node(workflow_run_id, node_id)
+                except WorkflowNode.DoesNotExist:
+                    continue
+                if skip_node.status == "pending":
                     await async_ops.update_node_status(skip_node, "skipped")
                     await async_ops.create_node_log(
                         skip_node, "INFO", "Skipped (no code repository available)"
