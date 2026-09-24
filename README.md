@@ -7,6 +7,8 @@
 
 ### *The paper has a GitHub. The GitHub has a README. The README has nothing.*
 
+[![Live demo](https://img.shields.io/badge/live%20demo-paper--snitch.online-1abc9c?style=flat-square)](https://paper-snitch.online) [![MICCAI 2026](https://img.shields.io/badge/MICCAI%202026-paper-2e2e2e?style=flat-square)](https://papers.miccai.org/miccai-2026/1055-Paper0729.html) [![Python](https://img.shields.io/badge/python-3.12-3776ab?style=flat-square)](https://www.python.org/) [![Django](https://img.shields.io/badge/django-5.2-0c4b33?style=flat-square)](https://www.djangoproject.com/)
+
 </div>
 
 PaperSnitch screens papers for reproducibility at review time. It reads the PDF, checks that the linked repository exists and actually contains code, and returns a 0–100 verifiability score where every verdict points to evidence in the paper. It never runs untrusted code: the reviewer decides.
@@ -16,13 +18,10 @@ PaperSnitch screens papers for reproducibility at review time. It reads the PDF,
 </p>
 
 <p align="center">
-  <img src="TABLE2.svg" width="100%" alt="PaperSnitch pipeline: the PDF is parsed and classified, sections are embedded, then paper, code and dataset analyses run in parallel and are aggregated into an evidence-linked reviewer report">
+  <img src="TABLE2.svg" width="100%" alt="PaperSnitch principles: evidence-grounded, no untrusted code execution, the reviewer stays in control; 4,887 papers analysed, about 45% with no code or inaccessible code; QR code to try PaperSnitch">
 </p>
 
 
-<p align="center">
-  <a href="https://paper-snitch.online"><b>Try it live</b></a> &nbsp;·&nbsp; <a href="https://papers.miccai.org/miccai-2026/1055-Paper0729.html"><b>Read the MICCAI 2026 paper</b></a>
-</p>
 
 <!-- Horizontal figure: upload the image next to this README, then uncomment the next line (and set the file name)
 <p align="center"><img src="figure.png" width="100%" alt="PaperSnitch figure"></p>
