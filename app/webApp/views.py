@@ -60,7 +60,23 @@ from workflow_engine.models import (
     WorkflowNode,
     WorkflowDefinition,
     NodeArtifact,
+    NodeLog,
 )
+
+
+def skipped_node_ids(nodes):
+    """Nodes recorded as completed that did no work, e.g. the dataset check on a
+    method-only paper: no result artifact and a "skip" log (same rule as the demo)."""
+    completed = [n.id for n in nodes if n.status == "completed"]
+    if not completed:
+        return set()
+    with_result = set(
+        NodeArtifact.objects.filter(node_id__in=completed, name="result").values_list("node_id", flat=True)
+    )
+    skip_logged = set(
+        NodeLog.objects.filter(node_id__in=completed, message__icontains="skip").values_list("node_id", flat=True)
+    )
+    return {nid for nid in completed if nid in skip_logged and nid not in with_result}
 
 
 def compute_conference_token_statistics(conferences):
@@ -1019,6 +1035,7 @@ class PaperDetailView(View):
             # Create an instant O(1) lookup dictionary
             dag_nodes_dict = {n["id"]: n for n in dag_structure.get("nodes", [])}
 
+            skipped_ids = skipped_node_ids(nodes)
             for node in nodes:
                 node_def = dag_nodes_dict.get(node.node_id)
                 display_name = (
@@ -1031,7 +1048,7 @@ class PaperDetailView(View):
                     "id": str(node.id),
                     "node_id": node.node_id,
                     "display_name": display_name,
-                    "status": node.status,
+                    "status": "skipped" if node.id in skipped_ids else node.status,
                     "node_type": node.node_type,
                     "duration": node.duration,
                     "tokens": node.total_tokens,
@@ -1262,6 +1279,7 @@ class WorkflowStatusView(View):
         # Get all nodes
         nodes = WorkflowNode.objects.filter(workflow_run=workflow_run)
         nodes_data = {}
+        skipped_ids = skipped_node_ids(nodes)
 
         for node in nodes:
             node_def = next(
@@ -1278,7 +1296,7 @@ class WorkflowStatusView(View):
                 "id": str(node.id),
                 "node_id": node.node_id,
                 "display_name": display_name,
-                "status": node.status,
+                "status": "skipped" if node.id in skipped_ids else node.status,
                 "node_type": node.node_type,
                 "duration": node.duration,
                 "tokens": node.total_tokens,
