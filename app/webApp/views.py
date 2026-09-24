@@ -1033,6 +1033,8 @@ class PaperDetailView(View):
                     "display_name": display_name,
                     "status": node.status,
                     "node_type": node.node_type,
+                    "duration": node.duration,
+                    "tokens": node.total_tokens,
                 }
 
         import json
@@ -1278,6 +1280,8 @@ class WorkflowStatusView(View):
                 "display_name": display_name,
                 "status": node.status,
                 "node_type": node.node_type,
+                "duration": node.duration,
+                "tokens": node.total_tokens,
             }
 
         return JsonResponse(

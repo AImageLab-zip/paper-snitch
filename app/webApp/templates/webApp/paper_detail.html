@@ -4,104 +4,13 @@
 {% block head_title %}{{ paper.title }} - Details{% endblock %}
 
 {% block extra_head %}
-<!-- Mermaid.js for DAG visualization -->
-<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<link rel="stylesheet" href="{% static 'css/dag_view.css' %}?v=20260924">
 <style>
     .workflow-diagram-container {
         background: white;
-        padding: 30px;
+        padding: 24px;
         border-radius: 8px;
         overflow-x: auto;
-        margin-bottom: 30px;
-        min-height: 500px;
-    }
-    
-    .mermaid-diagram {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        min-height: 450px;
-        width: 100%;
-    }
-    
-    .mermaid-diagram .mermaid {
-        width: 100%;
-        min-height: 450px;
-    }
-    
-    .mermaid-diagram svg {
-        max-width: 100%;
-        height: auto;
-        min-height: 450px;
-    }
-    
-    /* Mermaid node styling overrides */
-    .mermaid .node rect,
-    .mermaid .node circle {
-        stroke-width: 3px;
-        filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1));
-        transition: all 0.3s ease;
-    }
-    
-    .mermaid .node:hover rect,
-    .mermaid .node:hover circle {
-        filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.15));
-        transform: translateY(-2px);
-    }
-    
-    .mermaid .node.completed rect {
-        fill: url(#gradient-completed) !important;
-        stroke: #0a7a6e !important;
-    }
-    
-    .mermaid .node.running rect {
-        fill: url(#gradient-running) !important;
-        stroke: #2471a3 !important;
-        animation: pulse-running 1.5s ease-in-out infinite, glow-running 2s ease-in-out infinite;
-    }
-    
-    .mermaid .node.failed rect {
-        fill: url(#gradient-failed) !important;
-        stroke: #a93226 !important;
-    }
-    
-    .mermaid .node.pending rect {
-        fill: url(#gradient-pending) !important;
-        stroke: #d4ac0d !important;
-    }
-    
-    .mermaid .node.cancelled rect {
-        fill: url(#gradient-cancelled) !important;
-        stroke: #d68910 !important;
-    }
-    
-    /* Node text styling */
-    .mermaid .nodeLabel {
-        color: white !important;
-        font-weight: 600 !important;
-        font-size: 17px !important;
-        text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.2);
-    }
-    
-    /* Edge styling */
-    .mermaid .edgePath path {
-        stroke: #5d6d7e !important;
-        stroke-width: 2.5px !important;
-        filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.1));
-    }
-    
-    .mermaid .arrowheadPath {
-        fill: #5d6d7e !important;
-        stroke: #5d6d7e !important;
-    }
-    
-    .mermaid .edgeLabel {
-        background-color: white;
-        padding: 4px 8px;
-        border-radius: 4px;
-        font-size: 13px;
-        font-weight: 500;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     }
     
     /* Animations for running nodes */
@@ -125,22 +34,6 @@
     
     .clickable-node {
         cursor: pointer;
-    }
-    
-    /* Hide edge labels completely - not needed for this workflow visualization */
-    .mermaid g.edgeLabels,
-    .mermaid .edgeLabels {
-        display: none !important;
-    }
-    
-    /* Style arrowheads properly */
-    .mermaid marker path {
-        fill: #5d6d7e !important;
-    }
-    
-    /* Add SVG gradients for nodes */
-    .mermaid svg defs {
-        display: block;
     }
     
     /* Workflow run row hover effect */
@@ -259,38 +152,18 @@
     
     .legend-box {
         width: 24px;
-        height: 24px;
-        border-radius: 6px;
+        height: 18px;
+        border-radius: 5px;
         border: 2px solid;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     }
-    
-    .legend-box.completed {
-        background: linear-gradient(135deg, #16a085 0%, #1abc9c 100%);
-        border-color: #0a7a6e;
-    }
-    
-    .legend-box.running {
-        background: linear-gradient(135deg, #2874a6 0%, #3498db 100%);
-        border-color: #2471a3;
-        animation: pulse-running 2s ease-in-out infinite;
-    }
-    
-    .legend-box.failed {
-        background: linear-gradient(135deg, #c0392b 0%, #e74c3c 100%);
-        border-color: #a93226;
-    }
-    
-    .legend-box.pending {
-        background: linear-gradient(135deg, #d4ac0d 0%, #f4d03f 100%);
-        border-color: #d4ac0d;
-    }
-    
-    .legend-box.cancelled {
-        background: linear-gradient(135deg, #d68910 0%, #f39c12 100%);
-        border-color: #d68910;
-    }
-    
+
+    .legend-box.completed { background: #1abc9c; border-color: #0e8c82; }
+    .legend-box.running { background: #fff8ec; border-color: #f39c12; animation: pulse-running 2s ease-in-out infinite; }
+    .legend-box.failed { background: #fbeaea; border-color: #c0392b; }
+    .legend-box.pending { background: #fff; border-color: #cfd8de; }
+    .legend-box.skipped { background: #f3f5f6; border-color: #aab4bc; border-style: dashed; }
+    .legend-box.cancelled { background: #fdf3e6; border-color: #d68910; border-style: dashed; }
+
     .status-badge-large {
         font-size: 0.7rem;
         padding: 2px 6px;
@@ -413,33 +286,16 @@
                 </div>
                 {% endif %}
                 <div class="card-body workflow-diagram-container mb-0">
-                    <!-- Mermaid DAG Diagram -->
-                    <div class="mermaid-diagram" id="workflow-mermaid">
-                        <!-- Mermaid syntax will be inserted here -->
-                    </div>
+                    <svg class="dag" id="workflow-dag"></svg>
                     
                     <div class="node-legend">
                         <div class="legend-items">
-                            <div class="legend-item">
-                                <div class="legend-box completed"></div>
-                                <span><i class="fas fa-check-circle text-success"></i> Completed</span>
-                            </div>
-                            <div class="legend-item">
-                                <div class="legend-box running"></div>
-                                <span><i class="fas fa-spinner text-info"></i> Running</span>
-                            </div>
-                            <div class="legend-item">
-                                <div class="legend-box failed"></div>
-                                <span><i class="fas fa-times-circle text-danger"></i> Failed</span>
-                            </div>
-                            <div class="legend-item">
-                                <div class="legend-box pending"></div>
-                                <span><i class="fas fa-clock text-warning"></i> Pending</span>
-                            </div>
-                            <div class="legend-item">
-                                <div class="legend-box cancelled"></div>
-                                <span><i class="fas fa-ban" style="color: #d68910;"></i> Cancelled</span>
-                            </div>
+                            <div class="legend-item"><div class="legend-box completed"></div><span>Completed</span></div>
+                            <div class="legend-item"><div class="legend-box running"></div><span>Running</span></div>
+                            <div class="legend-item"><div class="legend-box pending"></div><span>Pending</span></div>
+                            <div class="legend-item"><div class="legend-box failed"></div><span>Failed</span></div>
+                            <div class="legend-item"><div class="legend-box skipped"></div><span>Skipped</span></div>
+                            <div class="legend-item"><div class="legend-box cancelled"></div><span>Cancelled</span></div>
                         </div>
                         <div class="legend-help text-muted small">
                             <i class="fas fa-info-circle mr-1"></i> Click on any node to view execution details and logs
@@ -769,25 +625,8 @@
 </div>
 
 <script src="{% static 'js/node_renderers.js' %}"></script>
+<script src="{% static 'js/dag_view.js' %}?v=20260924"></script>
 <script>
-// Initialize Mermaid
-mermaid.initialize({
-    startOnLoad: false,
-    theme: 'default',
-    flowchart: {
-        useMaxWidth: false,
-        htmlLabels: true,
-        curve: 'basis',
-        padding: 15,
-        nodeSpacing: 120,
-        rankSpacing: 100,
-        width: '100%'
-    },
-    securityLevel: 'loose',
-    fontFamily: 'Arial, sans-serif',
-    fontSize: 18
-});
-
 // Global variables
 let nodesData = {{ workflow_nodes_json|safe }};
 const edges = {{ workflow_edges|safe }};
@@ -1187,130 +1026,57 @@ function renderNodeDetails(node) {
 
 const escapeHtml = NodeRenderers.escapeHtml;
 
-// Function to render/update the Mermaid diagram
+// Workflow DAG, drawn once by static/js/dag_view.js and then updated in place
+let dagRendered = false;
+
+function formatNodeDuration(seconds) {
+    if (seconds === null || seconds === undefined) return '';
+    const s = Math.round(seconds);
+    return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
+}
+
+function formatNodeTokens(n) {
+    if (!n) return '';
+    return (n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : n) + ' tokens';
+}
+
+function nodeSubtitle(node) {
+    switch (node.status) {
+        case 'completed': {
+            const parts = [formatNodeDuration(node.duration), formatNodeTokens(node.tokens)].filter(Boolean);
+            return '✓ ' + (parts.length ? parts.join(' · ') : 'done');
+        }
+        case 'running': return 'running…';
+        case 'ready':
+        case 'claimed': return 'queued';
+        case 'failed': return '✗ failed';
+        case 'skipped': return 'skipped (not applicable)';
+        case 'cancelled': return 'cancelled';
+        default: return 'waiting';
+    }
+}
+
 function renderWorkflowDiagram(nodes) {
     if (Object.keys(nodes).length === 0) return;
-    
-    // Build Mermaid graph syntax
-    let mermaidSyntax = 'graph LR\n';
-    
-    // Add nodes with styling based on status
-    for (const [nodeId, nodeData] of Object.entries(nodes)) {
-        let statusIcon = '';
-        if (nodeData.status === 'completed') {
-            statusIcon = '✓';
-        } else if (nodeData.status === 'running') {
-            statusIcon = '⟳';
-        } else if (nodeData.status === 'failed') {
-            statusIcon = '✗';
-        } else if (nodeData.status === 'cancelled') {
-            statusIcon = '⊘';
-        } else {
-            statusIcon = '○';
-        }
-        const label = `${statusIcon}  ${nodeData.display_name}`;
-        mermaidSyntax += `    ${nodeId}["${label}"]:::${nodeData.status}\n`;
+    const svg = document.getElementById('workflow-dag');
+    if (!dagRendered) {
+        const graphNodes = Object.values(nodes).map(n => ({ id: n.node_id, name: n.display_name }));
+        DagView.render(svg, { nodes: graphNodes, edges: edges }, {
+            onClick: id => window.clickNode(id),
+            maxScale: 1.25
+        });
+        dagRendered = true;
     }
-    
-    // Add edges
-    edges.forEach(edge => {
-        mermaidSyntax += `    ${edge.from} --> ${edge.to}\n`;
+    const states = {};
+    Object.values(nodes).forEach(n => {
+        const state = (n.status === 'ready' || n.status === 'claimed') ? 'queued' : n.status;
+        states[n.node_id] = { state: state, sub: nodeSubtitle(n) };
     });
-    
-    // Add click events
-    for (const [nodeId] of Object.entries(nodes)) {
-        mermaidSyntax += `    click ${nodeId} clickNode\n`;
-    }
-    
-    // Clear and render
-    const mermaidDiv = document.createElement('div');
-    mermaidDiv.className = 'mermaid';
-    mermaidDiv.textContent = mermaidSyntax;
-    $('#workflow-mermaid').html(mermaidDiv);
-    
-    // Render with callback
-    mermaid.init(undefined, mermaidDiv).then(() => {
-        // Add SVG gradients
-        const svg = $('#workflow-mermaid svg')[0];
-        if (svg && !svg.querySelector('#gradient-completed')) {
-            const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-            
-            // Completed gradient (green)
-            const gradCompleted = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
-            gradCompleted.setAttribute('id', 'gradient-completed');
-            gradCompleted.setAttribute('x1', '0%');
-            gradCompleted.setAttribute('y1', '0%');
-            gradCompleted.setAttribute('x2', '100%');
-            gradCompleted.setAttribute('y2', '100%');
-            gradCompleted.innerHTML = `
-                <stop offset="0%" style="stop-color:#16a085;stop-opacity:1" />
-                <stop offset="100%" style="stop-color:#1abc9c;stop-opacity:1" />
-            `;
-            
-            // Running gradient (blue)
-            const gradRunning = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
-            gradRunning.setAttribute('id', 'gradient-running');
-            gradRunning.setAttribute('x1', '0%');
-            gradRunning.setAttribute('y1', '0%');
-            gradRunning.setAttribute('x2', '100%');
-            gradRunning.setAttribute('y2', '100%');
-            gradRunning.innerHTML = `
-                <stop offset="0%" style="stop-color:#2874a6;stop-opacity:1" />
-                <stop offset="100%" style="stop-color:#3498db;stop-opacity:1" />
-            `;
-            
-            // Failed gradient (red)
-            const gradFailed = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
-            gradFailed.setAttribute('id', 'gradient-failed');
-            gradFailed.setAttribute('x1', '0%');
-            gradFailed.setAttribute('y1', '0%');
-            gradFailed.setAttribute('x2', '100%');
-            gradFailed.setAttribute('y2', '100%');
-            gradFailed.innerHTML = `
-                <stop offset="0%" style="stop-color:#c0392b;stop-opacity:1" />
-                <stop offset="100%" style="stop-color:#e74c3c;stop-opacity:1" />
-            `;
-            
-            // Pending gradient (yellow/gold)
-            const gradPending = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
-            gradPending.setAttribute('id', 'gradient-pending');
-            gradPending.setAttribute('x1', '0%');
-            gradPending.setAttribute('y1', '0%');
-            gradPending.setAttribute('x2', '100%');
-            gradPending.setAttribute('y2', '100%');
-            gradPending.innerHTML = `
-                <stop offset="0%" style="stop-color:#d4ac0d;stop-opacity:1" />
-                <stop offset="100%" style="stop-color:#f4d03f;stop-opacity:1" />
-            `;
-            
-            // Cancelled gradient (orange)
-            const gradCancelled = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
-            gradCancelled.setAttribute('id', 'gradient-cancelled');
-            gradCancelled.setAttribute('x1', '0%');
-            gradCancelled.setAttribute('y1', '0%');
-            gradCancelled.setAttribute('x2', '100%');
-            gradCancelled.setAttribute('y2', '100%');
-            gradCancelled.innerHTML = `
-                <stop offset="0%" style="stop-color:#d68910;stop-opacity:1" />
-                <stop offset="100%" style="stop-color:#f39c12;stop-opacity:1" />
-            `;
-            
-            defs.appendChild(gradCompleted);
-            defs.appendChild(gradRunning);
-            defs.appendChild(gradFailed);
-            defs.appendChild(gradPending);
-            defs.appendChild(gradCancelled);
-            
-            svg.insertBefore(defs, svg.firstChild);
-            
-            // Round rectangle corners
-            svg.querySelectorAll('.node rect').forEach(rect => {
-                rect.setAttribute('rx', '8');
-                rect.setAttribute('ry', '8');
-            });
-        }
-    }).catch(err => {
-        console.error('Mermaid rendering error:', err);
+    DagView.setStates(svg, states);
+    // No progress estimate for live runs: show a sweeping bar on running nodes
+    svg.querySelectorAll('.node.running .bar').forEach(bar => {
+        bar.classList.add('indeterminate');
+        bar.setAttribute('width', (Number(bar.previousElementSibling.getAttribute('width')) * 0.3).toFixed(1));
     });
 }
 

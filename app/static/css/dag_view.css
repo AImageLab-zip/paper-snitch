@@ -1,0 +1,61 @@
+/* Workflow DAG (static/js/dag_view.js): shared by the demo and the paper page. */
+
+/* Bundled icon font, so node icons work whichever FontAwesome loader the page uses */
+@font-face {
+    font-family: "PaperSnitch DAG Icons";
+    font-weight: 900;
+    font-display: block;
+    src: url("../vendor/fontawesome/webfonts/fa-solid-900.woff2") format("woff2");
+}
+
+.dag {
+    --dag-brand: #1abc9c;
+    --dag-brand-dark: #0e8c82;
+    --dag-running: #f39c12;
+    --dag-skipped: #aab4bc;
+    --dag-failed: #c0392b;
+    --dag-cancelled: #d68910;
+    --dag-ink: #22313a;
+    --dag-muted: #6b7a85;
+    width: 100%;
+    height: auto;
+    display: block;
+    margin: 0 auto;
+}
+
+.dag .edge { fill: none; stroke: #cfd8de; stroke-width: 2.5; transition: stroke .4s; }
+.dag .edge.done { stroke: var(--dag-brand); }
+.dag .edge.flow { stroke: var(--dag-running); stroke-dasharray: 6 6; animation: dag-flow 0.8s linear infinite; }
+.dag .edge.skip { stroke: #e3e7ea; stroke-dasharray: 3 5; }
+@keyframes dag-flow { to { stroke-dashoffset: -12; } }
+
+.dag .node { cursor: pointer; }
+.dag .node rect { fill: #fff; stroke: #cfd8de; stroke-width: 2; transition: fill .4s, stroke .4s; }
+.dag .node:hover > rect:first-child { stroke: var(--dag-brand-dark); }
+.dag .node text { font-size: 13px; font-weight: 600; fill: var(--dag-ink); pointer-events: none; }
+.dag .node .sub { font-size: 10.5px; font-weight: 500; fill: var(--dag-muted); }
+.dag .node .icon { font-family: "PaperSnitch DAG Icons"; font-weight: 900; font-size: 14px; }
+
+.dag .node.running rect { stroke: var(--dag-running); stroke-width: 3; fill: #fff8ec; animation: dag-pulse 1.2s ease-in-out infinite; }
+.dag .node.completed rect { fill: var(--dag-brand); stroke: var(--dag-brand-dark); }
+.dag .node.completed text { fill: #fff; }
+.dag .node.completed .sub { fill: #e6fbf6; }
+.dag .node.skipped rect { fill: #f3f5f6; stroke: var(--dag-skipped); stroke-dasharray: 5 4; }
+.dag .node.skipped text { fill: #97a3ab; }
+.dag .node.failed rect { fill: #fbeaea; stroke: var(--dag-failed); }
+.dag .node.failed .sub { fill: var(--dag-failed); }
+.dag .node.cancelled rect { fill: #fdf3e6; stroke: var(--dag-cancelled); stroke-dasharray: 5 4; }
+.dag .node.cancelled .sub { fill: var(--dag-cancelled); }
+.dag .node.queued > rect:first-child { stroke: var(--dag-running); stroke-dasharray: 5 4; }
+@keyframes dag-pulse { 50% { stroke-opacity: 0.35; } }
+
+.dag .node .bar-bg { fill: rgba(0,0,0,0.06); stroke: none; }
+.dag .node .bar { fill: var(--dag-running); stroke: none; }
+/* The progress track only matters while waiting or running */
+.dag .node.completed .bar, .dag .node.completed .bar-bg,
+.dag .node.skipped .bar, .dag .node.skipped .bar-bg,
+.dag .node.failed .bar, .dag .node.failed .bar-bg,
+.dag .node.cancelled .bar, .dag .node.cancelled .bar-bg { display: none; }
+/* Live runs have no progress estimate: sweep the bar instead */
+.dag .node.running .bar.indeterminate { transform-box: fill-box; animation: dag-sweep 1.4s ease-in-out infinite; }
+@keyframes dag-sweep { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(233%); } }

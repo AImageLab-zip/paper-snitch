@@ -140,30 +140,9 @@ body.demo.fixed-height { height: 100vh; min-height: 0; overflow: hidden; }
 .stat .v { font-size: 1.4rem; font-weight: 800; font-variant-numeric: tabular-nums; }
 .stat .k { font-size: 0.72rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
 
-/* DAG */
+/* DAG: shared styles in dag_view.css; demo-only sizing here */
 .dag-wrap { padding: 8px; }
-.dag { width: 100%; height: auto; max-height: 36vh; display: block; }
-.dag .edge { fill: none; stroke: #cfd8de; stroke-width: 2.5; transition: stroke .4s; }
-.dag .edge.done { stroke: var(--brand); }
-.dag .edge.flow { stroke: var(--running); stroke-dasharray: 6 6; animation: flow 0.8s linear infinite; }
-.dag .edge.skip { stroke: #e3e7ea; stroke-dasharray: 3 5; }
-@keyframes flow { to { stroke-dashoffset: -12; } }
-.dag .node { cursor: pointer; }
-.dag .node rect { fill: #fff; stroke: #cfd8de; stroke-width: 2; transition: fill .4s, stroke .4s; }
-.dag .node text { font-size: 13px; font-weight: 600; fill: var(--ink); pointer-events: none; }
-.dag .node .sub { font-size: 10.5px; font-weight: 500; fill: var(--muted); }
-.dag .node .icon { font-family: "Font Awesome 6 Free"; font-weight: 900; font-size: 14px; }
-.dag .node.running rect { stroke: var(--running); stroke-width: 3; fill: #fff8ec; animation: pulse 1.2s ease-in-out infinite; }
-.dag .node.completed rect { fill: var(--brand); stroke: var(--brand-dark); }
-.dag .node.completed text { fill: #fff; }
-.dag .node.completed .sub { fill: #e6fbf6; }
-.dag .node.skipped rect { fill: #f3f5f6; stroke: var(--skipped); stroke-dasharray: 5 4; }
-.dag .node.skipped text { fill: #97a3ab; }
-.dag .node.failed rect { fill: #fbeaea; stroke: var(--failed); }
-@keyframes pulse { 50% { stroke-opacity: 0.35; } }
-.dag .node .bar-bg { fill: rgba(0,0,0,0.06); stroke: none; }
-.dag .node .bar { fill: var(--running); stroke: none; }
-.dag .node.completed .bar, .dag .node.completed .bar-bg { display: none; }
+.dag-wrap .dag { max-height: 36vh; }
 
 /* Console */
 .console {
