@@ -36,7 +36,8 @@ class WorkflowOrchestrator:
         workflow_name: str,
         paper,
         input_data: Dict[str, Any] = None,
-        user=None
+        user=None,
+        is_public: bool = True,
     ) -> WorkflowRun:
         """
         Create a new workflow run for a paper.
@@ -66,6 +67,7 @@ class WorkflowOrchestrator:
                 paper=paper,
                 input_data=input_data or {},
                 created_by=user,
+                is_public=is_public,
                 status='pending'
             )
             
@@ -147,6 +149,12 @@ class WorkflowOrchestrator:
             
             if workflow_run_id:
                 query = query.filter(workflow_run_id=workflow_run_id)
+
+            # Runs executed by LangGraph mark their own nodes; claiming them here
+            # would run a node twice (and with the wrong key/model)
+            # (a positive subquery: excluding on the JSON key would also drop runs without it)
+            langgraph_runs = WorkflowRun.objects.filter(input_data__executor="langgraph").values("id")
+            query = query.exclude(workflow_run__in=langgraph_runs)
             
             # Use SELECT FOR UPDATE SKIP LOCKED for distributed claiming
             # This is the key to preventing duplicate work in multi-worker setups
@@ -495,6 +503,7 @@ class NodeExecutor:
         """
         from openai import OpenAI
         import os
+        from webApp.services.credentials import resolve_openai_key
         
         workflow_run = self.node.workflow_run
         
@@ -506,8 +515,9 @@ class NodeExecutor:
             'workflow_run_id': str(workflow_run.id),
             'paper_id': workflow_run.paper.id,
             'current_node_id': self.node.node_id,
-            'client': OpenAI(api_key=os.getenv('OPENAI_API_KEY')),
-            'model': os.getenv('OPENAI_MODEL', 'gpt-5'),
+            # Bill whoever started the run; staff/system runs use the server key
+            'client': OpenAI(api_key=resolve_openai_key(workflow_run.created_by)),
+            'model': workflow_run.input_data.get('model') or os.getenv('OPENAI_MODEL', 'gpt-5'),
             'force_reprocess': workflow_run.input_data.get('force_reprocess', False),
         }
         

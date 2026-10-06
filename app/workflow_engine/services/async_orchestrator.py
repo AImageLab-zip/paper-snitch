@@ -90,30 +90,33 @@ class AsyncWorkflowOperations:
         workflow_name: str,
         paper_id: int,
         input_data: Dict[str, Any] = None,
-        user = None
+        user = None,
+        is_public: bool = True,
     ) -> WorkflowRun:
         """
         Create a workflow run using paper_id instead of paper object.
-        
+
         Convenience method that fetches paper and delegates to orchestrator.
-        
+
         Args:
             workflow_name: Name of workflow definition
             paper_id: Paper database ID
             input_data: Input parameters
             user: User initiating workflow
-            
+            is_public: Whether the run is visible to everyone
+
         Returns:
             WorkflowRun instance
         """
         from webApp.models import Paper
         paper = Paper.objects.get(id=paper_id)
-        
+
         return self.orchestrator.create_workflow_run(
             workflow_name=workflow_name,
             paper=paper,
             input_data=input_data,
-            user=user
+            user=user,
+            is_public=is_public,
         )
     
     # ========================================================================

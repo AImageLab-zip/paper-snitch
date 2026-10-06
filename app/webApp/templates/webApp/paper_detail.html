@@ -215,7 +215,7 @@
                             </a>
                             {% endif %}
                             {% if paper.file %}
-                            <a href="{{ paper.file.url }}" target="_blank" class="btn btn-outline-light btn-sm">
+                            <a href="{% url 'paper_pdf' paper.id %}" target="_blank" class="btn btn-outline-light btn-sm">
                                 <i class="fas fa-download mr-1"></i> Download PDF
                             </a>
                             {% endif %}
@@ -261,9 +261,16 @@
                             </span>
                             {% endif %}
 
-                            {% if selected_workflow.status not in 'running,pending' and user.is_authenticated%}
+                            {% if can_manage_selected %}
+                            <div class="custom-control custom-switch ml-3" title="Who can see this analysis">
+                                <input type="checkbox" class="custom-control-input" id="run-visibility-toggle"
+                                       data-url="{% url 'run_visibility' selected_workflow.id %}" {% if selected_workflow.is_public %}checked{% endif %}>
+                                <label class="custom-control-label small" for="run-visibility-toggle">{% if selected_workflow.is_public %}Public{% else %}Private{% endif %}</label>
+                            </div>
+                            {% endif %}
+                            {% if user.is_authenticated %}
                             <button class="btn btn-sm btn-outline-primary ml-3" id="rerun-workflow-btn" onclick="rerunWorkflow({{ paper.id }})">
-                                <i class="fas fa-redo mr-1"></i> Rerun Analysis
+                                <i class="fas fa-redo mr-1"></i> Run analysis
                             </button>
                             {% endif %}
                             {% if selected_workflow.status == 'completed' and selected_workflow.workflow_definition.name == 'paper_processing_with_reproducibility' %}
@@ -313,11 +320,26 @@
                 </div>
                 <div class="card-body text-center py-5">
                     <i class="fas fa-robot fa-4x text-muted mb-3"></i>
+                    {% if paper.owner_id and paper.owner_id == user.id and not paper.text and paper.sections.ingest_error %}
+                    <h5 class="text-danger"><i class="fas fa-exclamation-triangle mr-2"></i>Text extraction failed</h5>
+                    <p class="text-muted">{{ paper.sections.ingest_error }} Make sure the PDF has selectable text (not a scan),
+                        then <a href="{% url 'analyze_upload' %}">upload it again</a>.</p>
+                    {% elif paper.owner_id and paper.owner_id == user.id and not paper.text %}
+                    <h5 class="text-muted"><i class="fas fa-spinner fa-spin mr-2"></i>Processing your PDF</h5>
+                    <p class="text-muted">We are extracting the text. The analysis starts automatically and appears here in a minute or two.</p>
+                    <script>setTimeout(function() { location.reload(); }, 10000);</script>
+                    {% else %}
                     <h5 class="text-muted">No Analysis Yet</h5>
                     <p class="text-muted">Start analyzing this paper to generate a comprehensive reproducibility assessment.</p>
+                    {% if user.is_authenticated %}
                     <button class="btn btn-primary btn-lg mt-3" onclick="rerunWorkflow({{ paper.id }})">
                         <i class="fas fa-play mr-2"></i> Start Analysis
                     </button>
+                    {% else %}
+                    <p class="mt-3"><a href="{% url 'login' %}?next={{ request.path|urlencode }}">Log in</a> or
+                        <a href="{% url 'signup' %}">sign up</a> to analyze this paper with your own OpenAI API key.</p>
+                    {% endif %}
+                    {% endif %}
                 </div>
             </div>
             {% endif %}
@@ -457,7 +479,7 @@
                 </div>
             </div>
             <div class="modal-footer">
-                {% if user.is_authenticated %}
+                {% if can_manage_selected %}
                 <button type="button" class="btn btn-warning" id="rerun-node-btn" onclick="rerunNode()">
                     <i class="fas fa-redo mr-2"></i>Rerun This Node
                 </button>
@@ -515,8 +537,23 @@
                     </small>
                 </div>
                 
-                <!-- Force Reprocess Option -->
+                <!-- Visibility -->
                 <div class="form-group">
+                    <label class="font-weight-bold"><i class="fas fa-eye mr-1"></i>Visibility:</label>
+                    <div class="custom-control custom-radio">
+                        <input type="radio" id="run-vis-private" name="run-visibility" value="private" class="custom-control-input">
+                        <label class="custom-control-label" for="run-vis-private">Private: only you can see this analysis</label>
+                    </div>
+                    <div class="custom-control custom-radio">
+                        <input type="radio" id="run-vis-public" name="run-visibility" value="public" class="custom-control-input">
+                        <label class="custom-control-label" for="run-vis-public">Public: anyone can see it</label>
+                    </div>
+                </div>
+
+                <div class="alert alert-secondary small py-2" id="run-billing-note"></div>
+
+                <!-- Force Reprocess Option -->
+                <div class="form-group{% if not user.is_staff %} d-none{% endif %}">
                     <div class="custom-control custom-checkbox">
                         <input type="checkbox" class="custom-control-input" id="force-reprocess-checkbox" checked>
                         <label class="custom-control-label" for="force-reprocess-checkbox">
@@ -1149,8 +1186,25 @@ $(document).ready(function() {
     }
 });
 
+$('#run-visibility-toggle').on('change', function() {
+    const box = this;
+    const label = $('label[for="run-visibility-toggle"]');
+    $.ajax({
+        url: box.dataset.url, method: 'POST',
+        data: {public: box.checked ? 'true' : 'false'},
+        headers: {'X-CSRFToken': getCookie('csrftoken')},
+        success: function(r) { label.text(r.is_public ? 'Public' : 'Private'); },
+        error: function() { box.checked = !box.checked; alert('Could not change the visibility.'); }
+    });
+});
+
+// The modal body is replaced by error messages; keep the form to restore it on reopen
+const rerunModalBodyHtml = $('#rerunWorkflowModal .modal-body').html();
+
 // Function to rerun workflow
 function rerunWorkflow(paperId) {
+    $('#rerunWorkflowModal .modal-body').html(rerunModalBodyHtml);
+    $('#rerunWorkflowModal .btn-secondary').prop('disabled', false);
     // Store paper ID for later use
     $('#rerunWorkflowModal').data('paperId', paperId);
     
@@ -1200,7 +1254,7 @@ function loadAvailableWorkflows(paperId) {
                     const opt = $('<option></option>')
                         .attr('value', llm.model)
                         .text(llm.visual_name);
-                    if (idx === 0) {
+                    if (llm.default) {
                         opt.attr('selected', 'selected');
                     }
                     modelSelect.append(opt);
@@ -1209,6 +1263,21 @@ function loadAvailableWorkflows(paperId) {
                 modelSelect.html('<option value="" disabled selected>No active models found</option>');
             }
             
+            // Visibility default and billing note
+            $(response.default_public ? '#run-vis-public' : '#run-vis-private').prop('checked', true);
+            $('#run-billing-note').html(response.uses_system_key
+                ? '<i class="fas fa-server mr-1"></i> Runs on the PaperSnitch server key.'
+                : '<i class="fas fa-key mr-1"></i> Billed to your OpenAI key: about $0.25 with GPT-4o, more with larger models.');
+
+            if (!response.can_run) {
+                $('#rerunWorkflowModal .modal-body').html(
+                    '<div class="alert alert-warning mb-0"><i class="fas fa-key mr-2"></i>' +
+                    'To run analyses, <a href="' + response.profile_url + '#api-key">add your OpenAI API key</a> in your profile. ' +
+                    'An analysis with GPT-4o costs about $0.25, billed to your OpenAI account.</div>');
+                $('#confirm-rerun-btn').prop('disabled', true);
+                return;
+            }
+
             // Enable the confirm button
             $('#confirm-rerun-btn').prop('disabled', false);
         },
@@ -1222,7 +1291,7 @@ function loadAvailableWorkflows(paperId) {
 }
 
 // Update workflow description when selection changes
-$('#workflow-type-select').on('change', function() {
+$(document).on('change', '#workflow-type-select', function() {
     const selectedOption = $(this).find('option:selected');
     $('#workflow-description').text(selectedOption.text());
 });
@@ -1263,7 +1332,8 @@ $('#confirm-rerun-btn').on('click', function() {
         data: {
             'workflow_type': workflowType,
             'force_reprocess': forceReprocess,
-            'model': model
+            'model': model,
+            'visibility': $('input[name="run-visibility"]:checked').val() || ''
         },
         headers: {
             'X-CSRFToken': csrfToken
@@ -1335,6 +1405,9 @@ $('#confirm-rerun-btn').on('click', function() {
             try {
                 const response = JSON.parse(xhr.responseText);
                 errorMsg = response.error || errorMsg;
+                if (response.needs_api_key) {
+                    errorMsg += ` <a href="${response.profile_url}#api-key">Open your profile</a>`;
+                }
                 if (response.status && (response.status === 'running' || response.status === 'pending')) {
                     isAlreadyRunning = true;
                 }

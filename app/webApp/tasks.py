@@ -405,6 +405,8 @@ def process_paper_workflow_task(
     force_reprocess: bool = True,
     model: str = "gpt-5",
     workflow_id: int = None,
+    user_id: int = None,
+    is_public: bool = True,
 ):
     """
     Celery task to process a paper workflow.
@@ -417,6 +419,9 @@ def process_paper_workflow_task(
         force_reprocess: If True, reprocess even if already analyzed
         model: OpenAI model to use
         workflow_id: Optional workflow definition ID. If provided, uses specific workflow; otherwise uses default
+        user_id: User who started the run; their key is billed (staff/None use the server key).
+            Only the id crosses the broker; the key is resolved here, in the worker.
+        is_public: Whether the run is visible to everyone
 
     Returns:
         Dictionary with workflow results (not stored in backend due to ignore_result=True)
@@ -425,6 +430,30 @@ def process_paper_workflow_task(
     import importlib
 
     logger.info(f"Celery task started for paper {paper_id}, workflow_id={workflow_id}")
+
+    from webApp.services.credentials import MissingAPIKey, resolve_openai_key, uses_system_key
+
+    user = None
+    if user_id is not None:
+        from django.contrib.auth import get_user_model
+
+        user = get_user_model().objects.filter(id=user_id).first()
+    try:
+        openai_api_key = resolve_openai_key(user)
+    except MissingAPIKey:
+        logger.warning(f"User {user_id} has no OpenAI key; not running paper {paper_id}")
+        return {"success": False, "error": "No OpenAI API key configured"}
+    if not uses_system_key(user):
+        # User-billed runs never reuse results cached from other users' runs
+        force_reprocess = True
+    run_kwargs = dict(
+        paper_id=paper_id,
+        force_reprocess=force_reprocess,
+        model=model,
+        openai_api_key=openai_api_key,
+        user_id=user_id,
+        is_public=is_public,
+    )
 
     try:
         # Run async workflow in this thread's event loop
@@ -467,22 +496,14 @@ def process_paper_workflow_task(
                     return {"success": False, "error": error_msg}
 
                 # Execute the dynamically loaded workflow
-                result = loop.run_until_complete(
-                    execute_workflow_func(
-                        paper_id=paper_id, force_reprocess=force_reprocess, model=model
-                    )
-                )
+                result = loop.run_until_complete(execute_workflow_func(**run_kwargs))
             else:
                 # Use default workflow
                 from webApp.services.graphs.paper_processing_workflow import (
-                    process_paper_workflow,
+                    execute_workflow,
                 )
 
-                result = loop.run_until_complete(
-                    process_paper_workflow(
-                        paper_id=paper_id, force_reprocess=force_reprocess, model=model
-                    )
-                )
+                result = loop.run_until_complete(execute_workflow(**run_kwargs))
 
             logger.info(
                 f"Celery task completed for paper {paper_id}: {result.get('success')}"
@@ -568,3 +589,44 @@ def scrape_conference_task(
         raise
 
         AnalysisTask.objects.filter(id=task_id).update(status="error", error=str(e))
+
+
+@shared_task(bind=True, max_retries=0, time_limit=600, ignore_result=True)
+def ingest_uploaded_paper_task(self, paper_id: int, user_id: int, model: str, is_public: bool):
+    """Extract text from an uploaded PDF with GROBID, then run the active pipeline on it."""
+    from workflow_engine.models import WorkflowDefinition
+    from webApp.functions import get_pdf_content
+
+    paper = Paper.objects.get(id=paper_id)
+    if not paper.text:
+        try:
+            title, text, sections = get_pdf_content(paper.file.path)
+        except Exception:
+            logger.exception(f"Text extraction crashed for uploaded paper {paper_id}")
+            text = None
+        if not text:
+            logger.error(f"GROBID could not extract text from uploaded paper {paper_id}")
+            # Shown on the paper page instead of the "processing" spinner
+            paper.sections = {"ingest_error": "We could not extract text from this PDF."}
+            paper.save(update_fields=["sections"])
+            return {"success": False, "error": "Text extraction failed"}
+        if title and title != "Title not Found":
+            paper.title = title[:500]
+        paper.text = text
+        paper.sections = sections
+        if isinstance(sections, dict) and not paper.abstract:
+            paper.abstract = next((v for k, v in sections.items() if k.lower() == "abstract"), None)
+        paper.save(update_fields=["title", "text", "sections", "abstract"])
+
+    workflow = WorkflowDefinition.objects.filter(
+        name="paper_processing_with_reproducibility", is_active=True
+    ).order_by("-version").first()
+    process_paper_workflow_task.delay(
+        paper_id=paper_id,
+        force_reprocess=True,
+        model=model,
+        workflow_id=str(workflow.id) if workflow else None,
+        user_id=user_id,
+        is_public=is_public,
+    )
+    return {"success": True}

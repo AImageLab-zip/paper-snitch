@@ -167,7 +167,7 @@ async def retrieve_sections_by_embedding(
 
 
 async def get_relevant_sections_by_similarity(
-    paper, query: str, top_k: int = 4, max_chars_per_section: int = 4000, client=None
+    paper, query: str, client, top_k: int = 4, max_chars_per_section: int = 4000
 ) -> List[Tuple[float, str, str]]:
     """
     Retrieve paper sections most semantically relevant to a text query.
@@ -179,20 +179,13 @@ async def get_relevant_sections_by_similarity(
         query: Query text to find relevant sections
         top_k: Number of top sections to return
         max_chars_per_section: Maximum characters per section (for token management)
-        client: OpenAI client (optional, will create if not provided)
+        client: OpenAI client of the run (determines whose key is billed)
 
     Returns:
         List of tuples (similarity_score, section_type, section_text)
         Sorted by similarity (highest first)
     """
     try:
-        # Get or create OpenAI client
-        if client is None:
-            from openai import OpenAI
-            import os
-
-            client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
         # Compute query embedding
         query_response = client.embeddings.create(
             model="text-embedding-3-small", input=query

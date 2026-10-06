@@ -598,6 +598,9 @@ def suggest_categories(request):
     """
     Computes embedding for input text and returns top 3 similar categories.
     """
+    # Embeddings are billed to the server key
+    if not (request.user.is_authenticated and request.user.is_staff):
+        return JsonResponse({"error": "Not allowed"}, status=403)
     try:
         data = json.loads(request.body)
         text = data.get("text", "")

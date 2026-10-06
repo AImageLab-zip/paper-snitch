@@ -9,7 +9,10 @@ from django.views.decorators.clickjacking import xframe_options_sameorigin
 from django.utils.decorators import method_decorator
 
 from annotator.models import Document
+from webApp.models import Paper
 from workflow_engine.models import WorkflowRun
+
+from webApp.permissions import can_view_paper, can_view_run
 
 from .models import DemoScenario
 from .timeline import build_timeline
@@ -118,6 +121,8 @@ class DemoReportView(View):
         run = get_object_or_404(
             WorkflowRun.objects.select_related("paper", "workflow_definition"), id=run_id
         )
+        if not can_view_run(run, request.user):
+            raise Http404("Run not found.")
         if run.status != "completed" or not run.nodes.filter(node_id="final_aggregation").exists():
             raise Http404("This run has no final assessment.")
         has_pdf_html = Document.objects.filter(
@@ -159,6 +164,9 @@ class DemoPaperHtmlView(View):
     """The pdf2htmlEX rendering of a paper, framed by the report page."""
 
     def get(self, request, paper_id):
+        paper = get_object_or_404(Paper, id=paper_id)
+        if not can_view_paper(paper, request.user):
+            raise Http404("Paper not found.")
         document = (
             Document.objects.filter(paper_id=paper_id, conversion_status="success")
             .exclude(html_file="")

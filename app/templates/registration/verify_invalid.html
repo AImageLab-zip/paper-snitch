@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block head_title %}Invalid activation link{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0"><i class="fas fa-exclamation-triangle"></i> Invalid activation link</h4>
+                </div>
+                <div class="card-body">
+                    <p>This activation link is invalid or has expired.</p>
+                    <a class="btn btn-primary" href="{% url 'resend_verification' %}">Send a new link</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

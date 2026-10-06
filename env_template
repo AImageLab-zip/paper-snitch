@@ -45,3 +45,15 @@ MOONSHOT_API_KEY=#TODO insert API key
 # Celery Configuration
 CELERY_BROKER_URL=redis://redis:6379/0
 CELERY_RESULT_BACKEND=redis://redis:6379/0
+
+# Encrypts users' stored OpenAI keys. Generate with:
+#   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+FIELD_ENCRYPTION_KEY=
+
+# Outgoing email for signup verification and password reset
+EMAIL_HOST=
+EMAIL_PORT=587
+EMAIL_HOST_USER=
+EMAIL_HOST_PASSWORD=
+EMAIL_USE_TLS=true
+DEFAULT_FROM_EMAIL=PaperSnitch <noreply@paper-snitch.online>

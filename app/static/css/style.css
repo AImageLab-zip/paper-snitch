@@ -173,8 +173,48 @@ footer {
 footer {
   background: var(--bar) !important;
 }
-footer .text-center {
-  background-color: transparent !important;
+
+/* Site footer: AImageLab mark on the left, credits on the right */
+.site-footer {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.8rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.site-footer-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.4rem 1.5rem;
+}
+.site-footer-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: inherit !important;
+  line-height: 1.25;
+  text-decoration: none !important;
+}
+.site-footer-brand img {
+  height: 32px;
+  width: auto;
+}
+.site-footer-credits a {
+  color: var(--teal-light);
+}
+.site-footer-credits a:hover {
+  color: #fff;
+}
+@media (max-width: 576px) {
+  .site-footer-inner {
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 0.35rem 1rem;
+    text-align: center;
+  }
+  .site-footer-brand img {
+    height: 24px;
+  }
 }
 /* Buttons */
 .btn-primary {

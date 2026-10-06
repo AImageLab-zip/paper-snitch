@@ -17,10 +17,17 @@ Including another URLconf
 
 from django.contrib import admin
 from django.urls import path, include
+from django.views.generic import TemplateView
+from .accounts import SignUpView, VerifyEmailView, ResendVerificationView
 from .views import (
     HomePageView,
     PaperSnitchLoginView,
-    SignUpView,
+    APIKeyView,
+    AnalyzeUploadView,
+    PaperPDFView,
+    PaperVisibilityView,
+    RunVisibilityView,
+    HighlightedPDFFileView,
     AnalyzePaperView,
     AnalysisStatusView,
     AnalysisCleanupView,
@@ -153,9 +160,20 @@ urlpatterns = [
         StopScrapingView.as_view(),
         name="stop_scraping",
     ),
-    path("accounts/", include("django.contrib.auth.urls")),
-    path("accounts/login/", auth_views.LoginView.as_view(), name="login"),
+    path("contributors/", TemplateView.as_view(template_name="webApp/contributors.html"), name="contributors"),
     path("accounts/signup/", SignUpView.as_view(), name="signup"),
+    path("accounts/verify/<str:uidb64>/<str:token>/", VerifyEmailView.as_view(), name="verify_email"),
+    path("accounts/resend-verification/", ResendVerificationView.as_view(), name="resend_verification"),
+    path("accounts/api-key/", APIKeyView.as_view(), name="api_key"),
+    path("analyze/upload/", AnalyzeUploadView.as_view(), name="analyze_upload"),
+    path("paper/<int:paper_id>/pdf/", PaperPDFView.as_view(), name="paper_pdf"),
+    path("paper/<int:paper_id>/visibility/", PaperVisibilityView.as_view(), name="paper_visibility"),
+    path("workflow/<uuid:workflow_run_id>/visibility/", RunVisibilityView.as_view(), name="run_visibility"),
+    path(
+        "workflow/<uuid:workflow_run_id>/highlighted-pdf/file/",
+        HighlightedPDFFileView.as_view(),
+        name="highlighted_pdf_file",
+    ),
     # path("home/", HomePageView.as_view(), name="homepage"),
     path("profile/", ProfileView.as_view(), name="profile"),
     path(

@@ -174,6 +174,16 @@ class Paper(models.Model):
     last_update = models.DateTimeField(
         auto_now=True, verbose_name="Last update", blank=True, null=True
     )
+    # Set for PDFs uploaded by users; conference papers have no owner
+    owner = models.ForeignKey(
+        "auth.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="uploaded_papers",
+    )
+    is_public = models.BooleanField(default=True, db_index=True)
+    file_sha256 = models.CharField(max_length=64, blank=True, db_index=True)
 
     class Meta:
         verbose_name = "Paper"
@@ -1059,3 +1069,20 @@ class DatasetDocumentationCriterion(models.Model):
             return 0.0
         
         return float(dot_product / (norm_a * norm_b))
+
+
+class UserAPIKey(models.Model):
+    """A user's own OpenAI key, encrypted with FIELD_ENCRYPTION_KEY (see services/credentials.py)."""
+
+    user = models.OneToOneField("auth.User", on_delete=models.CASCADE, related_name="api_key")
+    encrypted_key = models.TextField()
+    masked = models.CharField(max_length=32)
+    verified_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "User API key"
+
+    def __str__(self):
+        return f"{self.user} ({self.masked})"

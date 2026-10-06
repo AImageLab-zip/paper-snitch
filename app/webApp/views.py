@@ -4,10 +4,9 @@ import sys
 from django.shortcuts import render, get_object_or_404
 from django.contrib.auth.views import LoginView
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth import login
 from django.contrib import messages
-from django.http import JsonResponse, FileResponse
+from django.http import JsonResponse, FileResponse, Http404
 import json
 from django.views import View
 from django.core.paginator import Paginator
@@ -30,6 +29,20 @@ from webApp.models import (
     Conference,
     LLMModelConfig,
 )
+from django.urls import reverse
+from webApp.permissions import (
+    StaffRequiredMixin,
+    allowed_model_configs,
+    can_manage_run,
+    can_run_pipelines,
+    can_view_paper,
+    can_view_run,
+    default_model_for,
+    default_visibility,
+    visible_papers,
+    visible_runs,
+)
+from webApp.services.credentials import uses_system_key
 from django.core.paginator import Paginator
 
 from django.core.files.storage import default_storage
@@ -91,7 +104,7 @@ def compute_conference_token_statistics(conferences):
 
     # 1. Subquery to find the ID of the latest completed run for each paper
     latest_run_sq = (
-        WorkflowRun.objects.filter(paper_id=OuterRef("paper_id"), status="completed")
+        WorkflowRun.objects.filter(paper_id=OuterRef("paper_id"), status="completed", is_public=True)
         .order_by("-created_at")
         .values("id")[:1]
     )
@@ -168,7 +181,7 @@ def compute_node_statistics(conference_id):
     """
     # 1. Subquery to find the ID of the latest completed run for each paper
     latest_run_sq = (
-        WorkflowRun.objects.filter(paper_id=OuterRef("paper_id"), status="completed")
+        WorkflowRun.objects.filter(paper_id=OuterRef("paper_id"), status="completed", is_public=True)
         .order_by("-created_at")
         .values("id")[:1]
     )
@@ -229,26 +242,6 @@ def compute_node_statistics(conference_id):
 class PaperSnitchLoginView(LoginView):
 
     template_name = "registration/login.html"
-
-
-class SignUpView(View):
-    """View for user registration."""
-
-    template_name = "registration/signup.html"
-
-    def get(self, request):
-        if request.user.is_authenticated:
-            return redirect("analyze")
-        form = UserCreationForm()
-        return render(request, self.template_name, {"form": form})
-
-    def post(self, request):
-        form = UserCreationForm(request.POST)
-        if form.is_valid():
-            user = form.save()
-            login(request, user)
-            return redirect("analyze")
-        return render(request, self.template_name, {"form": form})
 
 
 class HomePageView(View):
@@ -316,8 +309,8 @@ class CheckPastAnalysesView(LoginRequiredMixin, View):
                 {"error": f"Failed to extract text from PDF: {str(e)}"}, status=400
             )
 
-        # Find existing paper by title
-        papers = Paper.objects.filter(title=title)
+        # Find existing paper by title (never other users' private uploads)
+        papers = visible_papers(Paper.objects.filter(title=title), request.user)
         print(len(papers), "papers found with title:", title)
         past_analyses = []
         pdf_url = None
@@ -347,13 +340,13 @@ class CheckPastAnalysesView(LoginRequiredMixin, View):
             paper.save()
 
             paper_id = paper.id
-            pdf_url = paper.file.url if paper.file else None
+            pdf_url = reverse("paper_pdf", args=[paper.id]) if paper.file else None
 
         elif papers.count() == 1:  # Single match
             match_status = "single_match"
             paper = papers.first()
             paper_id = paper.id
-            pdf_url = paper.file.url if paper.file else None
+            pdf_url = reverse("paper_pdf", args=[paper.id]) if paper.file else None
 
             # Get analyses for this paper
             analyses = (
@@ -409,7 +402,7 @@ class CheckPastAnalysesView(LoginRequiredMixin, View):
                     {
                         "id": p.id,
                         "title": p.title,
-                        "pdf_url": p.file.url if p.file else None,
+                        "pdf_url": reverse("paper_pdf", args=[p.id]) if p.file else None,
                         "last_update": (
                             p.last_update.strftime("%b %d, %Y %H:%M")
                             if hasattr(p, "last_update")
@@ -478,6 +471,10 @@ class AnalyzePaperView(View):
         """Display the upload form with available models."""
         from annotator.models import AnnotationCategory
 
+        # Legacy multi-model flow (server keys) is staff-only; everyone else uploads here
+        if not (request.user.is_authenticated and request.user.is_staff):
+            return redirect("analyze_upload")
+
         available_models = get_available_models()
 
         categories = AnnotationCategory.objects.select_related("parent").all()
@@ -500,11 +497,13 @@ class AnalyzePaperView(View):
         )
 
     def post(self, request):
-        """Handle PDF upload and start analysis. Requires login."""
+        """Handle PDF upload and start analysis. Staff only (bills the server keys)."""
         if not request.user.is_authenticated:
             return JsonResponse(
                 {"error": "You must be logged in to analyze papers"}, status=401
             )
+        if not request.user.is_staff:
+            return JsonResponse({"error": "Use the upload page to analyze your paper."}, status=403)
 
         # Get selected models from request
         selected_models = request.POST.getlist("models")
@@ -591,40 +590,107 @@ class AnalysisCleanupView(LoginRequiredMixin, View):
 
 
 class ProfileView(LoginRequiredMixin, View):
-    """View for user profile with analysis history."""
+    """Profile: the user's OpenAI key, their analyses and uploaded papers."""
 
     template_name = "webApp/profile.html"
     login_url = "/accounts/login/"
 
     def get(self, request):
-        """Display analysis history grouped by paper."""
+        from workflow_engine.models import NodeArtifact
+        from webApp.models import UserAPIKey
 
-        # Get all analyses for this user
-        analyses = Analysis.objects.select_related("paper").order_by("-created_at")
-
-        # Group analyses by paper
-        papers_dict = {}
-        for analysis in analyses:
-            paper_id = analysis.paper.id
-            if paper_id not in papers_dict:
-                papers_dict[paper_id] = {
-                    "paper": analysis.paper,
-                    "analyses": [],
-                    "latest_analysis": analysis.created_at,
-                }
-            papers_dict[paper_id]["analyses"].append(analysis)
-
-        # Convert to list and sort by latest analysis date
-        papers_with_analyses = sorted(
-            papers_dict.values(), key=lambda x: x["latest_analysis"], reverse=True
+        runs = list(
+            WorkflowRun.objects.filter(created_by=request.user)
+            .select_related("paper", "workflow_definition")
+            .order_by("-created_at")[:200]
         )
+        scores = dict(
+            NodeArtifact.objects.filter(
+                node__workflow_run__in=runs, node__node_id="final_aggregation", name="result"
+            ).values_list("node__workflow_run_id", "inline_data__overall_score")
+        )
+        for run in runs:
+            run.score = scores.get(run.id)
+            run.model_name = (run.input_data or {}).get("model", "")
+            run.estimated_cost = estimate_run_cost(run)
+
+        legacy_analyses = []
+        if request.user.is_staff:
+            legacy_analyses = list(
+                Analysis.objects.filter(user=request.user).select_related("paper").order_by("-created_at")[:100]
+            )
 
         context = {
-            "papers_with_analyses": papers_with_analyses,
-            "total_analyses": analyses.count(),
+            "runs": runs,
+            "uploads": Paper.objects.filter(owner=request.user).order_by("-id"),
+            "api_key": UserAPIKey.objects.filter(user=request.user).first(),
+            "uses_system_key": uses_system_key(request.user),
+            "legacy_analyses": legacy_analyses,
         }
-
         return render(request, self.template_name, context)
+
+
+# USD per 1M tokens (input, output); runs on other models show tokens only
+MODEL_PRICES = {"gpt-4o": (2.50, 10.00)}
+
+
+def estimate_run_cost(run):
+    price = MODEL_PRICES.get((run.input_data or {}).get("model"))
+    if not price or not run.total_tokens:
+        return None
+    return (run.total_input_tokens or 0) * price[0] / 1e6 + (run.total_output_tokens or 0) * price[1] / 1e6
+
+
+class APIKeyView(LoginRequiredMixin, View):
+    """Save (validated, encrypted) or delete the user's own OpenAI key."""
+
+    def post(self, request):
+        from webApp.models import UserAPIKey
+        from webApp.services.credentials import encrypt, mask, validate_openai_key
+
+        if request.POST.get("action") == "delete":
+            UserAPIKey.objects.filter(user=request.user).delete()
+            messages.success(request, "Your OpenAI API key was deleted.")
+            return redirect("profile")
+
+        raw = (request.POST.get("api_key") or "").strip()
+        if not raw.startswith("sk-") or len(raw) < 20:
+            messages.error(request, "That does not look like an OpenAI API key (it should start with sk-).")
+            return redirect("profile")
+        ok, reason = validate_openai_key(raw)
+        if not ok:
+            messages.error(request, reason)
+            return redirect("profile")
+        UserAPIKey.objects.update_or_create(
+            user=request.user,
+            defaults={"encrypted_key": encrypt(raw), "masked": mask(raw), "verified_at": timezone.now()},
+        )
+        messages.success(request, "Your OpenAI API key was verified and saved.")
+        return redirect("profile")
+
+
+class RunVisibilityView(LoginRequiredMixin, View):
+    """Owner (or staff) makes an analysis public or private."""
+
+    def post(self, request, workflow_run_id):
+        run = get_object_or_404(WorkflowRun, id=workflow_run_id)
+        if not can_manage_run(run, request.user):
+            return JsonResponse({"error": "Not allowed"}, status=403)
+        run.is_public = request.POST.get("public") == "true"
+        run.save(update_fields=["is_public"])
+        return JsonResponse({"success": True, "is_public": run.is_public})
+
+
+class PaperVisibilityView(LoginRequiredMixin, View):
+    """Owner (or staff) makes an uploaded paper public or private."""
+
+    def post(self, request, paper_id):
+        paper = get_object_or_404(Paper, id=paper_id)
+        if not (request.user.is_staff or paper.owner_id == request.user.id):
+            return JsonResponse({"error": "Not allowed"}, status=403)
+        paper.is_public = request.POST.get("public") == "true"
+        paper.save(update_fields=["is_public"])
+        return JsonResponse({"success": True, "is_public": paper.is_public})
 
 
 class AnalysisDetailView(LoginRequiredMixin, View):
@@ -791,7 +857,7 @@ class ConferenceDetailView(View):
         # Prefetch latest workflow run for each paper (single additional query)
         latest_workflow_prefetch = Prefetch(
             "workflow_runs",
-            queryset=WorkflowRun.objects.order_by("-created_at").only(
+            queryset=WorkflowRun.objects.filter(is_public=True).order_by("-created_at").only(
                 "id", "status", "created_at"
             )[:1],
             to_attr="latest_workflow_list",
@@ -799,7 +865,7 @@ class ConferenceDetailView(View):
 
         # Subquery to get token count from latest completed workflow run
         latest_completed_tokens_subquery = Subquery(
-            WorkflowRun.objects.filter(paper_id=OuterRef("pk"), status="completed")
+            WorkflowRun.objects.filter(paper_id=OuterRef("pk"), status="completed", is_public=True)
             .order_by("-created_at")
             .values("total_tokens")[:1]
         )
@@ -862,7 +928,7 @@ class ConferencePaperStatusView(View):
         # Prefetch latest workflow run for each paper
         latest_workflow_prefetch = Prefetch(
             "workflow_runs",
-            queryset=WorkflowRun.objects.order_by("-created_at").only(
+            queryset=WorkflowRun.objects.filter(is_public=True).order_by("-created_at").only(
                 "id", "status", "created_at"
             )[:1],
             to_attr="latest_workflow_list",
@@ -994,10 +1060,12 @@ class PaperDetailView(View):
     def get(self, request, paper_id):
         """Display paper with workflow diagram and run history."""
         paper = get_object_or_404(Paper, id=paper_id)
+        if not can_view_paper(paper, request.user):
+            raise Http404("Paper not found")
 
-        # 1. Fetch all runs AND prefetch all their nodes!
+        # 1. Fetch all runs the user may see AND prefetch all their nodes!
         workflow_runs = list(
-            WorkflowRun.objects.filter(paper=paper)
+            visible_runs(WorkflowRun.objects.filter(paper=paper), request.user)
             .select_related("workflow_definition", "created_by")
             .prefetch_related("nodes")  # <-- THIS SAVES YOUR DATABASE
             .order_by("-created_at")
@@ -1063,6 +1131,7 @@ class PaperDetailView(View):
             "selected_workflow": selected_workflow,
             "workflow_nodes_json": json.dumps(workflow_nodes_json),
             "workflow_edges": json.dumps(workflow_edges),
+            "can_manage_selected": bool(selected_workflow) and can_manage_run(selected_workflow, request.user),
         }
 
         return render(request, self.template_name, context)
@@ -1076,6 +1145,8 @@ class RerunWorkflowView(View):
         try:
             paper = Paper.objects.get(id=paper_id)
         except Paper.DoesNotExist:
+            return JsonResponse({"error": "Paper not found"}, status=404)
+        if not can_view_paper(paper, request.user):
             return JsonResponse({"error": "Paper not found"}, status=404)
 
         # Query all active workflow definitions from database
@@ -1104,12 +1175,12 @@ class RerunWorkflowView(View):
             if idx == 0:
                 default_workflow_id = workflow_id
 
-        # Query active LLM model configurations
+        # Models this user may run (non-staff: OpenAI models billed to their key)
+        allowed = allowed_model_configs(request.user)
+        default_model = default_model_for(request.user, allowed)
         active_llm_models = [
-            {"model": cfg.model, "visual_name": cfg.visual_name}
-            for cfg in LLMModelConfig.objects.filter(is_active=True).order_by(
-                "visual_name"
-            )
+            {"model": cfg.model, "visual_name": cfg.visual_name, "default": cfg.model == default_model}
+            for cfg in allowed
         ]
 
         return JsonResponse(
@@ -1119,6 +1190,10 @@ class RerunWorkflowView(View):
                 "workflows": workflows,
                 "default_workflow": default_workflow_id,
                 "llm_models": active_llm_models,
+                "can_run": can_run_pipelines(request.user),
+                "uses_system_key": request.user.is_authenticated and uses_system_key(request.user),
+                "default_public": default_visibility(request.user) if request.user.is_authenticated else True,
+                "profile_url": reverse("profile"),
             }
         )
 
@@ -1127,15 +1202,31 @@ class RerunWorkflowView(View):
 
         logger = logging.getLogger(__name__)
 
+        if not request.user.is_authenticated:
+            return JsonResponse({"error": "Please log in to run an analysis."}, status=401)
+
         try:
             paper = Paper.objects.get(id=paper_id)
         except Paper.DoesNotExist:
             return JsonResponse({"error": "Paper not found"}, status=404)
+        if not can_view_paper(paper, request.user):
+            return JsonResponse({"error": "Paper not found"}, status=404)
+        if not can_run_pipelines(request.user):
+            return JsonResponse(
+                {
+                    "error": "Add your OpenAI API key in your profile to run analyses.",
+                    "needs_api_key": True,
+                    "profile_url": reverse("profile"),
+                },
+                status=403,
+            )
 
         # Get workflow ID, force_reprocess flag, and model key from request
         workflow_id = request.POST.get("workflow_type")
         force_reprocess = request.POST.get("force_reprocess", "true").lower() == "true"
         model = request.POST.get("model", "")
+        visibility = request.POST.get("visibility")
+        is_public = (visibility == "public") if visibility in ("public", "private") else default_visibility(request.user)
 
         if not workflow_id:
             return JsonResponse(
@@ -1162,10 +1253,14 @@ class RerunWorkflowView(View):
                 status=500,
             )
 
-        # Check if there's already a running workflow (with timeout check)
-        running_workflow = WorkflowRun.objects.filter(
-            paper=paper, status__in=["running", "pending"]
-        ).first()
+        # Check if there's already a running workflow (with timeout check).
+        # Users only collide with their own runs; staff with any staff/system run.
+        in_flight = WorkflowRun.objects.filter(paper=paper, status__in=["running", "pending"])
+        if uses_system_key(request.user):
+            in_flight = in_flight.filter(Q(created_by__isnull=True) | Q(created_by__is_staff=True))
+        else:
+            in_flight = in_flight.filter(created_by=request.user)
+        running_workflow = in_flight.first()
 
         if running_workflow:
             # Check how long it's been in this status
@@ -1215,27 +1310,21 @@ class RerunWorkflowView(View):
         try:
             from webApp.tasks import process_paper_workflow_task
 
-            # Resolve model string from model_key.
-            # TODO: refactor process_paper_workflow_task (and all downstream node functions)
-            # TODO: to accept a full model config dict (model, temperature, reasoning_effort,
-            # TODO: api_key_env_var, base_url, …) instead of a plain model name string,
-            # TODO: so all settings from LLMModelConfig can be forwarded without hard-coding.
-            resolved_model = "gpt-5-nano"  # fallback default
-            if model:
-                try:
-                    llm_cfg = LLMModelConfig.objects.get(model=model, is_active=True)
-                    resolved_model = llm_cfg.model
-                except LLMModelConfig.DoesNotExist:
-                    logger.warning(
-                        f"model '{model}' not found or inactive, falling back to default model"
-                    )
+            # Only models this user may use; non-staff are limited to OpenAI models
+            allowed = allowed_model_configs(request.user)
+            allowed_names = {cfg.model for cfg in allowed}
+            resolved_model = model if model in allowed_names else default_model_for(request.user, allowed)
+            if not resolved_model:
+                return JsonResponse({"error": "No model available for your account."}, status=400)
 
-            # Submit task to Celery queue with selected workflow
+            # Only the user id crosses the broker; the worker resolves the key
             task = process_paper_workflow_task.delay(
                 paper_id=paper_id,
                 force_reprocess=force_reprocess,
                 model=resolved_model,
-                workflow_id=workflow_id,  # Pass the selected workflow ID
+                workflow_id=workflow_id,
+                user_id=request.user.id,
+                is_public=is_public,
             )
 
             logger.info(
@@ -1271,6 +1360,8 @@ class WorkflowStatusView(View):
         try:
             workflow_run = WorkflowRun.objects.get(id=workflow_run_id)
         except WorkflowRun.DoesNotExist:
+            return JsonResponse({"error": "Workflow run not found"}, status=404)
+        if not can_view_run(workflow_run, request.user):
             return JsonResponse({"error": "Workflow run not found"}, status=404)
 
         # Get DAG structure
@@ -1322,10 +1413,14 @@ class LatestWorkflowStatusView(View):
             paper = Paper.objects.get(id=paper_id)
         except Paper.DoesNotExist:
             return JsonResponse({"error": "Paper not found"}, status=404)
+        if not can_view_paper(paper, request.user):
+            return JsonResponse({"error": "Paper not found"}, status=404)
 
-        # Get the most recent workflow run for this paper
+        # Get the most recent workflow run for this paper that the user may see
         latest_run = (
-            WorkflowRun.objects.filter(paper=paper).order_by("-created_at").first()
+            visible_runs(WorkflowRun.objects.filter(paper=paper), request.user)
+            .order_by("-created_at")
+            .first()
         )
 
         if latest_run:
@@ -1411,6 +1506,8 @@ class WorkflowNodeDetailView(View):
             return JsonResponse({"error": "Node not found"}, status=404)
         except Exception as e:
             return JsonResponse({"error": f"Server error: {str(e)}"}, status=500)
+        if not can_view_run(node.workflow_run, request.user):
+            return JsonResponse({"error": "Node not found"}, status=404)
 
         try:
             return JsonResponse(node_detail_payload(node))
@@ -1418,6 +1515,26 @@ class WorkflowNodeDetailView(View):
             return JsonResponse(
                 {"error": f"Error serializing data: {str(e)}"}, status=500
             )
+
+
+def _authorize_node_rerun(request, workflow_run):
+    """(error_response, key, model) for rerunning steps of a run."""
+    from webApp.services.credentials import MissingAPIKey, resolve_openai_key
+
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Please log in."}, status=401), None, None
+    if not can_manage_run(workflow_run, request.user):
+        return JsonResponse({"error": "You can only rerun your own analyses."}, status=403), None, None
+    try:
+        key = resolve_openai_key(request.user)
+    except MissingAPIKey:
+        return JsonResponse(
+            {"error": "Add your OpenAI API key in your profile to run analyses.",
+             "needs_api_key": True, "profile_url": reverse("profile")},
+            status=403,
+        ), None, None
+    model = (workflow_run.input_data or {}).get("model") or default_model_for(request.user)
+    return None, key, model
 
 
 class RerunSingleNodeView(View):
@@ -1432,6 +1549,11 @@ class RerunSingleNodeView(View):
             node = WorkflowNode.objects.get(id=node_id)
         except WorkflowNode.DoesNotExist:
             return JsonResponse({"error": "Node not found"}, status=404)
+
+        # Only the run's owner or staff may rerun steps; the rerunner's key is billed
+        denied, rerun_key, rerun_model = _authorize_node_rerun(request, node.workflow_run)
+        if denied:
+            return denied
 
         # Check if node is already running (with timeout check)
         if node.status in ["running", "pending"]:
@@ -1517,7 +1639,8 @@ class RerunSingleNodeView(View):
                 logger.info(f"Event loop created, executing node...")
                 result = loop.run_until_complete(
                     _workflow_instance.execute_a_node(
-                        node_uuid=str(node.id), force_reprocess=True, model="gpt-5"
+                        node_uuid=str(node.id), force_reprocess=True, model=rerun_model,
+                        openai_api_key=rerun_key,
                     )
                 )
                 logger.info(f"Node execution completed with result: {result}")
@@ -1589,19 +1712,20 @@ class RerunFromNodeView(View):
         except WorkflowNode.DoesNotExist:
             return JsonResponse({"error": "Node not found"}, status=404)
 
+        # Only the run's owner or staff may rerun steps; the rerunner's key is billed
+        denied, rerun_key, rerun_model = _authorize_node_rerun(request, node.workflow_run)
+        if denied:
+            return denied
+
         # Get the paper from the workflow run
         paper = node.workflow_run.paper
 
-        # Check if there's already a running workflow for this paper
-        running_workflow = WorkflowRun.objects.filter(
-            paper=paper, status__in=["running", "pending"]
-        ).first()
-
-        if running_workflow:
+        # This reruns steps of the same run, so only that run must be idle
+        if node.workflow_run.status in ("running", "pending"):
             return JsonResponse(
                 {
-                    "error": "A workflow is already running for this paper",
-                    "workflow_run_id": str(running_workflow.id),
+                    "error": "This analysis is still running",
+                    "workflow_run_id": str(node.workflow_run.id),
                 },
                 status=400,
             )
@@ -1623,7 +1747,8 @@ class RerunFromNodeView(View):
                 loop.run_until_complete(
                     _workflow_instance.execute_from_node(
                         node_uuid=str(node.id),
-                        model="gpt-5",
+                        model=rerun_model,
+                        openai_api_key=rerun_key,
                         force_reprocess=force_reprocess,
                     )
                 )
@@ -1642,9 +1767,11 @@ class RerunFromNodeView(View):
         # Wait briefly for workflow run to be created
         time.sleep(0.5)
 
-        # Get the latest workflow run
+        # Latest run the requester may see (never someone else's private run)
         latest_run = (
-            WorkflowRun.objects.filter(paper=paper).order_by("-created_at").first()
+            visible_runs(WorkflowRun.objects.filter(paper=paper), request.user)
+            .order_by("-created_at")
+            .first()
         )
 
         if latest_run:
@@ -1692,6 +1819,8 @@ class GenerateHighlightedPDFView(View):
         except WorkflowRun.DoesNotExist:
             return JsonResponse({"error": "Workflow run not found"}, status=404)
 
+        if not can_view_run(workflow_run, request.user):
+            return JsonResponse({"success": False, "error": "Workflow run not found"}, status=404)
         paper = workflow_run.paper
 
         # Check if paper has a PDF file
@@ -1710,7 +1839,7 @@ class GenerateHighlightedPDFView(View):
         if existing_artifact and existing_artifact.file:
             # Return the existing highlighted PDF URL
             return JsonResponse(
-                {"success": True, "pdf_url": existing_artifact.file.url, "cached": True}
+                {"success": True, "pdf_url": reverse("highlighted_pdf_file", args=[workflow_run.id]), "cached": True}
             )
 
         # Generate the highlighted PDF
@@ -1858,7 +1987,8 @@ class GenerateHighlightedPDFView(View):
             # Clean up temp file
             os.remove(output_pdf_path)
 
-            file_url = artifact.file.url
+            # Served through a permission-checked view, never a direct /media/ link
+            file_url = reverse("highlighted_pdf_file", args=[workflow_run.id])
 
             return JsonResponse(
                 {
@@ -1876,7 +2006,7 @@ class GenerateHighlightedPDFView(View):
             )
 
 
-class BulkRerunPreviewView(View):
+class BulkRerunPreviewView(StaffRequiredMixin, View):
     """API view to preview papers that will be affected by bulk rerun."""
 
     def post(self, request, conference_id):
@@ -1901,7 +2031,7 @@ class BulkRerunPreviewView(View):
         # Get papers for this conference with latest workflow status
         latest_workflow_prefetch = Prefetch(
             "workflow_runs",
-            queryset=WorkflowRun.objects.order_by("-created_at").only(
+            queryset=WorkflowRun.objects.filter(is_public=True).order_by("-created_at").only(
                 "id", "status", "created_at"
             )[:1],
             to_attr="latest_workflow_list",
@@ -1942,7 +2072,7 @@ class BulkRerunPreviewView(View):
         )
 
 
-class BulkRerunWorkflowsView(View):
+class BulkRerunWorkflowsView(StaffRequiredMixin, View):
     """API view to trigger workflow reruns for all papers in a conference."""
 
     def post(self, request, conference_id):
@@ -2051,6 +2181,7 @@ class BulkRerunWorkflowsView(View):
                     force_reprocess=force_reprocess,
                     model="gpt-5",
                     workflow_id=workflow_id,  # Pass the selected workflow ID
+                    user_id=request.user.id,
                 )
                 task_ids.append(str(task.id))
                 logger.info(
@@ -2097,7 +2228,7 @@ class BulkRerunWorkflowsView(View):
         )
 
 
-class BulkStopWorkflowsView(View):
+class BulkStopWorkflowsView(StaffRequiredMixin, View):
     """API view to stop all running workflows for a conference."""
 
     def post(self, request, conference_id):
@@ -2174,3 +2305,123 @@ class BulkStopWorkflowsView(View):
                 "conference_id": conference_id,
             }
         )
+
+
+MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+
+
+class AnalyzeUploadView(LoginRequiredMixin, View):
+    """Upload your own PDF and run the full pipeline on it (billed to your key)."""
+
+    template_name = "webApp/analyze_upload.html"
+    login_url = "/accounts/login/"
+
+    def get(self, request):
+        allowed = allowed_model_configs(request.user)
+        return render(
+            request,
+            self.template_name,
+            {
+                "can_run": can_run_pipelines(request.user),
+                "uses_system_key": uses_system_key(request.user),
+                "models": allowed,
+                "default_model": default_model_for(request.user, allowed),
+                "default_public": default_visibility(request.user),
+                "uploads": Paper.objects.filter(owner=request.user).order_by("-id")[:20],
+            },
+        )
+
+    def post(self, request):
+        import hashlib
+        import uuid
+        from webApp.tasks import ingest_uploaded_paper_task
+
+        if not can_run_pipelines(request.user):
+            messages.error(request, "Add your OpenAI API key in your profile before analyzing a paper.")
+            return redirect("profile")
+
+        upload = request.FILES.get("pdf")
+        if not upload:
+            messages.error(request, "Choose a PDF file to upload.")
+            return redirect("analyze_upload")
+        if upload.size > MAX_UPLOAD_BYTES:
+            messages.error(request, "The PDF is larger than 50 MB.")
+            return redirect("analyze_upload")
+        head = upload.read(5)
+        upload.seek(0)
+        if head != b"%PDF-":
+            messages.error(request, "That file is not a PDF.")
+            return redirect("analyze_upload")
+
+        allowed = allowed_model_configs(request.user)
+        model = request.POST.get("model")
+        if model not in {cfg.model for cfg in allowed}:
+            model = default_model_for(request.user, allowed)
+        visibility = request.POST.get("visibility")
+        is_public = (visibility == "public") if visibility in ("public", "private") else default_visibility(request.user)
+
+        digest = hashlib.sha256()
+        for chunk in upload.chunks():
+            digest.update(chunk)
+        sha = digest.hexdigest()
+        upload.seek(0)
+
+        paper = Paper.objects.filter(owner=request.user, file_sha256=sha).first()
+        if paper is None:
+            # Uploads live under media/private/, which nginx never serves directly
+            safe_name = "".join(c if c.isalnum() or c in "-_." else "_" for c in upload.name)[:80] or "paper.pdf"
+            stored = default_storage.save(f"private/{uuid.uuid4().hex}/{safe_name}", upload)
+            paper = Paper.objects.create(
+                title=os.path.splitext(upload.name)[0][:500] or "Uploaded paper",
+                owner=request.user,
+                is_public=is_public,
+                file_sha256=sha,
+            )
+            paper.file.name = stored
+            paper.save(update_fields=["file"])
+        else:
+            if is_public and not paper.is_public:
+                paper.is_public = True
+            if not paper.text:
+                paper.sections = None  # clear a previous extraction error; ingestion retries
+            paper.save(update_fields=["is_public", "sections"])
+
+        ingest_uploaded_paper_task.delay(paper.id, request.user.id, model, is_public)
+        messages.success(request, "Your paper was uploaded. The analysis starts as soon as the text is extracted.")
+        return redirect("paper_detail", paper_id=paper.id)
+
+
+def _stream_file(field, filename):
+    if not field:
+        raise Http404("File not found")
+    try:
+        handle = field.open("rb")
+    except FileNotFoundError:
+        raise Http404("File not found")
+    return FileResponse(handle, content_type="application/pdf", filename=filename)
+
+
+class PaperPDFView(View):
+    """Paper PDF, served only to users allowed to see the paper."""
+
+    def get(self, request, paper_id):
+        paper = get_object_or_404(Paper, id=paper_id)
+        if not can_view_paper(paper, request.user):
+            raise Http404("Paper not found")
+        return _stream_file(paper.file, os.path.basename(paper.file.name) if paper.file else "paper.pdf")
+
+
+class HighlightedPDFFileView(View):
+    """Highlighted PDF of a run, served only to users allowed to see the run."""
+
+    def get(self, request, workflow_run_id):
+        from workflow_engine.models import NodeArtifact
+
+        run = get_object_or_404(WorkflowRun, id=workflow_run_id)
+        if not can_view_run(run, request.user) or not can_view_paper(run.paper, request.user):
+            raise Http404("Not found")
+        artifact = NodeArtifact.objects.filter(
+            node__workflow_run=run, name="highlighted_pdf", artifact_type="file"
+        ).first()
+        return _stream_file(artifact.file if artifact else None, f"highlighted_{run.id}.pdf")
+

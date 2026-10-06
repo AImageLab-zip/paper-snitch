@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block head_title %}Resend activation link{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0"><i class="fas fa-envelope"></i> Resend activation link</h4>
+                </div>
+                <div class="card-body">
+                    <form method="post">
+                        {% csrf_token %}
+                        <div class="form-group">
+                            <label for="id_email">Email you signed up with</label>
+                            <input type="email" name="email" id="id_email" class="form-control" required autofocus>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-block">Send link</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

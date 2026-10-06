@@ -1,5 +1,9 @@
+from django.contrib.auth.decorators import user_passes_test
 from django.urls import path
 from . import views
+
+# The annotator is an internal tool for the team: staff only
+_staff = user_passes_test(lambda u: u.is_active and u.is_staff, login_url="login")
 
 urlpatterns = [
     path("", views.home, name="home"),
@@ -35,3 +39,6 @@ urlpatterns = [
     # TODO deprecated endpoint, remove in future releases
     path("category/create/", views.create_category, name="create_category"),
 ]
+
+for _pattern in urlpatterns:
+    _pattern.callback = _staff(_pattern.callback)

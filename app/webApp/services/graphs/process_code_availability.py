@@ -23,6 +23,7 @@ from langgraph.graph import StateGraph, END
 from openai import OpenAI
 
 from workflow_engine.services.async_orchestrator import async_ops
+from webApp.services.credentials import aget_user, aresolve_run_key
 
 from webApp.services.nodes.paper_type_classification import (
     paper_type_classification_node,
@@ -148,6 +149,8 @@ class CodeAvailabilityWorkflow(BaseWorkflowGraph):
         force_reprocess: bool = False,
         openai_api_key: Optional[str] = None,
         model: str = "gpt-5",
+        user_id: Optional[int] = None,
+        is_public: bool = True,
     ) -> Dict[str, Any]:
         """
         Execute the code availability workflow for a paper.
@@ -213,11 +216,15 @@ class CodeAvailabilityWorkflow(BaseWorkflowGraph):
                 "force_reprocess": force_reprocess,
                 "model": model,
                 "max_retries": 3,
+                # Run by LangGraph: the workflow_engine scheduler must not claim its nodes
+                "executor": "langgraph",
             }
             workflow_run = await async_ops.create_workflow_run_with_paper_id(
                 workflow_name=self.WORKFLOW_NAME,
                 paper_id=paper_id,
                 input_data=config,
+                user=await aget_user(user_id),
+                is_public=is_public,
             )
 
             # Update workflow run status to running
@@ -226,7 +233,8 @@ class CodeAvailabilityWorkflow(BaseWorkflowGraph):
             )
 
             # Initialize OpenAI client
-            api_key = openai_api_key or os.getenv("OPENAI_API_KEY")
+            # Key of whoever started the run (staff/system runs use the server key)
+            api_key = openai_api_key or await aresolve_run_key(workflow_run.id)
             client = OpenAI(api_key=api_key)
 
             # Initialize state
@@ -345,6 +353,8 @@ async def execute_workflow(
     force_reprocess: bool = False,
     openai_api_key: Optional[str] = None,
     model: str = "gpt-5",
+    user_id: Optional[int] = None,
+    is_public: bool = True,
 ) -> Dict[str, Any]:
     """
     Execute the code availability workflow for a paper.
@@ -352,7 +362,7 @@ async def execute_workflow(
     Convenience function that uses the singleton workflow instance.
     """
     return await _workflow_instance.execute_workflow(
-        paper_id, force_reprocess, openai_api_key, model
+        paper_id, force_reprocess, openai_api_key, model, user_id=user_id, is_public=is_public
     )
 
 

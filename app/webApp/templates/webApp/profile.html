@@ -6,152 +6,202 @@
 {% block content %}
 <div class="container-fluid mt-4 px-4">
     <div class="row">
-        <!-- Left Column - User Info -->
+        <!-- Left Column - User info and API key -->
         <div class="col-lg-3 col-md-4 mb-4">
-            <div class="card shadow sticky-top" >
+            <div class="card shadow mb-4">
                 <div class="card-header bg-primary text-white">
                     <h5 class="mb-0"><i class="fas fa-user mr-2"></i>Profile</h5>
                 </div>
                 <div class="card-body">
-                    <div class="text-center mb-3">
-                        <i class="fas fa-user-circle fa-5x text-muted"></i>
-                    </div>
-                    <hr>
                     <p class="mb-2"><strong><i class="fas fa-at mr-2 text-primary"></i>Username:</strong><br>{{ user.username }}</p>
-                    <p class="mb-2"><strong><i class="fas fa-envelope mr-2 text-primary"></i>Email:</strong><br>{{ user.email|default:"Coming soon..." }}</p>
-                    <p class="mb-2"><strong><i class="fas fa-calendar-alt mr-2 text-primary"></i>Member since:</strong><br>{{ user.date_joined|date:"F d, Y" }}</p>
+                    <p class="mb-2"><strong><i class="fas fa-envelope mr-2 text-primary"></i>Email:</strong><br>{{ user.email|default:"-" }}</p>
+                    <p class="mb-0"><strong><i class="fas fa-calendar-alt mr-2 text-primary"></i>Member since:</strong><br>{{ user.date_joined|date:"F d, Y" }}</p>
                     <hr>
-                    <div class="text-center">
-                        <span class="badge badge-primary badge-pill px-3 py-2" style="font-size: 1rem;">
-                            <i class="fas fa-chart-bar mr-1"></i> {{ total_analyses }} Analyses
-                        </span>
-                    </div>
+                    <a href="{% url 'password_change' %}" class="small">Change password</a>
                 </div>
             </div>
-        </div>
 
-        <!-- Right Column - Analysis History -->
-        <div class="col-lg-9 col-md-8 ">
-            <div class="card shadow">
+            <div class="card shadow" id="api-key">
                 <div class="card-header bg-primary text-white">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <h5 class="mb-0"><i class="fas fa-history mr-2"></i>Analysis History</h5>
-                        <span class="badge badge-light">{{ papers_with_analyses|length }} Papers</span>
-                    </div>
+                    <h5 class="mb-0"><i class="fas fa-key mr-2"></i>OpenAI API key</h5>
                 </div>
                 <div class="card-body">
-                    <!-- Search Box -->
-                    <div class="form-group mb-4">
-                        <div class="input-group">
-                            <div class="input-group-prepend">
-                                <span class="input-group-text"><i class="fas fa-search"></i></span>
-                            </div>
-                            <input type="text" class="form-control" id="paper-search" 
-                                   placeholder="Search papers by title..." autocomplete="off">
-                        </div>
-                    </div>
-
-                    {% if papers_with_analyses %}
-                        <!-- Papers List -->
-                        <div id="papers-container">
-                            {% for paper_data in papers_with_analyses %}
-                            <div class="card paper-card mb-3" data-title="{{ paper_data.paper.title|lower }}">
-                                <div class="card-header bg-light paper-toggle" 
-                                     data-toggle="collapse" 
-                                     data-target="#paper-{{ paper_data.paper.id }}" 
-                                     aria-expanded="false"
-                                     style="cursor: pointer;">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <div class="d-flex align-items-center">
-                                            <i class="fas fa-chevron-right toggle-icon mr-3"></i>
-                                            <div>
-                                                <h6 class="mb-0 text-primary">{{ paper_data.paper.title|truncatechars:80 }}</h6>
-                                                <small class="text-muted">
-                                                    {{ paper_data.analyses|length }} analysis{{ paper_data.analyses|length|pluralize:"es" }} | 
-                                                    Last: {{ paper_data.latest_analysis|date:"M d, Y H:i" }}
-                                                </small>
-                                            </div>
-                                        </div>
-                                        <a href="{% url 'annotate_paper' paper_data.paper.id %}" target="_blank" class="btn btn-sm btn-outline-primary mr-2" onclick="event.stopPropagation();">Annotate</a>
-                                        <span class="badge badge-primary">{{ paper_data.analyses|length }}</span>
-                                    </div>
-                                </div>
-                                <div id="paper-{{ paper_data.paper.id }}" class="collapse">
-                                    <div class="card-body p-0">
-                                        <div class="table-responsive">
-                                            <table class="table table-hover mb-0">
-                                                <thead class="thead-light">
-                                                    <tr>
-                                                        <th>Model</th>
-                                                        <th>Date</th>
-                                                        <th>Duration</th>
-                                                        <th>Tokens</th>
-                                                        <th>Status</th>
-                                                        <th>Actions</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {% for analysis in paper_data.analyses %}
-                                                    <tr>
-                                                        <td>
-                                                            <span class="badge badge-info">{{ analysis.model_name }}</span>
-                                                        </td>
-                                                        <td>{{ analysis.created_at|date:"M d, Y H:i" }}</td>
-                                                        <td>{{ analysis.duration|floatformat:2 }}s</td>
-                                                        <td>
-                                                            <small>
-                                                                <i class="fas fa-arrow-down text-success"></i> {{ analysis.input_tokens|default:"-" }}
-                                                                <i class="fas fa-arrow-up text-danger ml-2"></i> {{ analysis.output_tokens|default:"-" }}
-                                                            </small>
-                                                        </td>
-                                                        <td>
-                                                            {% if analysis.error %}
-                                                                <span class="badge badge-danger">Error</span>
-                                                            {% else %}
-                                                                <span class="badge badge-success">Success</span>
-                                                            {% endif %}
-                                                        </td>
-                                                        <td>
-                                                            <button class="btn btn-sm btn-outline-primary view-analysis-btn" 
-                                                                    data-analysis-id="{{ analysis.id }}"
-                                                                    data-toggle="modal" 
-                                                                    data-target="#analysisModal">
-                                                                <i class="fas fa-eye"></i>
-                                                            </button>
-                                                        </td>
-                                                    </tr>
-                                                    {% endfor %}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            {% endfor %}
-                        </div>
-
-                        <!-- No Results Message -->
-                        <div id="no-results" class="text-center py-5" style="display: none;">
-                            <i class="fas fa-search fa-3x text-muted mb-3"></i>
-                            <p class="text-muted">No papers found matching your search.</p>
-                        </div>
+                    {% if uses_system_key %}
+                        <p class="mb-0 small">
+                            <i class="fas fa-check-circle text-success mr-1"></i>
+                            Your analyses run on the PaperSnitch server key. You don't need your own.
+                        </p>
                     {% else %}
-                        <div class="text-center py-5">
-                            <i class="fas fa-file-pdf fa-4x text-muted mb-4"></i>
-                            <h5 class="text-muted">No analyses yet</h5>
-                            <p class="text-muted">Start by analyzing a paper!</p>
-                            <a href="{% url 'analyze' %}" class="btn btn-primary">
-                                <i class="fas fa-plus mr-2"></i>Analyze a Paper
-                            </a>
-                        </div>
+                        {% if api_key %}
+                            <p class="mb-1"><code>{{ api_key.masked }}</code></p>
+                            <p class="small text-muted mb-3">
+                                Verified {{ api_key.verified_at|date:"M d, Y H:i" }}. Analyses you start are billed to this key.
+                            </p>
+                        {% else %}
+                            <p class="small mb-3">
+                                Add your OpenAI API key to analyze papers. An analysis with GPT-4o costs about
+                                <strong>$0.25</strong>, billed to your OpenAI account.
+                            </p>
+                        {% endif %}
+                        <form method="post" action="{% url 'api_key' %}">
+                            {% csrf_token %}
+                            <div class="form-group mb-2">
+                                <input type="password" name="api_key" class="form-control form-control-sm"
+                                       placeholder="sk-..." autocomplete="off" required>
+                            </div>
+                            <button type="submit" class="btn btn-sm btn-primary btn-block">
+                                {% if api_key %}Replace key{% else %}Save key{% endif %}
+                            </button>
+                        </form>
+                        {% if api_key %}
+                        <form method="post" action="{% url 'api_key' %}" class="mt-2"
+                              onsubmit="return confirm('Delete your stored API key?');">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="delete">
+                            <button type="submit" class="btn btn-sm btn-outline-danger btn-block">Delete key</button>
+                        </form>
+                        {% endif %}
+                        <p class="small text-muted mt-3 mb-0">
+                            The key is checked with OpenAI, stored encrypted and only used for analyses you start.
+                            Create one at <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com</a>.
+                        </p>
                     {% endif %}
                 </div>
             </div>
         </div>
+
+        <!-- Right Column -->
+        <div class="col-lg-9 col-md-8">
+            <div class="card shadow mb-4">
+                <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-history mr-2"></i>My analyses</h5>
+                    <a href="{% url 'analyze_upload' %}" class="btn btn-sm btn-light"><i class="fas fa-plus mr-1"></i>Analyze a paper</a>
+                </div>
+                <div class="card-body p-0">
+                    {% if runs %}
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="thead-light">
+                                <tr>
+                                    <th>Paper</th>
+                                    <th>Started</th>
+                                    <th>Model</th>
+                                    <th>Status</th>
+                                    <th class="text-right">Score</th>
+                                    <th class="text-right">Tokens</th>
+                                    <th class="text-right">Est. cost</th>
+                                    <th>Visibility</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for run in runs %}
+                                <tr>
+                                    <td>
+                                        {% if run.paper %}
+                                        <a href="{% url 'paper_detail' run.paper.id %}?workflow_run={{ run.id }}">{{ run.paper.title|truncatechars:70 }}</a>
+                                        {% else %}-{% endif %}
+                                    </td>
+                                    <td class="text-nowrap small">{{ run.created_at|date:"M d, Y H:i" }}</td>
+                                    <td><span class="badge badge-info">{{ run.model_name|default:"-" }}</span></td>
+                                    <td>
+                                        {% if run.status == "completed" %}<span class="badge badge-success">Completed</span>
+                                        {% elif run.status == "failed" %}<span class="badge badge-danger">Failed</span>
+                                        {% elif run.status == "running" %}<span class="badge badge-primary">Running</span>
+                                        {% elif run.status == "cancelled" %}<span class="badge badge-secondary">Cancelled</span>
+                                        {% else %}<span class="badge badge-light">Pending</span>{% endif %}
+                                    </td>
+                                    <td class="text-right">{% if run.score is not None %}{{ run.score|floatformat:1 }}{% else %}-{% endif %}</td>
+                                    <td class="text-right small">{{ run.total_tokens|default:"-" }}</td>
+                                    <td class="text-right small">{% if run.estimated_cost is not None %}${{ run.estimated_cost|floatformat:2 }}{% else %}-{% endif %}</td>
+                                    <td>
+                                        <div class="custom-control custom-switch">
+                                            <input type="checkbox" class="custom-control-input visibility-toggle" id="vis-{{ run.id }}"
+                                                   data-url="{% url 'run_visibility' run.id %}" {% if run.is_public %}checked{% endif %}>
+                                            <label class="custom-control-label small" for="vis-{{ run.id }}">{% if run.is_public %}Public{% else %}Private{% endif %}</label>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-5">
+                        <i class="fas fa-file-pdf fa-4x text-muted mb-4"></i>
+                        <h5 class="text-muted">No analyses yet</h5>
+                        <p class="text-muted">Upload your paper, or open a paper from a conference and click "Run analysis".</p>
+                        <a href="{% url 'analyze_upload' %}" class="btn btn-primary"><i class="fas fa-upload mr-2"></i>Analyze your paper</a>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            {% if uploads %}
+            <div class="card shadow mb-4">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="fas fa-upload mr-2"></i>My uploaded papers</h5>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-hover mb-0">
+                        <thead class="thead-light">
+                            <tr><th>Title</th><th>PDF</th><th>Visibility</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for paper in uploads %}
+                            <tr>
+                                <td><a href="{% url 'paper_detail' paper.id %}">{{ paper.title|truncatechars:90 }}</a></td>
+                                <td>{% if paper.file %}<a href="{% url 'paper_pdf' paper.id %}" target="_blank"><i class="fas fa-file-pdf"></i></a>{% endif %}</td>
+                                <td>
+                                    <div class="custom-control custom-switch">
+                                        <input type="checkbox" class="custom-control-input visibility-toggle" id="pvis-{{ paper.id }}"
+                                               data-url="{% url 'paper_visibility' paper.id %}" {% if paper.is_public %}checked{% endif %}>
+                                        <label class="custom-control-label small" for="pvis-{{ paper.id }}">{% if paper.is_public %}Public{% else %}Private{% endif %}</label>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    <p class="small text-muted px-3 py-2 mb-0">
+                        A private paper, its PDF and its analyses are visible only to you, even if an analysis is marked public.
+                    </p>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if legacy_analyses %}
+            <div class="card shadow mb-4">
+                <div class="card-header bg-secondary text-white">
+                    <h5 class="mb-0"><i class="fas fa-archive mr-2"></i>Legacy single-LLM analyses</h5>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead class="thead-light">
+                            <tr><th>Paper</th><th>Model</th><th>Date</th><th>Status</th><th></th></tr>
+                        </thead>
+                        <tbody>
+                            {% for analysis in legacy_analyses %}
+                            <tr>
+                                <td>{{ analysis.paper.title|truncatechars:70 }}</td>
+                                <td><span class="badge badge-info">{{ analysis.model_name }}</span></td>
+                                <td class="small">{{ analysis.created_at|date:"M d, Y H:i" }}</td>
+                                <td>{% if analysis.error %}<span class="badge badge-danger">Error</span>{% else %}<span class="badge badge-success">Success</span>{% endif %}</td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-primary view-analysis-btn" data-analysis-id="{{ analysis.id }}"
+                                            data-toggle="modal" data-target="#analysisModal"><i class="fas fa-eye"></i></button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% endif %}
+        </div>
     </div>
 </div>
 
-<!-- Analysis Detail Modal -->
+{% if legacy_analyses %}
 <div class="modal fade" id="analysisModal" tabindex="-1" role="dialog" aria-labelledby="analysisModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-xl" role="document">
         <div class="modal-content">
@@ -161,68 +211,30 @@
                     <span aria-hidden="true">&times;</span>
                 </button>
             </div>
-            <div class="modal-body" id="analysis-modal-content">
-                <div class="text-center py-5">
-                    <i class="fas fa-spinner fa-spin fa-2x"></i>
-                    <p class="mt-2">Loading analysis...</p>
-                </div>
-            </div>
+            <div class="modal-body" id="analysis-modal-content"></div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
             </div>
         </div>
     </div>
 </div>
-
-<style>
-    
-    .highlight {
-        background-color: #F1C40F;
-        padding: 0 2px;
-        border-radius: 2px;
-    }
-</style>
+{% endif %}
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const searchInput = document.getElementById('paper-search');
-    const papersContainer = document.getElementById('papers-container');
-    const noResults = document.getElementById('no-results');
-    const paperCards = document.querySelectorAll('.paper-card');
-    
-    // Search functionality
-    if (searchInput) {
-        searchInput.addEventListener('input', function() {
-            const searchTerm = this.value.toLowerCase().trim();
-            let visibleCount = 0;
-            
-            paperCards.forEach(function(card) {
-                const title = card.dataset.title;
-                if (title.includes(searchTerm)) {
-                    card.style.display = 'block';
-                    visibleCount++;
-                } else {
-                    card.style.display = 'none';
-                }
-            });
-            
-            // Show/hide no results message
-            if (noResults) {
-                if (visibleCount === 0 && searchTerm !== '') {
-                    noResults.style.display = 'block';
-                } else {
-                    noResults.style.display = 'none';
-                }
-            }
+    const csrf = '{{ csrf_token }}';
+    document.querySelectorAll('.visibility-toggle').forEach(function(box) {
+        box.addEventListener('change', function() {
+            const label = document.querySelector('label[for="' + box.id + '"]');
+            const body = new URLSearchParams({public: box.checked ? 'true' : 'false'});
+            fetch(box.dataset.url, {method: 'POST', headers: {'X-CSRFToken': csrf}, body: body})
+                .then(r => r.ok ? r.json() : Promise.reject(r.status))
+                .then(data => { label.textContent = data.is_public ? 'Public' : 'Private'; })
+                .catch(() => { box.checked = !box.checked; alert('Could not change the visibility.'); });
         });
-    }
-    
-    // View analysis button handler
+    });
     document.querySelectorAll('.view-analysis-btn').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-            const analysisId = this.dataset.analysisId;
-            loadAnalysisDetails(analysisId);
-        });
+        btn.addEventListener('click', function() { loadAnalysisDetails(this.dataset.analysisId); });
     });
 });
 </script>

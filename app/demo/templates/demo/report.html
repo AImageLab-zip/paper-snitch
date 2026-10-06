@@ -31,7 +31,7 @@
         {% else %}
         <div class="panel-body text-muted">
             No HTML rendering of this paper yet. Run <code>python manage.py prepare_demo --paper-id {{ paper.id }}</code>.
-            {% if paper.file %}<a href="{{ paper.file.url }}" target="_blank">Open the PDF</a>.{% endif %}
+            {% if paper.file %}<a href="{% url 'paper_pdf' paper.id %}" target="_blank">Open the PDF</a>.{% endif %}
         </div>
         {% endif %}
     </div>

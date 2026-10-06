@@ -21,7 +21,7 @@
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css"
           integrity="sha384-Vkoo8x4CGsO3+Hhxv8T/Q5PaXtkKtu6ug5TOeNV6gBiFeWPGFN9MuhOf23Q9Ifjh" crossorigin="anonymous">
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <link rel="stylesheet" href="{% static 'css/style.css' %}?v=20260924">
+    <link rel="stylesheet" href="{% static 'css/style.css' %}?v=20261005">
     {% block extra_head %}{% endblock %}
 </head>
 <body>
@@ -52,13 +52,15 @@
         
         {% if user.is_authenticated %}
 
+            {% if user.is_staff %}
             <li class="nav-item">
                 <a class="nav-link nav-link-annotator" href="/annotator/" title="Annotator">
                     <i class="fas fa-pencil mr-1"></i> Annotator
                 </a>
             </li>
+            {% endif %}
             <li class="nav-item">
-                <a class="nav-link" href="{% url 'analyze' %}" title="Analyze Papers">
+                <a class="nav-link" href="{% url 'analyze_upload' %}" title="Analyze your paper">
                     <i class="fas fa-file-pdf mr-1"></i> Analyze
                 </a>
             </li>
@@ -84,19 +86,41 @@
                     <i class="fas fa-sign-in-alt mr-1"></i> Login
                 </a>
             </li>
+            <li class="nav-item">
+                <a class="nav-link" href="{% url 'signup' %}">
+                    <i class="fas fa-user-plus mr-1"></i> Sign up
+                </a>
+            </li>
         {% endif %}
     </ul>
     </div> <!-- navbar-collapse.// -->
 </nav>
 
 <div class="content-wrapper"  >
+    {% if messages %}
+    <div class="container mt-3">
+        {% for message in messages %}
+        <div class="alert alert-{% if message.tags == 'error' %}danger{% else %}{{ message.tags|default:'info' }}{% endif %} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
     {% block content %}
     {% endblock %}
 </div>
 
-<footer class="text-white text-center text-lg-start">
-    <div class="text-center p-1">
-        <div class="footer" id="orario-data"></div>
+<footer class="site-footer">
+    <div class="site-footer-inner">
+        <a class="site-footer-brand" href="https://aimagelab.unimore.it/" target="_blank" rel="noopener">
+            <img src="{% static 'img/aimagelab_logo_w.svg' %}" alt="AImageLab logo">
+            <span>&copy; AImageLab<br>University of Modena and Reggio Emilia</span>
+        </a>
+        <div class="site-footer-credits">
+            Managed by <a href="http://federicobolelli.it" target="_blank" rel="noopener">F. Bolelli</a>
+            &mdash; Contributed by <a href="{% url 'contributors' %}">see the contributors</a>
+        </div>
     </div>
 </footer>
 

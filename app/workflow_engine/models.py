@@ -15,6 +15,19 @@ from django.utils import timezone
 from django.core.exceptions import ValidationError
 
 
+def _scrub(value):
+    """Strip API-key fragments from stored errors/logs (OpenAI auth errors echo part of the key)."""
+    from webApp.services.credentials import redact
+
+    if isinstance(value, str):
+        return redact(value)
+    if isinstance(value, dict):
+        return {k: _scrub(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_scrub(v) for v in value]
+    return value
+
+
 class WorkflowDefinition(models.Model):
     """
     Defines a reusable workflow template (DAG structure).
@@ -227,6 +240,7 @@ class WorkflowRun(models.Model):
         blank=True,
         related_name="workflow_runs",
     )
+    is_public = models.BooleanField(default=True, db_index=True)
 
     class Meta:
         verbose_name = "Workflow Run"
@@ -258,6 +272,7 @@ class WorkflowRun(models.Model):
                 .first()
             )
             self.run_number = (last_run.run_number + 1) if last_run else 1
+        self.error_message = _scrub(self.error_message)
         super().save(*args, **kwargs)
 
     @property
@@ -465,6 +480,11 @@ class WorkflowNode(models.Model):
         )
 
 
+    def save(self, *args, **kwargs):
+        self.error_message = _scrub(self.error_message)
+        self.error_traceback = _scrub(self.error_traceback)
+        super().save(*args, **kwargs)
+
 class NodeArtifact(models.Model):
     """
     Stores references to artifacts produced by workflow nodes.
@@ -568,3 +588,8 @@ class NodeLog(models.Model):
 
     def __str__(self):
         return f"[{self.level}] {self.node.node_id}: {self.message[:50]}"
+
+    def save(self, *args, **kwargs):
+        self.message = _scrub(self.message)
+        self.context = _scrub(self.context)
+        super().save(*args, **kwargs)

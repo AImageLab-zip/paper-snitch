@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+
+{% block head_title %}Analyze your paper{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card shadow mb-4">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0"><i class="fas fa-file-upload mr-2"></i>Analyze your paper</h4>
+                </div>
+                <div class="card-body">
+                    <p>
+                        Upload a paper PDF and PaperSnitch runs the full reproducibility check on it: code availability,
+                        dataset documentation, and the reproducibility checklist. It takes about 5&ndash;10 minutes.
+                    </p>
+                    <p class="small text-muted">
+                        Your paper is already in a conference listed on PaperSnitch? You can also open it from
+                        <a href="{% url 'conference_list' %}">Conferences</a> and click "Run analysis".
+                    </p>
+
+                    {% if not can_run %}
+                    <div class="alert alert-warning mb-0">
+                        <i class="fas fa-key mr-1"></i>
+                        To analyze a paper, first <a href="{% url 'profile' %}#api-key">add your OpenAI API key</a> in your profile.
+                        An analysis with GPT-4o costs about $0.25, billed to your OpenAI account.
+                    </div>
+                    {% else %}
+                    <form method="post" enctype="multipart/form-data" id="upload-form">
+                        {% csrf_token %}
+                        <div class="form-group">
+                            <label for="id_pdf"><strong>PDF file</strong> <span class="text-muted small">(max 50 MB)</span></label>
+                            <input type="file" name="pdf" id="id_pdf" class="form-control-file" accept="application/pdf,.pdf" required>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="id_model"><strong>Model</strong></label>
+                            <select name="model" id="id_model" class="form-control">
+                                {% for cfg in models %}
+                                <option value="{{ cfg.model }}" {% if cfg.model == default_model %}selected{% endif %}>{{ cfg.visual_name }}</option>
+                                {% endfor %}
+                            </select>
+                            <small class="form-text text-muted">
+                                {% if uses_system_key %}Runs on the PaperSnitch server key.
+                                {% else %}Billed to your OpenAI key. GPT-4o costs about $0.25 per paper; other models can cost more.{% endif %}
+                            </small>
+                        </div>
+
+                        <div class="form-group">
+                            <label><strong>Visibility</strong></label>
+                            <div class="custom-control custom-radio">
+                                <input type="radio" id="vis-private" name="visibility" value="private" class="custom-control-input" {% if not default_public %}checked{% endif %}>
+                                <label class="custom-control-label" for="vis-private">Private: only you can see the paper and its analysis</label>
+                            </div>
+                            <div class="custom-control custom-radio">
+                                <input type="radio" id="vis-public" name="visibility" value="public" class="custom-control-input" {% if default_public %}checked{% endif %}>
+                                <label class="custom-control-label" for="vis-public">Public: anyone can see the paper, its PDF and the analysis</label>
+                            </div>
+                            <small class="form-text text-muted">You can change this later from your profile.</small>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary" id="upload-btn">
+                            <i class="fas fa-play mr-1"></i> Upload and analyze
+                        </button>
+                    </form>
+                    {% endif %}
+                </div>
+            </div>
+
+            {% if uploads %}
+            <div class="card shadow mb-4">
+                <div class="card-header bg-light"><strong>Your recent uploads</strong></div>
+                <ul class="list-group list-group-flush">
+                    {% for paper in uploads %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <a href="{% url 'paper_detail' paper.id %}">{{ paper.title|truncatechars:90 }}</a>
+                        <span class="badge {% if paper.is_public %}badge-success{% else %}badge-secondary{% endif %}">{% if paper.is_public %}Public{% else %}Private{% endif %}</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('upload-form');
+    if (!form) return;
+    form.addEventListener('submit', function() {
+        const btn = document.getElementById('upload-btn');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Uploading...';
+    });
+});
+</script>
+{% endblock %}

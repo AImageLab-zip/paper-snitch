@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block head_title %}Check your email{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0"><i class="fas fa-envelope"></i> Check your email</h4>
+                </div>
+                <div class="card-body">
+                    {% if sent %}
+                    <p>We sent an activation link to <strong>{{ email }}</strong>. Open it to activate your account.</p>
+                    <p class="text-muted small">Nothing in your inbox after a few minutes? Check the spam folder, or
+                        <a href="{% url 'resend_verification' %}">send the link again</a>.</p>
+                    {% else %}
+                    <div class="alert alert-warning mb-0">Your account was created, but we could not send the activation email right now.
+                        Please <a href="{% url 'resend_verification' %}">try again</a> in a few minutes.</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

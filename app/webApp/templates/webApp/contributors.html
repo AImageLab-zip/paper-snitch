@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block head_title %}Contributors{% endblock %}
+
+{% block content %}
+<div class="container mt-5 mb-5" style="overflow-y: auto;">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0"><i class="fas fa-users mr-2"></i>Contributors</h4>
+                </div>
+                <div class="card-body">
+                    <p>
+                        PaperSnitch is developed and maintained at
+                        <a href="https://aimagelab.unimore.it/" target="_blank" rel="noopener">AImageLab</a>,
+                        University of Modena and Reggio Emilia, thanks to the people below.
+                    </p>
+                    <ul class="list-unstyled mb-4">
+                        <li class="mb-3">
+                            <a href="http://federicobolelli.it" target="_blank" rel="noopener"><strong>Federico Bolelli</strong></a>
+                            &mdash; initial conceptualization of PaperSnitch; design of the reproducibility assessment
+                            pipeline and its 0&ndash;100 scoring, conference scraping, embedding-based evidence retrieval,
+                            token and cost tracking, the poster demo, and user accounts with personal API keys.
+                        </li>
+                        <li class="mb-3">
+                            <strong>Davide Santoli</strong>
+                            &mdash; Docker-based production deployment with HTTPS, user authentication, the LangGraph
+                            workflow structure, code repository discovery and analysis, and the highlighted-PDF evidence view.
+                        </li>
+                        <li class="mb-3"><strong>Luca Lumetti</strong> &mdash; helped shape the infrastructure.</li>
+                        <li class="mb-3"><strong>Kevin Marchesini</strong> &mdash; helped shape the infrastructure.</li>
+                        <li class="mb-3"><strong>Costantino Grana</strong> &mdash; helped shape the infrastructure.</li>
+                    </ul>
+                    <p class="small text-muted mb-0">
+                        Source code: <a href="https://github.com/AImageLab-zip/paper-snitch" target="_blank" rel="noopener">github.com/AImageLab-zip/paper-snitch</a>
+                    </p>
+                </div>
+            </div>
+            <div class="text-center mt-3"><a href="{% url 'conference_list' %}">Back to home</a></div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -20,6 +20,7 @@ from asgiref.sync import sync_to_async
 from openai import OpenAI
 
 from workflow_engine.services.async_orchestrator import async_ops
+from webApp.services.credentials import aresolve_run_key
 from ..graphs_state import PaperProcessingState
 
 logger = logging.getLogger(__name__)
@@ -205,7 +206,8 @@ class BaseWorkflowGraph(ABC):
             )
 
             # Initialize OpenAI client
-            api_key = openai_api_key or os.getenv("OPENAI_API_KEY")
+            # Key of whoever started the run (staff/system runs use the server key)
+            api_key = openai_api_key or await aresolve_run_key(workflow_run.id)
             client = OpenAI(api_key=api_key)
 
             # Build state for this node execution
@@ -403,7 +405,8 @@ class BaseWorkflowGraph(ABC):
             )
 
             # Initialize OpenAI client
-            api_key = openai_api_key or os.getenv("OPENAI_API_KEY")
+            # Key of whoever started the run (staff/system runs use the server key)
+            api_key = openai_api_key or await aresolve_run_key(workflow_run.id)
             client = OpenAI(api_key=api_key)
 
             # Build initial state

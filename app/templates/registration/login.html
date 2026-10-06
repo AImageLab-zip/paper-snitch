@@ -9,48 +9,45 @@
         <div class="col-md-6">
             <div class="card shadow">
                 <div class="card-header bg-primary text-white">
-                    <h4 class="mb-0"><i class="fas fa-sign-in-alt"></i> Login to Annotator</h4>
+                    <h4 class="mb-0"><i class="fas fa-sign-in-alt"></i> Log in to PaperSnitch</h4>
                 </div>
                 <div class="card-body">
                     {% if form.errors %}
                     <div class="alert alert-danger">
-                        <strong>Error:</strong> Your username and password didn't match. Please try again.
+                        Your username and password didn't match. Please try again.
+                        <div class="small mt-1">Just signed up? Confirm your email first
+                            (<a href="{% url 'resend_verification' %}">resend the link</a>).</div>
                     </div>
                     {% endif %}
 
-                    {% if next %}
-                        {% if user.is_authenticated %}
-                        <div class="alert alert-warning">
-                            Your account doesn't have access to this page. To proceed, please login with an account that has access.
-                        </div>
-                        {% else %}
-                        <div class="alert alert-info">
-                            Please login to access the annotator.
-                        </div>
-                        {% endif %}
+                    {% if next and user.is_authenticated %}
+                    <div class="alert alert-warning">
+                        Your account doesn't have access to this page. To proceed, please log in with an account that has access.
+                    </div>
+                    {% elif next %}
+                    <div class="alert alert-info">Please log in to continue.</div>
                     {% endif %}
 
                     <form method="post" action="{% url 'login' %}">
                         {% csrf_token %}
                         <div class="form-group">
-                            <label for="id_username">Username:</label>
+                            <label for="id_username">Username</label>
                             <input type="text" name="username" class="form-control" id="id_username" required autofocus>
                         </div>
                         <div class="form-group">
-                            <label for="id_password">Password:</label>
+                            <label for="id_password">Password</label>
                             <input type="password" name="password" class="form-control" id="id_password" required>
                         </div>
                         <button type="submit" class="btn btn-primary btn-block">
-                            <i class="fas fa-sign-in-alt"></i> Login
+                            <i class="fas fa-sign-in-alt"></i> Log in
                         </button>
                         <input type="hidden" name="next" value="{{ next }}">
                     </form>
 
                     <hr>
-                    <div class="text-center">
-                        <p class="text-muted small">
-                            <a href="{% url 'password_reset' %}">Forgot password?</a>
-                        </p>
+                    <div class="text-center small text-muted">
+                        <a href="{% url 'password_reset' %}">Forgot password?</a>
+                        &middot; No account? <a href="{% url 'signup' %}">Sign up</a>
                     </div>
                 </div>
             </div>
